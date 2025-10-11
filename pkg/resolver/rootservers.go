@@ -122,7 +122,7 @@ func (p *RootServerPool) GetNext() string {
 	}
 
 	// Simple round-robin for now
-	// TODO: Could implement RTT-based selection like upstream pool
+	// Note: RTT-based selection could be implemented. See issue #2
 	server := p.servers[p.current]
 	p.current = (p.current + 1) % len(p.servers)
 

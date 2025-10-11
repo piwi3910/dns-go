@@ -201,7 +201,7 @@ func (rl *RateLimiter) isWhitelisted(ip string) bool {
 		if ip == whitelistedIP {
 			return true
 		}
-		// TODO: Support CIDR ranges
+		// Note: CIDR range support not yet implemented. See issue #2
 	}
 
 	return false

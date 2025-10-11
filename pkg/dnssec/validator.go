@@ -229,9 +229,7 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 		return dnskey
 	}
 
-	// TODO: Look up DNSKEY from cache or query parent zone
-	// This requires integration with the resolver
-
+	// Note: DNSKEY lookup from resolver not yet implemented. See issue #2
 	return nil
 }
 

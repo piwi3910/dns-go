@@ -209,8 +209,7 @@ func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 		shard.size.Add(int64(len(response)))
 	}
 
-	// TODO: Implement size-based eviction if total size exceeds MaxSizeBytes
-	// This requires tracking total size across shards and LRU/LFU eviction
+	// Note: Size-based eviction not yet implemented. See issue #2
 }
 
 // Delete removes an entry from the cache.
