@@ -1,0 +1,48 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+dns-server
+dns-test-client
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Profiling files
+*.prof
+cpu.prof
+mem.prof
+heap.prof
+*.pprof
+
+# Log files
+*.log
+logs/
+
+# Test data
+test-*.txt
+
+# Temporary files
+tmp/
+temp/
+*.tmp
