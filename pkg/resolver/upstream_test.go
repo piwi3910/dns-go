@@ -9,9 +9,14 @@ import (
 	"github.com/piwi3910/dns-go/pkg/cache"
 )
 
+const (
+	testGoogleDNS    = "8.8.8.8:53"
+	testCloudflareDNS = "1.1.1.1:53"
+)
+
 func TestNewUpstreamPool(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	upstreams := []string{testGoogleDNS, testCloudflareDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -52,7 +57,7 @@ func TestNewUpstreamPool_EmptyList(t *testing.T) {
 
 func TestUpstreamPool_GetStats(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	upstreams := []string{testGoogleDNS, testCloudflareDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -63,10 +68,10 @@ func TestUpstreamPool_GetStats(t *testing.T) {
 	pool := NewUpstreamPool(config, infraCache)
 
 	// Record some stats via infraCache
-	stats1 := pool.infraCache.GetOrCreate("8.8.8.8:53")
+	stats1 := pool.infraCache.GetOrCreate(testGoogleDNS)
 	stats1.RecordSuccess(50 * time.Millisecond)
 
-	stats2 := pool.infraCache.GetOrCreate("1.1.1.1:53")
+	stats2 := pool.infraCache.GetOrCreate(testCloudflareDNS)
 	stats2.RecordFailure()
 
 	allStats := pool.GetStats()
@@ -80,13 +85,13 @@ func TestUpstreamPool_GetStats(t *testing.T) {
 	var found8 bool
 	var found1 bool
 	for _, stat := range allStats {
-		if stat.Address == "8.8.8.8:53" {
+		if stat.Address == testGoogleDNS {
 			found8 = true
 			if stat.TotalQueries == 0 {
 				t.Error("Expected queries > 0 for 8.8.8.8")
 			}
 		}
-		if stat.Address == "1.1.1.1:53" {
+		if stat.Address == testCloudflareDNS {
 			found1 = true
 			if stat.TotalQueries == 0 {
 				t.Error("Expected queries > 0 for 1.1.1.1")
@@ -152,7 +157,7 @@ func TestQueryWithFallback_AllFail(t *testing.T) {
 func TestUpstreamPool_SetUpstreams(t *testing.T) {
 	t.Parallel()
 	config := UpstreamConfig{
-		Upstreams:              []string{"8.8.8.8:53"},
+		Upstreams:              []string{testGoogleDNS},
 		Timeout:                5 * time.Second,
 		MaxRetries:             2,
 		ConnectionsPerUpstream: 4,
@@ -165,7 +170,7 @@ func TestUpstreamPool_SetUpstreams(t *testing.T) {
 	}
 
 	// Update upstreams
-	newUpstreams := []string{"1.1.1.1:53", "9.9.9.9:53"}
+	newUpstreams := []string{testCloudflareDNS, "9.9.9.9:53"}
 	pool.SetUpstreams(newUpstreams)
 
 	currentUpstreams := pool.GetUpstreams()
@@ -173,14 +178,14 @@ func TestUpstreamPool_SetUpstreams(t *testing.T) {
 		t.Errorf("Expected 2 upstreams after update, got %d", len(currentUpstreams))
 	}
 
-	if currentUpstreams[0] != "1.1.1.1:53" || currentUpstreams[1] != "9.9.9.9:53" {
+	if currentUpstreams[0] != testCloudflareDNS || currentUpstreams[1] != "9.9.9.9:53" {
 		t.Error("Upstreams not updated correctly")
 	}
 }
 
 func TestUpstreamPool_GetUpstreams(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	upstreams := []string{testGoogleDNS, testCloudflareDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -196,14 +201,14 @@ func TestUpstreamPool_GetUpstreams(t *testing.T) {
 		t.Errorf("Expected 2 upstreams, got %d", len(retrieved))
 	}
 
-	if retrieved[0] != "8.8.8.8:53" || retrieved[1] != "1.1.1.1:53" {
+	if retrieved[0] != testGoogleDNS || retrieved[1] != testCloudflareDNS {
 		t.Error("Retrieved upstreams don't match expected")
 	}
 }
 
 func TestUpstreamPool_Close(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53"}
+	upstreams := []string{testGoogleDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -286,7 +291,7 @@ func TestUpstreamPool_EmptyPoolQuery(t *testing.T) {
 
 func TestInfraCacheIntegration(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53"}
+	upstreams := []string{testGoogleDNS}
 	infraCache := cache.NewInfraCache()
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -302,7 +307,7 @@ func TestInfraCacheIntegration(t *testing.T) {
 	}
 
 	// Record some stats
-	stats := infraCache.GetOrCreate("8.8.8.8:53")
+	stats := infraCache.GetOrCreate(testGoogleDNS)
 	stats.RecordSuccess(25 * time.Millisecond)
 	stats.RecordFailure()
 
@@ -310,7 +315,7 @@ func TestInfraCacheIntegration(t *testing.T) {
 	allStats := pool.GetStats()
 	found := false
 	for _, stat := range allStats {
-		if stat.Address == "8.8.8.8:53" {
+		if stat.Address == testGoogleDNS {
 			found = true
 			if stat.TotalQueries == 0 {
 				t.Error("Expected queries to be recorded")
@@ -325,7 +330,7 @@ func TestInfraCacheIntegration(t *testing.T) {
 
 func TestUpstreamPool_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	upstreams := []string{testGoogleDNS, testCloudflareDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -355,7 +360,7 @@ func TestUpstreamPool_ConcurrentAccess(t *testing.T) {
 
 func TestConnectionPool_PerUpstream(t *testing.T) {
 	t.Parallel()
-	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	upstreams := []string{testGoogleDNS, testCloudflareDNS}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
 		Timeout:                5 * time.Second,
@@ -370,11 +375,11 @@ func TestConnectionPool_PerUpstream(t *testing.T) {
 		t.Errorf("Expected 2 UDP pools, got %d", len(pool.udpPools))
 	}
 
-	if _, exists := pool.udpPools["8.8.8.8:53"]; !exists {
+	if _, exists := pool.udpPools[testGoogleDNS]; !exists {
 		t.Error("Expected UDP pool for 8.8.8.8:53")
 	}
 
-	if _, exists := pool.udpPools["1.1.1.1:53"]; !exists {
+	if _, exists := pool.udpPools[testCloudflareDNS]; !exists {
 		t.Error("Expected UDP pool for 1.1.1.1:53")
 	}
 }

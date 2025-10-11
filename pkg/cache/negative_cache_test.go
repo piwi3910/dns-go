@@ -7,6 +7,8 @@ import (
 	"github.com/miekg/dns"
 )
 
+const testExampleDomain = "example.com."
+
 func TestNegativeCacheEntry_IsExpired(t *testing.T) {
 	t.Parallel()
 	entry := &NegativeCacheEntry{
@@ -49,7 +51,7 @@ func TestNegativeCache_SetAndGet(t *testing.T) {
 	// Create SOA
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
@@ -78,8 +80,8 @@ func TestNegativeCache_SetAndGet(t *testing.T) {
 		t.Errorf("Expected type NXDOMAIN, got %v", entry.Type)
 	}
 
-	if entry.SOA.Hdr.Name != "example.com." {
-		t.Errorf("Expected SOA for example.com., got %s", entry.SOA.Hdr.Name)
+	if entry.SOA.Hdr.Name != testExampleDomain {
+		t.Errorf("Expected SOA for %s, got %s", testExampleDomain, entry.SOA.Hdr.Name)
 	}
 }
 
@@ -221,7 +223,7 @@ func TestExtractSOA(t *testing.T) {
 	// SOA in authority section
 	soaRecord := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
@@ -235,8 +237,8 @@ func TestExtractSOA(t *testing.T) {
 	if soa == nil {
 		t.Fatal("Expected to extract SOA")
 	}
-	if soa.Hdr.Name != "example.com." {
-		t.Errorf("Expected SOA for example.com., got %s", soa.Hdr.Name)
+	if soa.Hdr.Name != testExampleDomain {
+		t.Errorf("Expected SOA for %s, got %s", testExampleDomain, soa.Hdr.Name)
 	}
 }
 
@@ -249,7 +251,7 @@ func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
 	// Add SOA
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
@@ -279,7 +281,7 @@ func TestIsNegativeResponse_NODATA(t *testing.T) {
 	// Add SOA to authority section
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
@@ -308,7 +310,7 @@ func TestIsNegativeResponse_NotNegative(t *testing.T) {
 	// Add answer
 	a := &dns.A{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
@@ -342,7 +344,7 @@ func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
@@ -369,19 +371,19 @@ func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected SOA in authority section")
 	}
-	if responseSOA.Hdr.Name != "example.com." {
-		t.Errorf("Expected SOA for example.com., got %s", responseSOA.Hdr.Name)
+	if responseSOA.Hdr.Name != testExampleDomain {
+		t.Errorf("Expected SOA for %s, got %s", testExampleDomain, responseSOA.Hdr.Name)
 	}
 }
 
 func TestCreateNegativeResponse_NODATA(t *testing.T) {
 	t.Parallel()
 	query := &dns.Msg{}
-	query.SetQuestion("example.com.", dns.TypeAAAA)
+	query.SetQuestion(testExampleDomain, dns.TypeAAAA)
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   "example.com.",
+			Name:   testExampleDomain,
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,

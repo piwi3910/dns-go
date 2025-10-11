@@ -5,22 +5,24 @@ import (
 	"time"
 )
 
+const testGoogleDNS = "8.8.8.8:53"
+
 // TestInfraCacheGetOrCreate tests getting or creating upstream stats.
 func TestInfraCacheGetOrCreate(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
 
-	stats1 := ic.GetOrCreate("8.8.8.8:53")
+	stats1 := ic.GetOrCreate(testGoogleDNS)
 	if stats1 == nil {
 		t.Fatal("Expected stats to be created")
 	}
 
-	if stats1.Address != "8.8.8.8:53" {
-		t.Errorf("Expected address '8.8.8.8:53', got '%s'", stats1.Address)
+	if stats1.Address != testGoogleDNS {
+		t.Errorf("Expected address '%s', got '%s'", testGoogleDNS, stats1.Address)
 	}
 
 	// Getting again should return same instance
-	stats2 := ic.GetOrCreate("8.8.8.8:53")
+	stats2 := ic.GetOrCreate(testGoogleDNS)
 	if stats1 != stats2 {
 		t.Error("Expected same stats instance")
 	}
@@ -30,7 +32,7 @@ func TestInfraCacheGetOrCreate(t *testing.T) {
 func TestUpstreamStatsRecordSuccess(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	initialRTT := stats.GetRTT()
 
@@ -58,7 +60,7 @@ func TestUpstreamStatsRecordSuccess(t *testing.T) {
 func TestUpstreamStatsRecordFailure(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	initialRTT := stats.GetRTT()
 
@@ -87,7 +89,7 @@ func TestUpstreamStatsRecordFailure(t *testing.T) {
 func TestUpstreamStatsInFlight(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	// Start queries
 	count1 := stats.RecordQueryStart()
@@ -111,7 +113,7 @@ func TestUpstreamStatsInFlight(t *testing.T) {
 func TestUpstreamStatsIsHealthy(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	// Should be healthy initially
 	if !stats.IsHealthy() {
@@ -146,7 +148,7 @@ func TestUpstreamStatsIsHealthy(t *testing.T) {
 func TestUpstreamStatsGetScore(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	baseScore := stats.GetScore()
 
@@ -172,13 +174,13 @@ func TestInfraCacheSelectBest(t *testing.T) {
 	ic := NewInfraCache()
 
 	servers := []string{
-		"8.8.8.8:53",
+		testGoogleDNS,
 		"1.1.1.1:53",
 		"9.9.9.9:53",
 	}
 
 	// Make 8.8.8.8 fast
-	stats1 := ic.GetOrCreate("8.8.8.8:53")
+	stats1 := ic.GetOrCreate(testGoogleDNS)
 	stats1.RecordSuccess(10 * time.Millisecond)
 
 	// Make 1.1.1.1 slow
@@ -192,7 +194,7 @@ func TestInfraCacheSelectBest(t *testing.T) {
 
 	// Should select the fast server
 	best := ic.SelectBest(servers)
-	if best != "8.8.8.8:53" {
+	if best != testGoogleDNS {
 		t.Errorf("Expected best server '8.8.8.8:53', got '%s'", best)
 	}
 }
@@ -202,10 +204,10 @@ func TestInfraCacheSelectBest_SingleServer(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
 
-	servers := []string{"8.8.8.8:53"}
+	servers := []string{testGoogleDNS}
 	best := ic.SelectBest(servers)
 
-	if best != "8.8.8.8:53" {
+	if best != testGoogleDNS {
 		t.Errorf("Expected '8.8.8.8:53', got '%s'", best)
 	}
 }
@@ -216,7 +218,7 @@ func TestInfraCacheSelectBest_AllUnhealthy(t *testing.T) {
 	ic := NewInfraCache()
 
 	servers := []string{
-		"8.8.8.8:53",
+		testGoogleDNS,
 		"1.1.1.1:53",
 	}
 
@@ -239,7 +241,7 @@ func TestInfraCacheSelectBest_AllUnhealthy(t *testing.T) {
 func TestUpstreamSnapshot(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
-	stats := ic.GetOrCreate("8.8.8.8:53")
+	stats := ic.GetOrCreate(testGoogleDNS)
 
 	stats.RecordSuccess(50 * time.Millisecond)
 	stats.RecordFailure()
@@ -247,7 +249,7 @@ func TestUpstreamSnapshot(t *testing.T) {
 
 	snapshot := stats.GetSnapshot()
 
-	if snapshot.Address != "8.8.8.8:53" {
+	if snapshot.Address != testGoogleDNS {
 		t.Errorf("Expected address '8.8.8.8:53', got '%s'", snapshot.Address)
 	}
 
@@ -275,7 +277,7 @@ func TestInfraCacheGetAllStats(t *testing.T) {
 	ic := NewInfraCache()
 
 	// Create several server stats
-	ic.GetOrCreate("8.8.8.8:53")
+	ic.GetOrCreate(testGoogleDNS)
 	ic.GetOrCreate("1.1.1.1:53")
 	ic.GetOrCreate("9.9.9.9:53")
 
@@ -291,7 +293,7 @@ func TestInfraCacheClear(t *testing.T) {
 	t.Parallel()
 	ic := NewInfraCache()
 
-	ic.GetOrCreate("8.8.8.8:53")
+	ic.GetOrCreate(testGoogleDNS)
 	ic.GetOrCreate("1.1.1.1:53")
 
 	ic.Clear()
@@ -308,7 +310,7 @@ func TestInfraCachePrune(t *testing.T) {
 	ic := NewInfraCache()
 
 	// Create stats and mark as old
-	stats1 := ic.GetOrCreate("8.8.8.8:53")
+	stats1 := ic.GetOrCreate(testGoogleDNS)
 	stats1.lastSuccess.Store(time.Now().Add(-2 * time.Hour).Unix())
 
 	// Create stats that's recent
@@ -323,7 +325,7 @@ func TestInfraCachePrune(t *testing.T) {
 	}
 
 	// Old entry should be gone
-	if ic.Get("8.8.8.8:53") != nil {
+	if ic.Get(testGoogleDNS) != nil {
 		t.Error("Expected old entry to be pruned")
 	}
 
@@ -338,7 +340,7 @@ func BenchmarkInfraCacheSelectBest(b *testing.B) {
 	ic := NewInfraCache()
 
 	servers := []string{
-		"8.8.8.8:53",
+		testGoogleDNS,
 		"1.1.1.1:53",
 		"9.9.9.9:53",
 		"208.67.222.222:53",
