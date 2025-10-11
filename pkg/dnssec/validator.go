@@ -387,12 +387,10 @@ func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 
 	// Pack to wire format
 	buf := make([]byte, 0, 512)
-	off := 0
 
 	// Pack owner name
 	ownerWire := canonicalName(rrCopy.Header().Name)
 	buf = append(buf, ownerWire...)
-	off += len(ownerWire)
 
 	// Pack header fields
 	header := make([]byte, 10)

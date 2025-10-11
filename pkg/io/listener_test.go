@@ -623,8 +623,8 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	// Try to read (should fail as connection is closed)
 	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	buf := make([]byte, 10)
-	_, err = conn.Read(buf)
-	// Expect error as connection should be closed
+	_, _ = conn.Read(buf)
+	// Expect error as connection should be closed - ignoring return value
 	// This is acceptable behavior
 
 	t.Logf("✓ TCP invalid message handled")

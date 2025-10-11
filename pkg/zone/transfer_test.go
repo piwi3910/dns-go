@@ -208,7 +208,7 @@ func TestExtractClientSerial(t *testing.T) {
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// No SOA in authority
-	serial, ok := ExtractClientSerial(query)
+	_, ok := ExtractClientSerial(query)
 	if ok {
 		t.Error("Expected no serial without SOA")
 	}
@@ -225,7 +225,7 @@ func TestExtractClientSerial(t *testing.T) {
 	}
 	query.Ns = append(query.Ns, soa)
 
-	serial, ok = ExtractClientSerial(query)
+	serial, ok := ExtractClientSerial(query)
 	if !ok {
 		t.Fatal("Expected to extract serial")
 	}

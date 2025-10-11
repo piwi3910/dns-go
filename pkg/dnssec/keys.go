@@ -167,24 +167,10 @@ func ValidateDNSKEYWithDS(dnskey *dns.DNSKEY, ds *dns.DS) error {
 
 // calculateDNSKEYDigest calculates the digest of a DNSKEY (RFC 4034 §5.1.4).
 func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error) {
-	// Construct owner name + DNSKEY RDATA
-	buf := make([]byte, 0, 512)
-
-	// Add owner name in wire format
+	// Construct owner name in wire format
 	ownerWire := canonicalName(dnskey.Hdr.Name)
-	buf = append(buf, ownerWire...)
 
-	// Add DNSKEY RDATA (Flags + Protocol + Algorithm + Public Key)
-	// Flags (2 bytes)
-	buf = append(buf, byte(dnskey.Flags>>8), byte(dnskey.Flags))
-	// Protocol (1 byte)
-	buf = append(buf, dnskey.Protocol)
-	// Algorithm (1 byte)
-	buf = append(buf, dnskey.Algorithm)
-	// Public Key (base64 decoded)
-	// miekg/dns stores it as base64 string, need to decode
-	// Actually, for wire format we need to pack it properly
-	// Use the library's packing function
+	// Use the library's packing function to get DNSKEY RDATA
 	wireBuf := make([]byte, 512)
 	off, err := dns.PackRR(dnskey, wireBuf, 0, nil, false)
 	if err != nil {
@@ -215,7 +201,8 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 		return "", errors.New("invalid DNSKEY wire format")
 	}
 
-	buf = append(ownerWire, wireBuf[rdataStart:off]...)
+	// Construct buffer: owner name + RDATA
+	buf := append(ownerWire, wireBuf[rdataStart:off]...)
 
 	// Hash based on digest type
 	var h hash.Hash
