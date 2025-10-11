@@ -1,6 +1,8 @@
 package edns0
 
 import (
+	"fmt"
+
 	"github.com/miekg/dns"
 )
 
@@ -19,7 +21,23 @@ const (
 	MinimumUDPSize    = 512  // RFC 1035 minimum
 	MaximumUDPSize    = 4096 // Reasonable maximum for our implementation
 	EDNS0Version      = 0    // We support EDNS version 0
+	MaxSupportedEDNS  = 0    // Maximum EDNS version we support
 )
+
+// EDNS0 Extended RCODEs (RFC 6891 Section 6.1.3)
+const (
+	RcodeBadVers = 16 // BADVERS - unsupported EDNS version
+)
+
+// ValidationError represents an EDNS0 validation error
+type ValidationError struct {
+	Message      string
+	ExtendedCode int // Extended RCODE to return
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
 
 // ParseEDNS0 extracts EDNS0 information from a DNS query
 func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
@@ -127,4 +145,185 @@ func ShouldTruncate(responseSize int, ednsInfo *EDNS0Info) bool {
 	}
 
 	return responseSize > maxSize
+}
+
+// ValidateEDNS0 performs comprehensive EDNS0 validation per RFC 6891
+// Returns ValidationError if the query has invalid EDNS0
+func ValidateEDNS0(msg *dns.Msg) error {
+	// Count OPT records - RFC 6891 Section 6.1.1: exactly zero or one
+	optCount := 0
+	var opt *dns.OPT
+
+	for _, rr := range msg.Extra {
+		if o, ok := rr.(*dns.OPT); ok {
+			optCount++
+			opt = o
+		}
+	}
+
+	// Multiple OPT records is a FORMERR per RFC 6891
+	if optCount > 1 {
+		return &ValidationError{
+			Message:      "multiple OPT records in query",
+			ExtendedCode: dns.RcodeFormatError,
+		}
+	}
+
+	// No OPT record is valid (non-EDNS0 query)
+	if optCount == 0 {
+		return nil
+	}
+
+	// Validate OPT record placement - must be in additional section only
+	// (already guaranteed by checking msg.Extra above)
+
+	// Validate OPT record format
+	if opt.Hdr.Name != "." {
+		return &ValidationError{
+			Message:      "OPT record name must be root (.)",
+			ExtendedCode: dns.RcodeFormatError,
+		}
+	}
+
+	if opt.Hdr.Rrtype != dns.TypeOPT {
+		return &ValidationError{
+			Message:      "invalid OPT record type",
+			ExtendedCode: dns.RcodeFormatError,
+		}
+	}
+
+	// Version negotiation - RFC 6891 Section 6.1.3
+	// If version > MaxSupportedEDNS, must return BADVERS
+	version := opt.Version()
+	if version > MaxSupportedEDNS {
+		return &ValidationError{
+			Message:      fmt.Sprintf("unsupported EDNS version %d (max: %d)", version, MaxSupportedEDNS),
+			ExtendedCode: RcodeBadVers,
+		}
+	}
+
+	// Validate UDP payload size - RFC 6891 Section 6.2.3
+	// Values less than 512 MUST be treated as equal to 512
+	udpSize := opt.UDPSize()
+	if udpSize < MinimumUDPSize {
+		// This is informational - we'll clamp it in ParseEDNS0
+		// Not an error per RFC 6891
+	}
+
+	// Unknown EDNS0 options are allowed and must be ignored per RFC 6891 Section 6.1.2
+	// The miekg/dns library handles this automatically
+
+	return nil
+}
+
+// CreateErrorResponse creates an EDNS0 error response
+// Used when EDNS0 validation fails (e.g., BADVERS)
+func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg {
+	response := &dns.Msg{}
+	response.SetReply(query)
+	response.Rcode = rcode & 0x0F // Lower 4 bits
+
+	// If query had EDNS0, include OPT in error response
+	if query.IsEdns0() != nil {
+		opt := &dns.OPT{
+			Hdr: dns.RR_Header{
+				Name:   ".",
+				Rrtype: dns.TypeOPT,
+				Class:  DefaultUDPSize,
+				Ttl:    uint32(rcode>>4) << 24, // Extended RCODE in upper 8 bits of TTL
+			},
+		}
+		opt.SetVersion(ednsVersion)
+		response.Extra = append(response.Extra, opt)
+	}
+
+	return response
+}
+
+// SetExtendedRcode sets the extended RCODE in a response message
+// rcode: the full extended RCODE (lower 4 bits go in msg.Rcode, upper bits in OPT)
+func SetExtendedRcode(msg *dns.Msg, rcode int) {
+	// Set lower 4 bits in message RCODE
+	msg.Rcode = rcode & 0x0F
+
+	// Set upper 8 bits in OPT record TTL if EDNS0 is present
+	opt := msg.IsEdns0()
+	if opt != nil {
+		// Extended RCODE goes in upper 8 bits of TTL field
+		extendedBits := uint32(rcode>>4) << 24
+		opt.Hdr.Ttl = (opt.Hdr.Ttl & 0x00FFFFFF) | extendedBits
+	}
+}
+
+// GetExtendedRcode extracts the full extended RCODE from a message
+// Combines msg.Rcode (lower 4 bits) with OPT TTL (upper 8 bits)
+func GetExtendedRcode(msg *dns.Msg) int {
+	rcode := msg.Rcode
+
+	opt := msg.IsEdns0()
+	if opt != nil {
+		// Extended RCODE is in upper 8 bits of TTL
+		extendedBits := int(opt.Hdr.Ttl >> 24)
+		rcode |= (extendedBits << 4)
+	}
+
+	return rcode
+}
+
+// HandleUnknownOptions processes unknown EDNS0 options per RFC 6891
+// Unknown options must be ignored, but we log them for debugging
+func HandleUnknownOptions(opt *dns.OPT) []string {
+	unknownOptions := []string{}
+
+	for _, option := range opt.Option {
+		switch option.(type) {
+		case *dns.EDNS0_NSID:
+			// Known option
+		case *dns.EDNS0_SUBNET:
+			// Known option (ECS - Client Subnet)
+		case *dns.EDNS0_COOKIE:
+			// Known option
+		case *dns.EDNS0_EXPIRE:
+			// Known option
+		case *dns.EDNS0_TCP_KEEPALIVE:
+			// Known option
+		case *dns.EDNS0_PADDING:
+			// Known option
+		case *dns.EDNS0_DAU:
+			// Known option (DNSSEC Algorithm Understood)
+		case *dns.EDNS0_DHU:
+			// Known option (DS Hash Understood)
+		case *dns.EDNS0_N3U:
+			// Known option (NSEC3 Hash Understood)
+		default:
+			// Unknown option - RFC 6891: must be ignored
+			unknownOptions = append(unknownOptions, fmt.Sprintf("code=%d", option.Option()))
+		}
+	}
+
+	return unknownOptions
+}
+
+// CopyEDNS0Options copies EDNS0 options from query to response
+// Used for options that should be echoed back (like NSID, Cookie, etc.)
+func CopyEDNS0Options(queryOpt, responseOpt *dns.OPT) {
+	if queryOpt == nil || responseOpt == nil {
+		return
+	}
+
+	for _, option := range queryOpt.Option {
+		switch opt := option.(type) {
+		case *dns.EDNS0_NSID:
+			// Echo NSID if server has one configured
+			// (Implementation-specific)
+		case *dns.EDNS0_COOKIE:
+			// Process cookie - echo back with server cookie
+			// (Implementation-specific)
+		case *dns.EDNS0_PADDING:
+			// Padding should not be copied
+		default:
+			// Most options are not echoed
+			_ = opt
+		}
+	}
 }

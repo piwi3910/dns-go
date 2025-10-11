@@ -102,13 +102,12 @@ func TestCanUseFastPath_UncommonQueries(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_EDNS0 tests that EDNS0 queries go to slow path
+// TestCanUseFastPath_EDNS0 tests that EDNS0 queries use fast path when DO bit is not set
 func TestCanUseFastPath_EDNS0(t *testing.T) {
+	// EDNS0 without DO bit should use fast path
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
-
-	// Add EDNS0 OPT record
-	msg.SetEdns0(4096, false)
+	msg.SetEdns0(4096, false) // DO bit = false
 
 	query, err := msg.Pack()
 	if err != nil {
@@ -116,8 +115,23 @@ func TestCanUseFastPath_EDNS0(t *testing.T) {
 	}
 
 	result := CanUseFastPath(query)
-	if result != false {
-		t.Error("EDNS0 query should not use fast path")
+	if result != true {
+		t.Error("EDNS0 query without DO bit should use fast path")
+	}
+
+	// EDNS0 with DO bit should NOT use fast path (requires DNSSEC validation)
+	msg2 := new(dns.Msg)
+	msg2.SetQuestion("example.com.", dns.TypeA)
+	msg2.SetEdns0(4096, true) // DO bit = true
+
+	query2, err := msg2.Pack()
+	if err != nil {
+		t.Fatalf("Failed to pack message: %v", err)
+	}
+
+	result2 := CanUseFastPath(query2)
+	if result2 != false {
+		t.Error("EDNS0 query with DO bit should not use fast path (requires DNSSEC)")
 	}
 }
 

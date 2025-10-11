@@ -293,10 +293,15 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 	offset += 2
 
 	// Parse TTL field which contains extended RCODE and flags
-	// TTL is 4 bytes: [extended RCODE (1)] [version (1)] [flags (2)]
-	// DO bit is bit 15 of flags (bit 7 of byte 3 of TTL)
-	ttlByte3 := query[offset+3] // Flags high byte
-	doBit := (ttlByte3 & 0x80) != 0
+	// TTL is 4 bytes: [extended RCODE (1)] [version (1)] [flags high (1)] [flags low (1)]
+	// DO bit is bit 15 of the 16-bit flags field, which is bit 7 of the flags high byte
+	// That's offset+2 (after extended RCODE and version)
+	if offset+4 > len(query) {
+		return false
+	}
+
+	flagsHigh := query[offset+2] // Flags high byte
+	doBit := (flagsHigh & 0x80) != 0
 
 	// If DO bit is set, require DNSSEC validation (slow path)
 	if doBit {
