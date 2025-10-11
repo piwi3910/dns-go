@@ -48,14 +48,16 @@ func CanUseFastPath(query []byte) bool {
 
 	// Check if EDNS0 with DO (DNSSEC OK) bit is set
 	// If DO bit is set, this requires DNSSEC validation (slow path)
-	// We'll check this by looking for OPT record in additional section
 	// ARCOUNT (additional records count)
 	arcount := uint16(query[10])<<8 | uint16(query[11])
 	if arcount > 0 {
-		// Additional records present, might be EDNS0 with DO bit
-		// For simplicity, send to slow path if any additional records
-		// More sophisticated check could parse OPT record
-		return false
+		// Additional records present - check if it's EDNS0 with DO bit
+		// We need to parse the OPT record to check the DO bit
+		// For now, we'll do a fast check: if there's exactly 1 additional record
+		// at the end that looks like OPT, and DO bit is NOT set, allow fast path
+		if !canUseFastPathWithEDNS0(query, arcount) {
+			return false
+		}
 	}
 
 	// Parse question section to check query type
@@ -204,6 +206,147 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 		Type:  qtype,
 		Class: qclass,
 	}, nil
+}
+
+// canUseFastPathWithEDNS0 checks if a query with additional records can use fast path
+// Returns true if the additional record is EDNS0 without DO bit set
+func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
+	// Only handle single additional record (typical for EDNS0)
+	if arcount != 1 {
+		return false
+	}
+
+	// Find the OPT record by skipping to the additional section
+	// We need to skip: header (12) + question section + answer section + authority section
+
+	offset := 12 // Start after header
+
+	// Skip question section (QDCOUNT questions)
+	qdcount := uint16(query[4])<<8 | uint16(query[5])
+	for i := uint16(0); i < qdcount; i++ {
+		// Skip QNAME
+		for offset < len(query) {
+			labelLen := int(query[offset])
+			if labelLen == 0 {
+				offset++
+				break
+			}
+			if labelLen >= 192 {
+				offset += 2
+				break
+			}
+			offset += 1 + labelLen
+			if offset >= len(query) {
+				return false
+			}
+		}
+		// Skip QTYPE (2) + QCLASS (2)
+		offset += 4
+		if offset > len(query) {
+			return false
+		}
+	}
+
+	// Skip answer section (ANCOUNT records)
+	ancount := uint16(query[6])<<8 | uint16(query[7])
+	for i := uint16(0); i < ancount; i++ {
+		offset = skipRR(query, offset)
+		if offset < 0 || offset > len(query) {
+			return false
+		}
+	}
+
+	// Skip authority section (NSCOUNT records)
+	nscount := uint16(query[8])<<8 | uint16(query[9])
+	for i := uint16(0); i < nscount; i++ {
+		offset = skipRR(query, offset)
+		if offset < 0 || offset > len(query) {
+			return false
+		}
+	}
+
+	// Now we're at the additional section
+	// Parse the OPT record
+	if offset >= len(query) {
+		return false
+	}
+
+	// OPT record has NAME = "." (root) = 0x00
+	if query[offset] != 0 {
+		return false // Not an OPT record
+	}
+	offset++
+
+	// Check we have enough bytes for TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2)
+	if offset+10 > len(query) {
+		return false
+	}
+
+	// Check TYPE = OPT (41)
+	rrtype := uint16(query[offset])<<8 | uint16(query[offset+1])
+	if rrtype != 41 { // dns.TypeOPT
+		return false
+	}
+	offset += 2
+
+	// Skip CLASS (UDP payload size) - 2 bytes
+	offset += 2
+
+	// Parse TTL field which contains extended RCODE and flags
+	// TTL is 4 bytes: [extended RCODE (1)] [version (1)] [flags (2)]
+	// DO bit is bit 15 of flags (bit 7 of byte 3 of TTL)
+	ttlByte3 := query[offset+3] // Flags high byte
+	doBit := (ttlByte3 & 0x80) != 0
+
+	// If DO bit is set, require DNSSEC validation (slow path)
+	if doBit {
+		return false
+	}
+
+	// EDNS0 without DO bit can use fast path
+	return true
+}
+
+// skipRR skips over a resource record in the wire format
+// Returns new offset, or -1 on error
+func skipRR(query []byte, offset int) int {
+	// Skip NAME
+	for offset < len(query) {
+		labelLen := int(query[offset])
+		if labelLen == 0 {
+			offset++
+			break
+		}
+		if labelLen >= 192 {
+			// Compression pointer
+			offset += 2
+			break
+		}
+		offset += 1 + labelLen
+		if offset >= len(query) {
+			return -1
+		}
+	}
+
+	// Check we have: TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2) = 10 bytes
+	if offset+10 > len(query) {
+		return -1
+	}
+
+	// Skip TYPE (2) + CLASS (2) + TTL (4)
+	offset += 8
+
+	// Read RDLENGTH
+	rdlength := uint16(query[offset])<<8 | uint16(query[offset+1])
+	offset += 2
+
+	// Skip RDATA
+	offset += int(rdlength)
+	if offset > len(query) {
+		return -1
+	}
+
+	return offset
 }
 
 // GetMessageID extracts the message ID from a DNS message

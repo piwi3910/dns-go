@@ -7,6 +7,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/piwi3910/dns-go/pkg/cache"
+	"github.com/piwi3910/dns-go/pkg/edns0"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
 )
@@ -106,18 +107,40 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 
 	// Check message cache (L1)
 	cacheKey := cache.MakeKey(fpq.Name, fpq.Type, fpq.Class)
-	if response := h.messageCache.Get(cacheKey); response != nil {
-		// Cache hit! Build response with correct message ID
-		// Optimize: avoid full copy, only replace ID bytes
-		result := make([]byte, len(response))
+	if cachedResponse := h.messageCache.Get(cacheKey); cachedResponse != nil {
+		// Cache hit! Need to add EDNS0 if query has it
+		// Check ARCOUNT to see if query has EDNS0
+		arcount := uint16(query[10])<<8 | uint16(query[11])
 
-		// Copy query ID (bytes 0-1) directly from query
+		if arcount > 0 {
+			// Query has EDNS0, need to add OPT to response
+			queryMsg := h.msgPool.Get()
+			defer h.msgPool.Put(queryMsg)
+
+			if err := queryMsg.Unpack(query); err == nil {
+				responseMsg := h.msgPool.Get()
+				defer h.msgPool.Put(responseMsg)
+
+				if err := responseMsg.Unpack(cachedResponse); err == nil {
+					// Add EDNS0 to response
+					h.applyEDNS0(queryMsg, responseMsg)
+
+					// Pack with EDNS0
+					if finalBytes, err := responseMsg.Pack(); err == nil {
+						// Update message ID
+						finalBytes[0] = query[0]
+						finalBytes[1] = query[1]
+						return finalBytes, nil
+					}
+				}
+			}
+		}
+
+		// No EDNS0 or fallback: use optimized path
+		result := make([]byte, len(cachedResponse))
 		result[0] = query[0]
 		result[1] = query[1]
-
-		// Copy rest of cached response (bytes 2+) - everything except ID
-		copy(result[2:], response[2:])
-
+		copy(result[2:], cachedResponse[2:])
 		return result, nil
 	}
 
@@ -134,6 +157,10 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 
 		// Build response
 		response := cache.BuildResponse(msg, rrs)
+
+		// Apply EDNS0 if query has it
+		h.applyEDNS0(msg, response)
+
 		responseBytes, err := response.Pack()
 		if err != nil {
 			return h.buildErrorResponse(query, dns.RcodeServerFailure)
@@ -155,7 +182,7 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 }
 
 // handleSlowPath processes queries that require full processing
-// This handles DNSSEC, zone transfers, unusual query types, etc.
+// This handles EDNS0, DNSSEC, zone transfers, unusual query types, etc.
 func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
 	msg := h.msgPool.Get()
 	defer h.msgPool.Put(msg)
@@ -176,23 +203,39 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 	if h.config.EnableCache {
 		// Try message cache
 		cacheKey := cache.MakeKey(q.Name, q.Qtype, q.Qclass)
-		if response := h.messageCache.Get(cacheKey); response != nil {
-			// Build response with correct message ID (optimized)
-			result := make([]byte, len(response))
+		if cachedResponse := h.messageCache.Get(cacheKey); cachedResponse != nil {
+			// Parse cached response to add EDNS0
+			responseMsg := h.msgPool.Get()
+			defer h.msgPool.Put(responseMsg)
 
-			// Copy query ID (bytes 0-1)
+			if err := responseMsg.Unpack(cachedResponse); err == nil {
+				// Apply EDNS0 from query
+				h.applyEDNS0(msg, responseMsg)
+
+				// Pack with EDNS0
+				if finalBytes, err := responseMsg.Pack(); err == nil {
+					// Update message ID from query
+					finalBytes[0] = query[0]
+					finalBytes[1] = query[1]
+					return h.handleResponseSize(msg, finalBytes)
+				}
+			}
+
+			// Fallback: use cached response as-is with ID replacement
+			result := make([]byte, len(cachedResponse))
 			result[0] = query[0]
 			result[1] = query[1]
-
-			// Copy rest of cached response (bytes 2+)
-			copy(result[2:], response[2:])
-
-			return result, nil
+			copy(result[2:], cachedResponse[2:])
+			return h.handleResponseSize(msg, result)
 		}
 
 		// Try RRset cache
 		if rrs := h.rrsetCache.Get(q.Name, q.Qtype); rrs != nil {
 			response := cache.BuildResponse(msg, rrs)
+
+			// Apply EDNS0
+			h.applyEDNS0(msg, response)
+
 			responseBytes, err := response.Pack()
 			if err != nil {
 				return h.buildErrorResponse(query, dns.RcodeServerFailure)
@@ -205,12 +248,11 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 			}
 			h.messageCache.Set(cacheKey, responseBytes, ttl)
 
-			return responseBytes, nil
+			return h.handleResponseSize(msg, responseBytes)
 		}
 	}
 
 	// Need to resolve
-	// For now, return SERVFAIL (resolver will be added later)
 	return h.handleCacheMiss(ctx, query, &dnsio.FastPathQuery{
 		Name:  q.Name,
 		Type:  q.Qtype,
@@ -235,6 +277,9 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)
 	}
 
+	// Apply EDNS0 if query had it
+	h.applyEDNS0(msg, response)
+
 	// Cache the response
 	if len(response.Answer) > 0 {
 		ttl := cache.GetMinTTL(response.Answer)
@@ -250,7 +295,8 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)
 	}
 
-	return responseBytes, nil
+	// Handle response size (truncate if needed)
+	return h.handleResponseSize(msg, responseBytes)
 }
 
 // buildErrorResponse builds an error response for a query
@@ -336,4 +382,54 @@ func (h *Handler) ClearCaches() {
 	h.messageCache.Clear()
 	h.rrsetCache.Clear()
 	h.infraCache.Clear()
+}
+
+// applyEDNS0 adds EDNS0 OPT record to response if query had EDNS0
+// Also handles response truncation if response exceeds buffer size
+func (h *Handler) applyEDNS0(queryMsg, responseMsg *dns.Msg) {
+	// Parse EDNS0 from query
+	ednsInfo := edns0.ParseEDNS0(queryMsg)
+
+	if !ednsInfo.Present {
+		// No EDNS0 in query, don't add to response
+		return
+	}
+
+	// Add OPT record to response with negotiated buffer size
+	// Server advertises its maximum size, client uses minimum of both
+	serverBufferSize := uint16(edns0.MaximumUDPSize)
+	bufferSize := edns0.NegotiateBufferSize(ednsInfo.UDPSize, serverBufferSize)
+
+	// Preserve DO bit from query (DNSSEC OK)
+	edns0.AddOPTRecord(responseMsg, bufferSize, ednsInfo.DO)
+}
+
+// handleResponseSize checks if response fits in EDNS0 buffer and truncates if needed
+func (h *Handler) handleResponseSize(queryMsg *dns.Msg, responseBytes []byte) ([]byte, error) {
+	// Parse EDNS0 from query
+	ednsInfo := edns0.ParseEDNS0(queryMsg)
+
+	// Check if response should be truncated
+	if edns0.ShouldTruncate(len(responseBytes), ednsInfo) {
+		// Response too large - set TC (truncation) bit
+		// Client should retry over TCP
+		msg := h.msgPool.Get()
+		defer h.msgPool.Put(msg)
+
+		if err := msg.Unpack(responseBytes); err != nil {
+			return responseBytes, nil // Return as-is if we can't parse
+		}
+
+		// Set truncation bit
+		msg.Truncated = true
+
+		// Keep the response as-is but with TC bit set
+		// The client should retry over TCP to get the full response
+		// We don't remove sections - just signal truncation
+
+		// Pack response with TC bit
+		return msg.Pack()
+	}
+
+	return responseBytes, nil
 }
