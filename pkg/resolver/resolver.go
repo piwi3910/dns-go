@@ -8,6 +8,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/piwi3910/dns-go/pkg/cache"
+	"github.com/piwi3910/dns-go/pkg/dnssec"
 )
 
 // RecursionMode defines how the resolver operates
@@ -26,6 +27,10 @@ type Resolver struct {
 	upstream  *UpstreamPool
 	iterative *IterativeResolver
 	config    ResolverConfig
+
+	// DNSSEC validation
+	dnssecValidator *dnssec.Validator
+	dnssecEnabled   bool
 
 	// Request coalescing - deduplicate in-flight queries
 	inFlight map[string]*inflightRequest
@@ -48,6 +53,12 @@ type ResolverConfig struct {
 
 	// EnableCoalescing enables request deduplication
 	EnableCoalescing bool
+
+	// EnableDNSSEC enables DNSSEC validation of responses
+	EnableDNSSEC bool
+
+	// DNSSECConfig holds DNSSEC validator configuration
+	DNSSECConfig dnssec.ValidatorConfig
 }
 
 // DefaultResolverConfig returns configuration with sensible defaults
@@ -59,6 +70,8 @@ func DefaultResolverConfig() ResolverConfig {
 		MaxRetries:       2,
 		QueryTimeout:     5 * time.Second,
 		EnableCoalescing: true,
+		EnableDNSSEC:     true, // DNSSEC validation enabled by default
+		DNSSECConfig:     dnssec.DefaultValidatorConfig(),
 	}
 }
 
@@ -83,9 +96,15 @@ type inflightRequest struct {
 // NewResolver creates a new DNS resolver
 func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
 	r := &Resolver{
-		upstream: upstream,
-		config:   config,
-		inFlight: make(map[string]*inflightRequest),
+		upstream:      upstream,
+		config:        config,
+		inFlight:      make(map[string]*inflightRequest),
+		dnssecEnabled: config.EnableDNSSEC,
+	}
+
+	// Initialize DNSSEC validator if enabled
+	if config.EnableDNSSEC {
+		r.dnssecValidator = dnssec.NewValidator(config.DNSSECConfig)
 	}
 
 	// Initialize iterative resolver if in recursive mode
@@ -206,6 +225,24 @@ func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns
 		response.Id = query.Id
 		response.RecursionDesired = query.RecursionDesired
 		response.RecursionAvailable = true
+
+		// DNSSEC validation if enabled and CheckingDisabled is not set
+		if r.dnssecEnabled && r.dnssecValidator != nil && !query.CheckingDisabled {
+			validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+			if err != nil {
+				// Validation error
+				if r.config.DNSSECConfig.RequireValidation {
+					return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
+				}
+				response.AuthenticatedData = false
+			} else if validationResult.Secure {
+				// Validation successful
+				response.AuthenticatedData = true
+			} else {
+				// Insecure or Bogus
+				response.AuthenticatedData = false
+			}
+		}
 	}
 
 	return response, nil
@@ -222,6 +259,25 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 	// Validate response
 	if response == nil {
 		return nil, fmt.Errorf("nil response from upstream")
+	}
+
+	// DNSSEC validation if enabled
+	if r.dnssecEnabled && r.dnssecValidator != nil {
+		validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+		if err != nil {
+			// Validation error - log but don't fail if RequireValidation is false
+			if r.config.DNSSECConfig.RequireValidation {
+				return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
+			}
+			// Set AD (Authentic Data) bit to false
+			response.AuthenticatedData = false
+		} else if validationResult.Secure {
+			// Validation successful - set AD bit
+			response.AuthenticatedData = true
+		} else {
+			// Insecure or Bogus - clear AD bit
+			response.AuthenticatedData = false
+		}
 	}
 
 	// Check response code

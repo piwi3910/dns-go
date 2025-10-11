@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Rules
+
+**DO ONLY WHAT IS EXPLICITLY REQUESTED:**
+- Do exactly what the user asks, nothing more
+- Do not add extra tasks or steps that were not requested
+- Do not make assumptions about what the user wants
+
+**DO NOT create unsolicited documentation files:**
+- Do NOT create status reports, summaries, or markdown files unless explicitly asked
+- Do NOT create files like *_SUMMARY.md, *_STATUS.md, *_REPORT.md unless requested
+- Focus on code implementation, not documentation
+- Only update documentation when specifically asked or when code changes require it
+
 ## Project Overview
 
 This is a high-performance, RFC-compliant DNS server implementation in Go, designed to outperform established solutions like BIND and Unbound. **Performance target: 500,000+ QPS** with linear multi-core scaling.

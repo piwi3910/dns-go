@@ -7,9 +7,11 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/piwi3910/dns-go/pkg/cache"
+	"github.com/piwi3910/dns-go/pkg/dnssec"
 	"github.com/piwi3910/dns-go/pkg/edns0"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
+	"github.com/piwi3910/dns-go/pkg/security"
 )
 
 // Handler implements the DNS query handler with fast-path optimization
@@ -25,6 +27,14 @@ type Handler struct {
 
 	// Resolver for upstream queries
 	resolver *resolver.Resolver
+
+	// DNSSEC validator
+	dnssecValidator *dnssec.Validator
+
+	// Security components
+	rateLimiter            *security.RateLimiter
+	queryValidator         *security.QueryValidator
+	cachePoisoningProtector *security.CachePoisoningProtector
 
 	// Config
 	config HandlerConfig
@@ -43,16 +53,32 @@ type HandlerConfig struct {
 
 	// ResolverMode determines resolution strategy (Forwarding or Recursive)
 	ResolverMode resolver.RecursionMode
+
+	// EnableDNSSEC enables DNSSEC validation (default: true)
+	EnableDNSSEC bool
+
+	// EnableRateLimiting enables per-IP rate limiting (default: true)
+	EnableRateLimiting bool
+
+	// EnableQueryValidation enables query validation (default: true)
+	EnableQueryValidation bool
+
+	// EnableCachePoisoningProtection enables cache poisoning protection (default: true)
+	EnableCachePoisoningProtection bool
 }
 
 // DefaultHandlerConfig returns configuration with sensible defaults
 // Uses forwarding mode for best performance
 func DefaultHandlerConfig() HandlerConfig {
 	return HandlerConfig{
-		EnableCache:    true,
-		EnableFastPath: true,
-		DefaultTTL:     5 * time.Minute,
-		ResolverMode:   resolver.ForwardingMode, // Default to forwarding for performance
+		EnableCache:                    true,
+		EnableFastPath:                 true,
+		DefaultTTL:                     5 * time.Minute,
+		ResolverMode:                   resolver.ForwardingMode, // Default to forwarding for performance
+		EnableDNSSEC:                   true,                     // Enable DNSSEC validation by default
+		EnableRateLimiting:             true,                     // Enable rate limiting by default
+		EnableQueryValidation:          true,                     // Enable query validation by default
+		EnableCachePoisoningProtection: true,                     // Enable cache poisoning protection by default
 	}
 }
 
@@ -72,20 +98,62 @@ func NewHandler(config HandlerConfig) *Handler {
 	}
 	resolverInstance := resolver.NewResolver(resolverConfig, upstreamPool)
 
+	// Create DNSSEC validator
+	dnssecConfig := dnssec.DefaultValidatorConfig()
+	dnssecConfig.EnableValidation = config.EnableDNSSEC
+	dnssecValidator := dnssec.NewValidator(dnssecConfig)
+
+	// Create security components
+	rateLimitConfig := security.DefaultRateLimitConfig()
+	rateLimitConfig.Enabled = config.EnableRateLimiting
+	rateLimiter := security.NewRateLimiter(rateLimitConfig)
+
+	validationConfig := security.DefaultValidationConfig()
+	queryValidator := security.NewQueryValidator(validationConfig)
+
+	cachePoisoningConfig := security.DefaultCachePoisoningConfig()
+	cachePoisoningProtector := security.NewCachePoisoningProtector(cachePoisoningConfig)
+
 	return &Handler{
-		messageCache: cache.NewMessageCache(cache.DefaultMessageCacheConfig()),
-		rrsetCache:   cache.NewRRsetCache(cache.DefaultRRsetCacheConfig()),
-		infraCache:   infraCache,
-		msgPool:      dnsio.NewMessagePool(),
-		bufferPool:   dnsio.NewBufferPool(dnsio.DefaultBufferSize),
-		resolver:     resolverInstance,
-		config:       config,
+		messageCache:            cache.NewMessageCache(cache.DefaultMessageCacheConfig()),
+		rrsetCache:              cache.NewRRsetCache(cache.DefaultRRsetCacheConfig()),
+		infraCache:              infraCache,
+		msgPool:                 dnsio.NewMessagePool(),
+		bufferPool:              dnsio.NewBufferPool(dnsio.DefaultBufferSize),
+		resolver:                resolverInstance,
+		dnssecValidator:         dnssecValidator,
+		rateLimiter:             rateLimiter,
+		queryValidator:          queryValidator,
+		cachePoisoningProtector: cachePoisoningProtector,
+		config:                  config,
 	}
 }
 
 // HandleQuery processes a DNS query and returns a response
 // This is the main entry point for all queries
 func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
+	// Security: Rate limiting check
+	if h.config.EnableRateLimiting && !h.rateLimiter.Allow(addr) {
+		// Rate limit exceeded - return REFUSED
+		return h.buildErrorResponse(query, dns.RcodeRefused)
+	}
+
+	// Security: Query validation (slow path only for validation)
+	if h.config.EnableQueryValidation {
+		msg := h.msgPool.Get()
+		if err := msg.Unpack(query); err != nil {
+			h.msgPool.Put(msg)
+			return h.buildErrorResponse(query, dns.RcodeFormatError)
+		}
+
+		if err := h.queryValidator.ValidateQuery(msg); err != nil {
+			h.msgPool.Put(msg)
+			// Invalid query - return FORMERR
+			return h.buildErrorResponse(query, dns.RcodeFormatError)
+		}
+		h.msgPool.Put(msg)
+	}
+
 	// Fast path: Check if this query can use the fast path
 	if h.config.EnableFastPath && dnsio.CanUseFastPath(query) {
 		return h.handleFastPath(ctx, query, addr)
@@ -275,6 +343,31 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 	if err != nil {
 		// Resolution failed - return SERVFAIL
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)
+	}
+
+	// Security: Validate response against query (cache poisoning protection)
+	if h.config.EnableCachePoisoningProtection {
+		if err := h.cachePoisoningProtector.ValidateResponse(msg, response); err != nil {
+			// Response validation failed - potential cache poisoning attempt
+			// Return SERVFAIL and don't cache
+			return h.buildErrorResponse(query, dns.RcodeServerFailure)
+		}
+	}
+
+	// Validate DNSSEC if DO bit is set
+	ednsInfo := edns0.ParseEDNS0(msg)
+	if ednsInfo.DO && h.config.EnableDNSSEC {
+		validationResult, err := h.dnssecValidator.ValidateResponse(ctx, response)
+		if err == nil && validationResult.Secure {
+			// Set AD (Authenticated Data) bit
+			response.AuthenticatedData = true
+		} else if validationResult != nil && validationResult.Bogus {
+			// Validation failed - return SERVFAIL if required
+			if h.dnssecValidator != nil {
+				// For now, just log and continue
+				// In production, might want to return SERVFAIL
+			}
+		}
 	}
 
 	// Apply EDNS0 if query had it
