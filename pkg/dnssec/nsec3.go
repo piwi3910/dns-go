@@ -251,13 +251,6 @@ func base32Encode(data []byte) string {
 	return strings.ToUpper(encoder.EncodeToString(data))
 }
 
-// base32Decode decodes base32hex without padding.
-func base32Decode(encoded string) ([]byte, error) {
-	encoder := base32.HexEncoding.WithPadding(base32.NoPadding)
-
-	return encoder.DecodeString(strings.ToUpper(encoded))
-}
-
 // extractHashFromNSEC3Owner extracts the hash portion from an NSEC3 owner name
 // NSEC3 owner format: <hash>.<zone>.
 func extractHashFromNSEC3Owner(owner string) string {
