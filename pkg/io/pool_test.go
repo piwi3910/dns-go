@@ -6,19 +6,19 @@ import (
 	"github.com/miekg/dns"
 )
 
-// BenchmarkBufferPool tests zero-allocation buffer pool operations
+// BenchmarkBufferPool tests zero-allocation buffer pool operations.
 func BenchmarkBufferPoolGet(b *testing.B) {
 	pool := NewBufferPool(DefaultBufferSize)
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		buf := pool.Get()
 		pool.Put(buf)
 	}
 }
 
-// BenchmarkBufferPoolGetPut tests complete get/put cycle
+// BenchmarkBufferPoolGetPut tests complete get/put cycle.
 func BenchmarkBufferPoolGetPut(b *testing.B) {
 	pool := NewBufferPool(DefaultBufferSize)
 	b.ReportAllocs()
@@ -34,19 +34,19 @@ func BenchmarkBufferPoolGetPut(b *testing.B) {
 	})
 }
 
-// BenchmarkMessagePool tests zero-allocation message pool operations
+// BenchmarkMessagePool tests zero-allocation message pool operations.
 func BenchmarkMessagePoolGet(b *testing.B) {
 	pool := NewMessagePool()
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		msg := pool.Get()
 		pool.Put(msg)
 	}
 }
 
-// BenchmarkMessagePoolGetPut tests complete get/put cycle
+// BenchmarkMessagePoolGetPut tests complete get/put cycle.
 func BenchmarkMessagePoolGetPut(b *testing.B) {
 	pool := NewMessagePool()
 	b.ReportAllocs()
@@ -62,8 +62,9 @@ func BenchmarkMessagePoolGetPut(b *testing.B) {
 	})
 }
 
-// TestBufferPoolReuse verifies buffers are actually reused
+// TestBufferPoolReuse verifies buffers are actually reused.
 func TestBufferPoolReuse(t *testing.T) {
+	t.Parallel()
 	pool := NewBufferPool(DefaultBufferSize)
 
 	buf1 := pool.Get()
@@ -78,8 +79,9 @@ func TestBufferPoolReuse(t *testing.T) {
 	}
 }
 
-// TestMessagePoolReuse verifies messages are actually reused
+// TestMessagePoolReuse verifies messages are actually reused.
 func TestMessagePoolReuse(t *testing.T) {
+	t.Parallel()
 	pool := NewMessagePool()
 
 	msg1 := pool.Get()
@@ -94,8 +96,9 @@ func TestMessagePoolReuse(t *testing.T) {
 	}
 }
 
-// TestMessagePoolReset verifies messages are properly reset
+// TestMessagePoolReset verifies messages are properly reset.
 func TestMessagePoolReset(t *testing.T) {
+	t.Parallel()
 	pool := NewMessagePool()
 
 	msg := pool.Get()

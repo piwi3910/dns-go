@@ -9,7 +9,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Zone represents an authoritative DNS zone
+// Zone represents an authoritative DNS zone.
 type Zone struct {
 	// Origin is the zone's origin (e.g., "example.com.")
 	Origin string
@@ -37,14 +37,14 @@ type Zone struct {
 	UpdateACL []string
 }
 
-// ZoneConfig holds configuration for a zone
+// ZoneConfig holds configuration for a zone.
 type ZoneConfig struct {
 	Origin      string
 	TransferACL []string
 	UpdateACL   []string
 }
 
-// NewZone creates a new empty zone
+// NewZone creates a new empty zone.
 func NewZone(config ZoneConfig) *Zone {
 	return &Zone{
 		Origin:       dns.Fqdn(config.Origin),
@@ -56,7 +56,7 @@ func NewZone(config ZoneConfig) *Zone {
 }
 
 // AddRecord adds a resource record to the zone
-// Thread-safe with copy-on-write semantics
+// Thread-safe with copy-on-write semantics.
 func (z *Zone) AddRecord(rr dns.RR) error {
 	z.mu.Lock()
 	defer z.mu.Unlock()
@@ -91,7 +91,7 @@ func (z *Zone) AddRecord(rr dns.RR) error {
 	return nil
 }
 
-// GetRecords retrieves all records for a given owner name and type
+// GetRecords retrieves all records for a given owner name and type.
 func (z *Zone) GetRecords(owner string, rrType uint16) []dns.RR {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -105,6 +105,7 @@ func (z *Zone) GetRecords(owner string, rrType uint16) []dns.RR {
 			for i, rr := range records {
 				result[i] = dns.Copy(rr)
 			}
+
 			return result
 		}
 	}
@@ -112,7 +113,7 @@ func (z *Zone) GetRecords(owner string, rrType uint16) []dns.RR {
 	return nil
 }
 
-// GetAllRecords retrieves all records for a given owner name
+// GetAllRecords retrieves all records for a given owner name.
 func (z *Zone) GetAllRecords(owner string) []dns.RR {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -135,7 +136,7 @@ func (z *Zone) GetAllRecords(owner string) []dns.RR {
 }
 
 // GetAllRecordsOrdered returns all records in the zone in a consistent order
-// Used for zone transfers (AXFR)
+// Used for zone transfers (AXFR).
 func (z *Zone) GetAllRecordsOrdered() []dns.RR {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -167,7 +168,7 @@ func (z *Zone) GetAllRecordsOrdered() []dns.RR {
 	return result
 }
 
-// IncrementSerial increments the zone's serial number
+// IncrementSerial increments the zone's serial number.
 func (z *Zone) IncrementSerial() uint32 {
 	z.mu.Lock()
 	defer z.mu.Unlock()
@@ -181,15 +182,16 @@ func (z *Zone) IncrementSerial() uint32 {
 	}
 
 	z.LastModified = time.Now()
+
 	return newSerial
 }
 
-// GetSerial returns the current zone serial number
+// GetSerial returns the current zone serial number.
 func (z *Zone) GetSerial() uint32 {
 	return z.Serial.Load()
 }
 
-// IsTransferAllowed checks if a client is allowed to perform zone transfers
+// IsTransferAllowed checks if a client is allowed to perform zone transfers.
 func (z *Zone) IsTransferAllowed(clientIP string) bool {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -209,7 +211,7 @@ func (z *Zone) IsTransferAllowed(clientIP string) bool {
 	return false
 }
 
-// RecordCount returns the total number of resource records in the zone
+// RecordCount returns the total number of resource records in the zone.
 func (z *Zone) RecordCount() int {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -220,10 +222,11 @@ func (z *Zone) RecordCount() int {
 			count += len(records)
 		}
 	}
+
 	return count
 }
 
-// Clear removes all records from the zone
+// Clear removes all records from the zone.
 func (z *Zone) Clear() {
 	z.mu.Lock()
 	defer z.mu.Unlock()
@@ -234,7 +237,7 @@ func (z *Zone) Clear() {
 	z.LastModified = time.Now()
 }
 
-// Clone creates a deep copy of the zone
+// Clone creates a deep copy of the zone.
 func (z *Zone) Clone() *Zone {
 	z.mu.RLock()
 	defer z.mu.RUnlock()

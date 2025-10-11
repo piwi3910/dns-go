@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// MockQueryHandler implements QueryHandler for testing
+// MockQueryHandler implements QueryHandler for testing.
 type MockQueryHandler struct {
 	mu        sync.Mutex
 	callCount int
@@ -38,6 +38,7 @@ func (m *MockQueryHandler) HandleQuery(ctx context.Context, query []byte, addr n
 func (m *MockQueryHandler) GetCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.callCount
 }
 
@@ -47,8 +48,9 @@ func (m *MockQueryHandler) SetError(err error) {
 	m.err = err
 }
 
-// TestDefaultListenerConfig tests default configuration
+// TestDefaultListenerConfig tests default configuration.
 func TestDefaultListenerConfig(t *testing.T) {
+	t.Parallel()
 	config := DefaultListenerConfig(":5353")
 
 	if config.Address != ":5353" {
@@ -74,8 +76,9 @@ func TestDefaultListenerConfig(t *testing.T) {
 	t.Logf("✓ Default listener config created: workers=%d", config.NumWorkers)
 }
 
-// TestNewUDPListener tests UDP listener creation
+// TestNewUDPListener tests UDP listener creation.
 func TestNewUDPListener(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := DefaultListenerConfig("127.0.0.1:0") // Port 0 = random free port
 
@@ -99,8 +102,9 @@ func TestNewUDPListener(t *testing.T) {
 	t.Logf("✓ UDP listener created successfully")
 }
 
-// TestNewUDPListener_NilConfig tests creation with nil config
+// TestNewUDPListener_NilConfig tests creation with nil config.
 func TestNewUDPListener_NilConfig(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 
 	listener, err := NewUDPListener(nil, handler)
@@ -119,8 +123,9 @@ func TestNewUDPListener_NilConfig(t *testing.T) {
 	t.Logf("✓ UDP listener created with default config")
 }
 
-// TestUDPListenerStartStop tests starting and stopping UDP listener
+// TestUDPListenerStartStop tests starting and stopping UDP listener.
 func TestUDPListenerStartStop(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -164,8 +169,9 @@ func TestUDPListenerStartStop(t *testing.T) {
 	t.Logf("✓ UDP listener start/stop successful")
 }
 
-// TestUDPListenerQuery tests sending queries to UDP listener
+// TestUDPListenerQuery tests sending queries to UDP listener.
 func TestUDPListenerQuery(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -225,8 +231,9 @@ func TestUDPListenerQuery(t *testing.T) {
 	t.Logf("✓ UDP query/response successful")
 }
 
-// TestUDPListenerMultipleQueries tests handling multiple concurrent queries
+// TestUDPListenerMultipleQueries tests handling multiple concurrent queries.
 func TestUDPListenerMultipleQueries(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -255,13 +262,14 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numQueries)
 
-	for i := 0; i < numQueries; i++ {
+	for i := range numQueries {
 		go func(id int) {
 			defer wg.Done()
 
 			conn, err := net.DialUDP("udp", nil, addr)
 			if err != nil {
 				t.Errorf("Failed to dial: %v", err)
+
 				return
 			}
 			defer conn.Close()
@@ -289,8 +297,9 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 	t.Logf("✓ Multiple UDP queries handled successfully")
 }
 
-// TestNewTCPListener tests TCP listener creation
+// TestNewTCPListener tests TCP listener creation.
 func TestNewTCPListener(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := DefaultListenerConfig("127.0.0.1:0")
 
@@ -310,8 +319,9 @@ func TestNewTCPListener(t *testing.T) {
 	t.Logf("✓ TCP listener created successfully")
 }
 
-// TestNewTCPListener_NilConfig tests creation with nil config
+// TestNewTCPListener_NilConfig tests creation with nil config.
 func TestNewTCPListener_NilConfig(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 
 	listener, err := NewTCPListener(nil, handler)
@@ -326,8 +336,9 @@ func TestNewTCPListener_NilConfig(t *testing.T) {
 	t.Logf("✓ TCP listener created with default config")
 }
 
-// TestTCPListenerStartStop tests starting and stopping TCP listener
+// TestTCPListenerStartStop tests starting and stopping TCP listener.
 func TestTCPListenerStartStop(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -366,8 +377,9 @@ func TestTCPListenerStartStop(t *testing.T) {
 	t.Logf("✓ TCP listener start/stop successful")
 }
 
-// TestTCPListenerQuery tests sending queries to TCP listener
+// TestTCPListenerQuery tests sending queries to TCP listener.
 func TestTCPListenerQuery(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -438,8 +450,9 @@ func TestTCPListenerQuery(t *testing.T) {
 	t.Logf("✓ TCP query/response successful")
 }
 
-// TestTCPListenerPersistentConnection tests multiple queries on same connection
+// TestTCPListenerPersistentConnection tests multiple queries on same connection.
 func TestTCPListenerPersistentConnection(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -472,7 +485,7 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 
 	// Send multiple queries on same connection
 	numQueries := 3
-	for i := 0; i < numQueries; i++ {
+	for i := range numQueries {
 		query := []byte("query")
 		queryLen := len(query)
 		message := make([]byte, 2+queryLen)
@@ -510,8 +523,9 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 	t.Logf("✓ TCP persistent connection handled %d queries", numQueries)
 }
 
-// TestTCPListenerMaxConnections tests connection limit enforcement
+// TestTCPListenerMaxConnections tests connection limit enforcement.
 func TestTCPListenerMaxConnections(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -540,7 +554,7 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 
 	// Create connections up to the limit
 	var conns []net.Conn
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to dial connection %d: %v", i, err)
@@ -564,8 +578,9 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	t.Logf("✓ TCP connection limit enforced")
 }
 
-// TestTCPListenerInvalidMessage tests handling of invalid messages
+// TestTCPListenerInvalidMessage tests handling of invalid messages.
 func TestTCPListenerInvalidMessage(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 	config := &ListenerConfig{
 		Address:         "127.0.0.1:0",
@@ -615,8 +630,9 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	t.Logf("✓ TCP invalid message handled")
 }
 
-// TestListenerAddr tests Addr() methods
+// TestListenerAddr tests Addr() methods.
 func TestListenerAddr(t *testing.T) {
+	t.Parallel()
 	handler := NewMockQueryHandler()
 
 	// Test UDP listener Addr before start

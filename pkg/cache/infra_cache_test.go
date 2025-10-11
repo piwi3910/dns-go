@@ -5,8 +5,9 @@ import (
 	"time"
 )
 
-// TestInfraCacheGetOrCreate tests getting or creating upstream stats
+// TestInfraCacheGetOrCreate tests getting or creating upstream stats.
 func TestInfraCacheGetOrCreate(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	stats1 := ic.GetOrCreate("8.8.8.8:53")
@@ -25,8 +26,9 @@ func TestInfraCacheGetOrCreate(t *testing.T) {
 	}
 }
 
-// TestUpstreamStatsRecordSuccess tests recording successful queries
+// TestUpstreamStatsRecordSuccess tests recording successful queries.
 func TestUpstreamStatsRecordSuccess(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -52,8 +54,9 @@ func TestUpstreamStatsRecordSuccess(t *testing.T) {
 	}
 }
 
-// TestUpstreamStatsRecordFailure tests recording failed queries
+// TestUpstreamStatsRecordFailure tests recording failed queries.
 func TestUpstreamStatsRecordFailure(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -80,8 +83,9 @@ func TestUpstreamStatsRecordFailure(t *testing.T) {
 	}
 }
 
-// TestUpstreamStatsInFlight tests in-flight query tracking
+// TestUpstreamStatsInFlight tests in-flight query tracking.
 func TestUpstreamStatsInFlight(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -103,8 +107,9 @@ func TestUpstreamStatsInFlight(t *testing.T) {
 	}
 }
 
-// TestUpstreamStatsIsHealthy tests health check
+// TestUpstreamStatsIsHealthy tests health check.
 func TestUpstreamStatsIsHealthy(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -137,8 +142,9 @@ func TestUpstreamStatsIsHealthy(t *testing.T) {
 	}
 }
 
-// TestUpstreamStatsGetScore tests score calculation
+// TestUpstreamStatsGetScore tests score calculation.
 func TestUpstreamStatsGetScore(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -160,8 +166,9 @@ func TestUpstreamStatsGetScore(t *testing.T) {
 	}
 }
 
-// TestInfraCacheSelectBest tests best server selection
+// TestInfraCacheSelectBest tests best server selection.
 func TestInfraCacheSelectBest(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	servers := []string{
@@ -190,8 +197,9 @@ func TestInfraCacheSelectBest(t *testing.T) {
 	}
 }
 
-// TestInfraCacheSelectBest_SingleServer tests selection with one server
+// TestInfraCacheSelectBest_SingleServer tests selection with one server.
 func TestInfraCacheSelectBest_SingleServer(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	servers := []string{"8.8.8.8:53"}
@@ -202,8 +210,9 @@ func TestInfraCacheSelectBest_SingleServer(t *testing.T) {
 	}
 }
 
-// TestInfraCacheSelectBest_AllUnhealthy tests selection when all servers unhealthy
+// TestInfraCacheSelectBest_AllUnhealthy tests selection when all servers unhealthy.
 func TestInfraCacheSelectBest_AllUnhealthy(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	servers := []string{
@@ -226,8 +235,9 @@ func TestInfraCacheSelectBest_AllUnhealthy(t *testing.T) {
 	}
 }
 
-// TestUpstreamSnapshot tests snapshot creation
+// TestUpstreamSnapshot tests snapshot creation.
 func TestUpstreamSnapshot(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 	stats := ic.GetOrCreate("8.8.8.8:53")
 
@@ -259,8 +269,9 @@ func TestUpstreamSnapshot(t *testing.T) {
 	}
 }
 
-// TestInfraCacheGetAllStats tests retrieving all stats
+// TestInfraCacheGetAllStats tests retrieving all stats.
 func TestInfraCacheGetAllStats(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	// Create several server stats
@@ -275,8 +286,9 @@ func TestInfraCacheGetAllStats(t *testing.T) {
 	}
 }
 
-// TestInfraCacheClear tests clearing the cache
+// TestInfraCacheClear tests clearing the cache.
 func TestInfraCacheClear(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	ic.GetOrCreate("8.8.8.8:53")
@@ -290,8 +302,9 @@ func TestInfraCacheClear(t *testing.T) {
 	}
 }
 
-// TestInfraCachePrune tests pruning old entries
+// TestInfraCachePrune tests pruning old entries.
 func TestInfraCachePrune(t *testing.T) {
+	t.Parallel()
 	ic := NewInfraCache()
 
 	// Create stats and mark as old
@@ -320,7 +333,7 @@ func TestInfraCachePrune(t *testing.T) {
 	}
 }
 
-// BenchmarkInfraCacheSelectBest benchmarks upstream selection
+// BenchmarkInfraCacheSelectBest benchmarks upstream selection.
 func BenchmarkInfraCacheSelectBest(b *testing.B) {
 	ic := NewInfraCache()
 
@@ -340,7 +353,7 @@ func BenchmarkInfraCacheSelectBest(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = ic.SelectBest(servers)
 	}
 }

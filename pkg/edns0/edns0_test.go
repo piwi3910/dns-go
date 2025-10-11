@@ -1,12 +1,14 @@
 package edns0
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/miekg/dns"
 )
 
 func TestValidateEDNS0_NoOPT(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -17,6 +19,7 @@ func TestValidateEDNS0_NoOPT(t *testing.T) {
 }
 
 func TestValidateEDNS0_SingleOPT(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -37,6 +40,7 @@ func TestValidateEDNS0_SingleOPT(t *testing.T) {
 }
 
 func TestValidateEDNS0_MultipleOPT(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -62,7 +66,8 @@ func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with multiple OPT records")
 	}
 
-	valErr, ok := err.(*ValidationError)
+	valErr := &ValidationError{}
+	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
 	}
@@ -72,6 +77,7 @@ func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 }
 
 func TestValidateEDNS0_BadVersion(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -90,7 +96,8 @@ func TestValidateEDNS0_BadVersion(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with unsupported version")
 	}
 
-	valErr, ok := err.(*ValidationError)
+	valErr := &ValidationError{}
+	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
 	}
@@ -100,6 +107,7 @@ func TestValidateEDNS0_BadVersion(t *testing.T) {
 }
 
 func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -117,7 +125,8 @@ func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with non-root OPT name")
 	}
 
-	valErr, ok := err.(*ValidationError)
+	valErr := &ValidationError{}
+	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
 	}
@@ -127,6 +136,7 @@ func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 }
 
 func TestSetExtendedRcode(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -156,6 +166,7 @@ func TestSetExtendedRcode(t *testing.T) {
 }
 
 func TestGetExtendedRcode_NoEDNS(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 	msg.Rcode = dns.RcodeServerFailure
@@ -167,6 +178,7 @@ func TestGetExtendedRcode_NoEDNS(t *testing.T) {
 }
 
 func TestGetExtendedRcode_WithEDNS(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -190,6 +202,7 @@ func TestGetExtendedRcode_WithEDNS(t *testing.T) {
 }
 
 func TestCreateErrorResponse_BADVERS(t *testing.T) {
+	t.Parallel()
 	query := &dns.Msg{}
 	query.SetQuestion("example.com.", dns.TypeA)
 
@@ -225,6 +238,7 @@ func TestCreateErrorResponse_BADVERS(t *testing.T) {
 }
 
 func TestHandleUnknownOptions(t *testing.T) {
+	t.Parallel()
 	opt := &dns.OPT{
 		Hdr: dns.RR_Header{
 			Name:   ".",
@@ -254,6 +268,7 @@ func TestHandleUnknownOptions(t *testing.T) {
 }
 
 func TestNegotiateBufferSize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		clientSize   uint16
 		serverSize   uint16
@@ -275,15 +290,16 @@ func TestNegotiateBufferSize(t *testing.T) {
 }
 
 func TestShouldTruncate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		responseSize int
 		ednsInfo     *EDNS0Info
 		shouldTrunc  bool
 	}{
-		{400, &EDNS0Info{Present: false}, false}, // < 512, no EDNS
-		{600, &EDNS0Info{Present: false}, true},  // > 512, no EDNS
-		{600, &EDNS0Info{Present: true, UDPSize: 1024}, false}, // < EDNS limit
-		{1100, &EDNS0Info{Present: true, UDPSize: 1024}, true}, // > EDNS limit
+		{400, &EDNS0Info{Present: false}, false},                // < 512, no EDNS
+		{600, &EDNS0Info{Present: false}, true},                 // > 512, no EDNS
+		{600, &EDNS0Info{Present: true, UDPSize: 1024}, false},  // < EDNS limit
+		{1100, &EDNS0Info{Present: true, UDPSize: 1024}, true},  // > EDNS limit
 		{4000, &EDNS0Info{Present: true, UDPSize: 4096}, false}, // < large EDNS
 	}
 
@@ -297,6 +313,7 @@ func TestShouldTruncate(t *testing.T) {
 }
 
 func TestParseEDNS0_ClampUDPSize(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -317,6 +334,7 @@ func TestParseEDNS0_ClampUDPSize(t *testing.T) {
 }
 
 func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -337,6 +355,7 @@ func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
 }
 
 func TestParseEDNS0_DOBit(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -357,6 +376,7 @@ func TestParseEDNS0_DOBit(t *testing.T) {
 }
 
 func TestAddOPTRecord(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -381,6 +401,7 @@ func TestAddOPTRecord(t *testing.T) {
 }
 
 func TestAddOPTRecord_RemovesExisting(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -409,6 +430,7 @@ func TestAddOPTRecord_RemovesExisting(t *testing.T) {
 }
 
 func TestAddOPTRecord_ClampSize(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
 

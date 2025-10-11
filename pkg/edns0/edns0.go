@@ -6,7 +6,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// EDNS0Info holds EDNS0 parameters from a query
+// EDNS0Info holds EDNS0 parameters from a query.
 type EDNS0Info struct {
 	Present       bool   // Whether EDNS0 is present in the query
 	UDPSize       uint16 // Client's UDP payload size
@@ -15,21 +15,21 @@ type EDNS0Info struct {
 	Version       uint8  // EDNS version
 }
 
-// Default values per RFC 6891
+// Default values per RFC 6891.
 const (
-	DefaultUDPSize    = 1232 // RFC 6891 recommends 1232 for IPv4, 1220 for IPv6
-	MinimumUDPSize    = 512  // RFC 1035 minimum
-	MaximumUDPSize    = 4096 // Reasonable maximum for our implementation
-	EDNS0Version      = 0    // We support EDNS version 0
-	MaxSupportedEDNS  = 0    // Maximum EDNS version we support
+	DefaultUDPSize   = 1232 // RFC 6891 recommends 1232 for IPv4, 1220 for IPv6
+	MinimumUDPSize   = 512  // RFC 1035 minimum
+	MaximumUDPSize   = 4096 // Reasonable maximum for our implementation
+	EDNS0Version     = 0    // We support EDNS version 0
+	MaxSupportedEDNS = 0    // Maximum EDNS version we support
 )
 
-// EDNS0 Extended RCODEs (RFC 6891 Section 6.1.3)
+// EDNS0 Extended RCODEs (RFC 6891 Section 6.1.3).
 const (
 	RcodeBadVers = 16 // BADVERS - unsupported EDNS version
 )
 
-// ValidationError represents an EDNS0 validation error
+// ValidationError represents an EDNS0 validation error.
 type ValidationError struct {
 	Message      string
 	ExtendedCode int // Extended RCODE to return
@@ -39,7 +39,7 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-// ParseEDNS0 extracts EDNS0 information from a DNS query
+// ParseEDNS0 extracts EDNS0 information from a DNS query.
 func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
 	info := &EDNS0Info{
 		Present: false,
@@ -74,7 +74,7 @@ func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
 
 // AddOPTRecord adds an EDNS0 OPT record to a response message
 // bufferSize: the UDP payload size to advertise
-// dnssecOK: whether to set the DO (DNSSEC OK) bit
+// dnssecOK: whether to set the DO (DNSSEC OK) bit.
 func AddOPTRecord(msg *dns.Msg, bufferSize uint16, dnssecOK bool) {
 	// Remove any existing OPT records (there should only be one)
 	msg.Extra = removeOPTRecords(msg.Extra)
@@ -110,7 +110,7 @@ func AddOPTRecord(msg *dns.Msg, bufferSize uint16, dnssecOK bool) {
 }
 
 // removeOPTRecords removes all OPT records from a slice of RRs
-// There should only be one OPT record per message per RFC 6891
+// There should only be one OPT record per message per RFC 6891.
 func removeOPTRecords(rrs []dns.RR) []dns.RR {
 	result := make([]dns.RR, 0, len(rrs))
 	for _, rr := range rrs {
@@ -118,25 +118,27 @@ func removeOPTRecords(rrs []dns.RR) []dns.RR {
 			result = append(result, rr)
 		}
 	}
+
 	return result
 }
 
 // NegotiateBufferSize determines the appropriate buffer size for a response
 // clientSize: the UDP payload size from the client's OPT record
 // serverSize: the server's maximum UDP payload size
-// Returns the smaller of the two (negotiated size)
+// Returns the smaller of the two (negotiated size).
 func NegotiateBufferSize(clientSize, serverSize uint16) uint16 {
 	// Use the minimum of client and server sizes
 	if clientSize < serverSize {
 		return clientSize
 	}
+
 	return serverSize
 }
 
 // ShouldTruncate checks if a response should be truncated based on EDNS0 buffer size
 // responseSize: the size of the packed response in bytes
 // ednsInfo: EDNS0 info from the query
-// Returns true if the response should be truncated
+// Returns true if the response should be truncated.
 func ShouldTruncate(responseSize int, ednsInfo *EDNS0Info) bool {
 	maxSize := int(MinimumUDPSize)
 
@@ -148,7 +150,7 @@ func ShouldTruncate(responseSize int, ednsInfo *EDNS0Info) bool {
 }
 
 // ValidateEDNS0 performs comprehensive EDNS0 validation per RFC 6891
-// Returns ValidationError if the query has invalid EDNS0
+// Returns ValidationError if the query has invalid EDNS0.
 func ValidateEDNS0(msg *dns.Msg) error {
 	// Count OPT records - RFC 6891 Section 6.1.1: exactly zero or one
 	optCount := 0
@@ -217,7 +219,7 @@ func ValidateEDNS0(msg *dns.Msg) error {
 }
 
 // CreateErrorResponse creates an EDNS0 error response
-// Used when EDNS0 validation fails (e.g., BADVERS)
+// Used when EDNS0 validation fails (e.g., BADVERS).
 func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg {
 	response := &dns.Msg{}
 	response.SetReply(query)
@@ -256,7 +258,7 @@ func SetExtendedRcode(msg *dns.Msg, rcode int) {
 }
 
 // GetExtendedRcode extracts the full extended RCODE from a message
-// Combines msg.Rcode (lower 4 bits) with OPT TTL (upper 8 bits)
+// Combines msg.Rcode (lower 4 bits) with OPT TTL (upper 8 bits).
 func GetExtendedRcode(msg *dns.Msg) int {
 	rcode := msg.Rcode
 
@@ -271,7 +273,7 @@ func GetExtendedRcode(msg *dns.Msg) int {
 }
 
 // HandleUnknownOptions processes unknown EDNS0 options per RFC 6891
-// Unknown options must be ignored, but we log them for debugging
+// Unknown options must be ignored, but we log them for debugging.
 func HandleUnknownOptions(opt *dns.OPT) []string {
 	unknownOptions := []string{}
 

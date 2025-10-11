@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,18 +12,18 @@ import (
 	"github.com/piwi3910/dns-go/pkg/dnssec"
 )
 
-// RecursionMode defines how the resolver operates
+// RecursionMode defines how the resolver operates.
 type RecursionMode int
 
 const (
 	// ForwardingMode forwards queries to upstream resolvers (Google DNS, Cloudflare, etc.)
 	ForwardingMode RecursionMode = iota
-	// RecursiveMode performs true recursive resolution starting from root servers
+	// RecursiveMode performs true recursive resolution starting from root servers.
 	RecursiveMode
 )
 
 // Resolver handles DNS query resolution
-// Uses a worker pool to handle concurrent queries efficiently
+// Uses a worker pool to handle concurrent queries efficiently.
 type Resolver struct {
 	upstream  *UpstreamPool
 	iterative *IterativeResolver
@@ -37,7 +38,7 @@ type Resolver struct {
 	mu       sync.Mutex
 }
 
-// ResolverConfig holds configuration for the resolver
+// ResolverConfig holds configuration for the resolver.
 type ResolverConfig struct {
 	// Mode determines resolution strategy (Forwarding or Recursive)
 	Mode RecursionMode
@@ -62,7 +63,7 @@ type ResolverConfig struct {
 }
 
 // DefaultResolverConfig returns configuration with sensible defaults
-// Uses RecursiveMode for true local recursion from root servers
+// Uses RecursiveMode for true local recursion from root servers.
 func DefaultResolverConfig() ResolverConfig {
 	return ResolverConfig{
 		Mode:             RecursiveMode, // True recursive resolution
@@ -76,15 +77,16 @@ func DefaultResolverConfig() ResolverConfig {
 }
 
 // DefaultForwardingConfig returns configuration for forwarding mode
-// Useful for testing or when you want to use upstream resolvers
+// Useful for testing or when you want to use upstream resolvers.
 func DefaultForwardingConfig() ResolverConfig {
 	config := DefaultResolverConfig()
 	config.Mode = ForwardingMode
+
 	return config
 }
 
 // inflightRequest represents a query currently being resolved
-// Used for request coalescing to avoid duplicate upstream queries
+// Used for request coalescing to avoid duplicate upstream queries.
 type inflightRequest struct {
 	mu       sync.Mutex
 	response *dns.Msg
@@ -93,7 +95,7 @@ type inflightRequest struct {
 	waiters  int
 }
 
-// NewResolver creates a new DNS resolver
+// NewResolver creates a new DNS resolver.
 func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
 	r := &Resolver{
 		upstream:      upstream,
@@ -116,10 +118,10 @@ func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
 }
 
 // Resolve resolves a DNS query
-// If coalescing is enabled, duplicate queries will wait for the first one
+// If coalescing is enabled, duplicate queries will wait for the first one.
 func (r *Resolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	if len(query.Question) == 0 {
-		return nil, fmt.Errorf("query has no questions")
+		return nil, errors.New("query has no questions")
 	}
 
 	q := query.Question[0]
@@ -135,7 +137,7 @@ func (r *Resolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error
 }
 
 // resolveWithCoalescing resolves a query with request coalescing
-// If an identical query is in-flight, wait for its result instead of querying again
+// If an identical query is in-flight, wait for its result instead of querying again.
 func (r *Resolver) resolveWithCoalescing(ctx context.Context, query *dns.Msg, queryKey string) (*dns.Msg, error) {
 	r.mu.Lock()
 
@@ -181,7 +183,7 @@ func (r *Resolver) resolveWithCoalescing(ctx context.Context, query *dns.Msg, qu
 	return response, err
 }
 
-// doResolve performs the actual DNS resolution
+// doResolve performs the actual DNS resolution.
 func (r *Resolver) doResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	// Create query context with timeout
 	queryCtx, cancel := context.WithTimeout(ctx, r.config.QueryTimeout)
@@ -202,14 +204,14 @@ func (r *Resolver) doResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, err
 	}
 }
 
-// doRecursiveResolve performs true recursive resolution from root servers
+// doRecursiveResolve performs true recursive resolution from root servers.
 func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	if r.iterative == nil {
-		return nil, fmt.Errorf("iterative resolver not initialized")
+		return nil, errors.New("iterative resolver not initialized")
 	}
 
 	if len(query.Question) == 0 {
-		return nil, fmt.Errorf("query has no questions")
+		return nil, errors.New("query has no questions")
 	}
 
 	q := query.Question[0]
@@ -248,7 +250,7 @@ func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns
 	return response, nil
 }
 
-// doForwardingResolve forwards queries to upstream resolvers
+// doForwardingResolve forwards queries to upstream resolvers.
 func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	// Query upstream with fallback
 	response, err := r.upstream.QueryWithFallback(ctx, query, r.config.MaxRetries)
@@ -258,7 +260,7 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 
 	// Validate response
 	if response == nil {
-		return nil, fmt.Errorf("nil response from upstream")
+		return nil, errors.New("nil response from upstream")
 	}
 
 	// DNSSEC validation if enabled
@@ -291,18 +293,18 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 }
 
 // makeQueryKey creates a unique key for a query
-// Used for request coalescing
+// Used for request coalescing.
 func makeQueryKey(name string, qtype uint16, qclass uint16) string {
 	return cache.MakeKey(name, qtype, qclass)
 }
 
-// GetStats returns resolver statistics
+// GetStats returns resolver statistics.
 type ResolverStats struct {
 	InFlightQueries int
 	Upstreams       []cache.UpstreamSnapshot
 }
 
-// GetStats returns current resolver statistics
+// GetStats returns current resolver statistics.
 func (r *Resolver) GetStats() ResolverStats {
 	r.mu.Lock()
 	inFlight := len(r.inFlight)

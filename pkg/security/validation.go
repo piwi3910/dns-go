@@ -2,18 +2,19 @@ package security
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
 )
 
-// QueryValidator validates DNS queries for security issues
+// QueryValidator validates DNS queries for security issues.
 type QueryValidator struct {
 	config ValidationConfig
 }
 
-// ValidationConfig holds validation configuration
+// ValidationConfig holds validation configuration.
 type ValidationConfig struct {
 	// MaxQuestionCount limits number of questions per query
 	MaxQuestionCount int
@@ -37,7 +38,7 @@ type ValidationConfig struct {
 	ValidateQNAME bool
 }
 
-// DefaultValidationConfig returns sensible defaults
+// DefaultValidationConfig returns sensible defaults.
 func DefaultValidationConfig() ValidationConfig {
 	return ValidationConfig{
 		MaxQuestionCount:       1,     // RFC 1035: typically 1 question
@@ -50,17 +51,17 @@ func DefaultValidationConfig() ValidationConfig {
 	}
 }
 
-// NewQueryValidator creates a new query validator
+// NewQueryValidator creates a new query validator.
 func NewQueryValidator(config ValidationConfig) *QueryValidator {
 	return &QueryValidator{
 		config: config,
 	}
 }
 
-// ValidateQuery validates a DNS query for security issues
+// ValidateQuery validates a DNS query for security issues.
 func (qv *QueryValidator) ValidateQuery(msg *dns.Msg) error {
 	if msg == nil {
-		return fmt.Errorf("nil message")
+		return errors.New("nil message")
 	}
 
 	// Validate question count
@@ -70,7 +71,7 @@ func (qv *QueryValidator) ValidateQuery(msg *dns.Msg) error {
 	}
 
 	if len(msg.Question) == 0 {
-		return fmt.Errorf("no questions in query")
+		return errors.New("no questions in query")
 	}
 
 	// Validate each question
@@ -83,7 +84,7 @@ func (qv *QueryValidator) ValidateQuery(msg *dns.Msg) error {
 	return nil
 }
 
-// validateQuestion validates a single question
+// validateQuestion validates a single question.
 func (qv *QueryValidator) validateQuestion(q *dns.Question) error {
 	if !qv.config.ValidateQNAME {
 		return nil
@@ -119,7 +120,7 @@ func (qv *QueryValidator) validateQuestion(q *dns.Question) error {
 	return nil
 }
 
-// isValidLabel checks if a DNS label contains valid characters
+// isValidLabel checks if a DNS label contains valid characters.
 func isValidLabel(label string) bool {
 	if len(label) == 0 {
 		return true // Empty labels are OK (for root)
@@ -133,9 +134,9 @@ func isValidLabel(label string) bool {
 
 	for _, c := range label {
 		if !((c >= 'a' && c <= 'z') ||
-		     (c >= 'A' && c <= 'Z') ||
-		     (c >= '0' && c <= '9') ||
-		     c == '-' || c == '_') {
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			c == '-' || c == '_') {
 			return false
 		}
 	}
@@ -143,14 +144,14 @@ func isValidLabel(label string) bool {
 	return true
 }
 
-// isPrivateReverseQuery checks if a PTR query is for a private IP range
+// isPrivateReverseQuery checks if a PTR query is for a private IP range.
 func isPrivateReverseQuery(name string) bool {
 	// Check for common private IP reverse zones
 	privateZones := []string{
 		"10.in-addr.arpa.",
-		"168.192.in-addr.arpa.",  // 192.168.x.x
-		"16.172.in-addr.arpa.",   // 172.16.x.x - 172.31.x.x
-		"d.f.ip6.arpa.",          // IPv6 fd00::/8
+		"168.192.in-addr.arpa.", // 192.168.x.x
+		"16.172.in-addr.arpa.",  // 172.16.x.x - 172.31.x.x
+		"d.f.ip6.arpa.",         // IPv6 fd00::/8
 	}
 
 	for _, zone := range privateZones {
@@ -162,12 +163,12 @@ func isPrivateReverseQuery(name string) bool {
 	return false
 }
 
-// CachePoisoningProtector implements protections against cache poisoning
+// CachePoisoningProtector implements protections against cache poisoning.
 type CachePoisoningProtector struct {
 	config CachePoisoningConfig
 }
 
-// CachePoisoningConfig holds cache poisoning protection configuration
+// CachePoisoningConfig holds cache poisoning protection configuration.
 type CachePoisoningConfig struct {
 	// ValidateResponseIDs checks that response IDs match queries
 	ValidateResponseIDs bool
@@ -185,7 +186,7 @@ type CachePoisoningConfig struct {
 	ValidateBailiwick bool
 }
 
-// DefaultCachePoisoningConfig returns sensible defaults
+// DefaultCachePoisoningConfig returns sensible defaults.
 func DefaultCachePoisoningConfig() CachePoisoningConfig {
 	return CachePoisoningConfig{
 		ValidateResponseIDs:       true,
@@ -196,17 +197,17 @@ func DefaultCachePoisoningConfig() CachePoisoningConfig {
 	}
 }
 
-// NewCachePoisoningProtector creates a new cache poisoning protector
+// NewCachePoisoningProtector creates a new cache poisoning protector.
 func NewCachePoisoningProtector(config CachePoisoningConfig) *CachePoisoningProtector {
 	return &CachePoisoningProtector{
 		config: config,
 	}
 }
 
-// ValidateResponse validates a DNS response against the original query
+// ValidateResponse validates a DNS response against the original query.
 func (cpp *CachePoisoningProtector) ValidateResponse(query, response *dns.Msg) error {
 	if query == nil || response == nil {
-		return fmt.Errorf("nil query or response")
+		return errors.New("nil query or response")
 	}
 
 	// Validate response ID matches query ID
@@ -253,7 +254,7 @@ func (cpp *CachePoisoningProtector) ValidateResponse(query, response *dns.Msg) e
 	return nil
 }
 
-// validateBailiwick checks that response records are within the queried domain's authority
+// validateBailiwick checks that response records are within the queried domain's authority.
 func (cpp *CachePoisoningProtector) validateBailiwick(question *dns.Question, response *dns.Msg) error {
 	qname := strings.ToLower(question.Name)
 
@@ -268,23 +269,25 @@ func (cpp *CachePoisoningProtector) validateBailiwick(question *dns.Question, re
 	return nil
 }
 
-// isSubdomainOf checks if name is a subdomain of (or equal to) parent
+// isSubdomainOf checks if name is a subdomain of (or equal to) parent.
 func isSubdomainOf(name, parent string) bool {
 	if name == parent {
 		return true
 	}
+
 	return strings.HasSuffix(name, "."+parent)
 }
 
-// RandomizeQueryID generates a random query ID for DNS messages
+// RandomizeQueryID generates a random query ID for DNS messages.
 func RandomizeQueryID() uint16 {
 	var id [2]byte
 	rand.Read(id[:])
+
 	return uint16(id[0])<<8 | uint16(id[1])
 }
 
 // RandomizeSourcePort generates a random source port (RFC 5452)
-// Returns a port in the range 1024-65535
+// Returns a port in the range 1024-65535.
 func RandomizeSourcePort() int {
 	var port [2]byte
 	rand.Read(port[:])
@@ -298,7 +301,7 @@ func RandomizeSourcePort() int {
 	return p
 }
 
-// ValidateResponseSize checks if a response size is reasonable
+// ValidateResponseSize checks if a response size is reasonable.
 func ValidateResponseSize(size int, maxSize int) error {
 	if size > maxSize {
 		return fmt.Errorf("response too large: %d bytes (max: %d)", size, maxSize)
@@ -306,5 +309,6 @@ func ValidateResponseSize(size int, maxSize int) error {
 	if size < 12 {
 		return fmt.Errorf("response too small: %d bytes (min: 12)", size)
 	}
+
 	return nil
 }

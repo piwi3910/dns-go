@@ -8,25 +8,26 @@ import (
 
 const (
 	// DefaultBufferSize is the default size for DNS message buffers
-	// 4096 bytes is sufficient for most DNS messages (max UDP is 512-4096 with EDNS0)
+	// 4096 bytes is sufficient for most DNS messages (max UDP is 512-4096 with EDNS0).
 	DefaultBufferSize = 4096
 
-	// MaxUDPSize is the maximum UDP message size with EDNS0
+	// MaxUDPSize is the maximum UDP message size with EDNS0.
 	MaxUDPSize = 4096
 )
 
-// BufferPool manages reusable byte buffers to eliminate allocations in hot path
+// BufferPool manages reusable byte buffers to eliminate allocations in hot path.
 type BufferPool struct {
 	pool sync.Pool
 	size int
 }
 
-// NewBufferPool creates a new buffer pool with the specified buffer size
+// NewBufferPool creates a new buffer pool with the specified buffer size.
 func NewBufferPool(size int) *BufferPool {
 	return &BufferPool{
 		pool: sync.Pool{
 			New: func() interface{} {
 				buf := make([]byte, size)
+
 				return &buf
 			},
 		},
@@ -35,23 +36,24 @@ func NewBufferPool(size int) *BufferPool {
 }
 
 // Get retrieves a buffer from the pool
-// CRITICAL: Caller MUST call Put() to return buffer to pool
+// CRITICAL: Caller MUST call Put() to return buffer to pool.
 func (bp *BufferPool) Get() []byte {
 	bufPtr := bp.pool.Get().(*[]byte)
+
 	return (*bufPtr)[:bp.size]
 }
 
-// Put returns a buffer to the pool for reuse
+// Put returns a buffer to the pool for reuse.
 func (bp *BufferPool) Put(buf []byte) {
 	bp.pool.Put(&buf)
 }
 
-// MessagePool manages reusable DNS message objects
+// MessagePool manages reusable DNS message objects.
 type MessagePool struct {
 	pool sync.Pool
 }
 
-// NewMessagePool creates a new DNS message pool
+// NewMessagePool creates a new DNS message pool.
 func NewMessagePool() *MessagePool {
 	return &MessagePool{
 		pool: sync.Pool{
@@ -63,7 +65,7 @@ func NewMessagePool() *MessagePool {
 }
 
 // Get retrieves a DNS message from the pool
-// CRITICAL: Caller MUST call Put() to return message to pool
+// CRITICAL: Caller MUST call Put() to return message to pool.
 func (mp *MessagePool) Get() *dns.Msg {
 	msg := mp.pool.Get().(*dns.Msg)
 	// Reset message to clean state
@@ -82,10 +84,11 @@ func (mp *MessagePool) Get() *dns.Msg {
 	msg.Answer = msg.Answer[:0]
 	msg.Ns = msg.Ns[:0]
 	msg.Extra = msg.Extra[:0]
+
 	return msg
 }
 
-// Put returns a DNS message to the pool for reuse
+// Put returns a DNS message to the pool for reuse.
 func (mp *MessagePool) Put(msg *dns.Msg) {
 	// Clear slices but keep capacity to avoid reallocation
 	msg.Question = msg.Question[:0]
@@ -95,11 +98,11 @@ func (mp *MessagePool) Put(msg *dns.Msg) {
 	mp.pool.Put(msg)
 }
 
-// Global pools for common use
+// Global pools for common use.
 var (
-	// DefaultBufferPool is the default buffer pool for DNS messages
+	// DefaultBufferPool is the default buffer pool for DNS messages.
 	DefaultBufferPool = NewBufferPool(DefaultBufferSize)
 
-	// DefaultMessagePool is the default message pool
+	// DefaultMessagePool is the default message pool.
 	DefaultMessagePool = NewMessagePool()
 )

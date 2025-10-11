@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// RootServer represents a DNS root server with its addresses
+// RootServer represents a DNS root server with its addresses.
 type RootServer struct {
 	Name string
 	IPv4 []string
@@ -14,7 +14,7 @@ type RootServer struct {
 }
 
 // RootHints holds the 13 DNS root servers (a-m.root-servers.net)
-// These are relatively static and maintained by IANA
+// These are relatively static and maintained by IANA.
 var RootHints = []RootServer{
 	{
 		Name: "a.root-servers.net",
@@ -83,7 +83,7 @@ var RootHints = []RootServer{
 	},
 }
 
-// RootServerPool manages queries to root servers
+// RootServerPool manages queries to root servers.
 type RootServerPool struct {
 	servers []string // Flattened list of all root server IPs
 	current int      // Round-robin index
@@ -94,7 +94,7 @@ type RootServerPool struct {
 	rttMu  sync.RWMutex
 }
 
-// NewRootServerPool creates a new root server pool
+// NewRootServerPool creates a new root server pool.
 func NewRootServerPool() *RootServerPool {
 	pool := &RootServerPool{
 		servers: make([]string, 0, 26), // 13 servers * 2 (IPv4 + IPv6)
@@ -112,7 +112,7 @@ func NewRootServerPool() *RootServerPool {
 	return pool
 }
 
-// GetNext returns the next root server to query (round-robin with RTT awareness)
+// GetNext returns the next root server to query (round-robin with RTT awareness).
 func (p *RootServerPool) GetNext() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -129,7 +129,7 @@ func (p *RootServerPool) GetNext() string {
 	return server
 }
 
-// RecordRTT records the RTT for a root server
+// RecordRTT records the RTT for a root server.
 func (p *RootServerPool) RecordRTT(server string, rtt time.Duration) {
 	p.rttMu.Lock()
 	defer p.rttMu.Unlock()
@@ -142,12 +142,13 @@ func (p *RootServerPool) RecordRTT(server string, rtt time.Duration) {
 	}
 }
 
-// GetAllServers returns all root server addresses
+// GetAllServers returns all root server addresses.
 func (p *RootServerPool) GetAllServers() []string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	result := make([]string, len(p.servers))
 	copy(result, p.servers)
+
 	return result
 }

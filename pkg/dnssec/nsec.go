@@ -1,18 +1,19 @@
 package dnssec
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
 )
 
-// NSECValidator validates NSEC records for authenticated denial of existence
+// NSECValidator validates NSEC records for authenticated denial of existence.
 type NSECValidator struct {
 	validator *Validator
 }
 
-// NewNSECValidator creates a new NSEC validator
+// NewNSECValidator creates a new NSEC validator.
 func NewNSECValidator(validator *Validator) *NSECValidator {
 	return &NSECValidator{
 		validator: validator,
@@ -20,10 +21,10 @@ func NewNSECValidator(validator *Validator) *NSECValidator {
 }
 
 // ValidateNXDOMAIN validates that a name does not exist using NSEC
-// RFC 4035 §3.1.3.2: NSEC proof of NXDOMAIN
+// RFC 4035 §3.1.3.2: NSEC proof of NXDOMAIN.
 func (nv *NSECValidator) ValidateNXDOMAIN(qname string, nsecRecords []*dns.NSEC) error {
 	if len(nsecRecords) == 0 {
-		return fmt.Errorf("no NSEC records provided for NXDOMAIN proof")
+		return errors.New("no NSEC records provided for NXDOMAIN proof")
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -44,10 +45,10 @@ func (nv *NSECValidator) ValidateNXDOMAIN(qname string, nsecRecords []*dns.NSEC)
 }
 
 // ValidateNODATA validates that a name exists but has no data for the requested type
-// RFC 4035 §3.1.3.1: NSEC proof of NODATA
+// RFC 4035 §3.1.3.1: NSEC proof of NODATA.
 func (nv *NSECValidator) ValidateNODATA(qname string, qtype uint16, nsecRecords []*dns.NSEC) error {
 	if len(nsecRecords) == 0 {
-		return fmt.Errorf("no NSEC records provided for NODATA proof")
+		return errors.New("no NSEC records provided for NODATA proof")
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -71,7 +72,7 @@ func (nv *NSECValidator) ValidateNODATA(qname string, qtype uint16, nsecRecords 
 }
 
 // ValidateWildcardNonExistence validates that no closer wildcard exists
-// RFC 4035 §3.1.3.3: Wildcard No Data Responses
+// RFC 4035 §3.1.3.3: Wildcard No Data Responses.
 func (nv *NSECValidator) ValidateWildcardNonExistence(qname string, nsecRecords []*dns.NSEC) error {
 	qname = dns.Fqdn(strings.ToLower(qname))
 
@@ -91,6 +92,7 @@ func (nv *NSECValidator) ValidateWildcardNonExistence(qname string, nsecRecords 
 
 			if coversName(owner, next, wildcard) {
 				found = true
+
 				break
 			}
 		}
@@ -105,7 +107,7 @@ func (nv *NSECValidator) ValidateWildcardNonExistence(qname string, nsecRecords 
 
 // coversName checks if an NSEC record covers a name
 // An NSEC covers a name if: owner < name < next (canonical ordering)
-// Special case: if next < owner, this is the last NSEC wrapping to first
+// Special case: if next < owner, this is the last NSEC wrapping to first.
 func coversName(owner, next, name string) bool {
 	owner = dns.Fqdn(strings.ToLower(owner))
 	next = dns.Fqdn(strings.ToLower(next))
@@ -126,7 +128,7 @@ func coversName(owner, next, name string) bool {
 	}
 }
 
-// canonicalCompare performs canonical DNS name comparison (RFC 4034 §6.1)
+// canonicalCompare performs canonical DNS name comparison (RFC 4034 §6.1).
 func canonicalCompare(name1, name2 string) int {
 	// Convert to lowercase and ensure FQDN
 	name1 = dns.Fqdn(strings.ToLower(name1))
@@ -150,7 +152,7 @@ func canonicalCompare(name1, name2 string) int {
 		minLen = len(labels2)
 	}
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		cmp := strings.Compare(labels1[i], labels2[i])
 		if cmp != 0 {
 			return cmp
@@ -168,25 +170,26 @@ func canonicalCompare(name1, name2 string) int {
 	return 0
 }
 
-// reverseLabels reverses a slice of labels in place
+// reverseLabels reverses a slice of labels in place.
 func reverseLabels(labels []string) {
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
 		labels[i], labels[j] = labels[j], labels[i]
 	}
 }
 
-// hasType checks if a type bitmap includes a specific RR type
+// hasType checks if a type bitmap includes a specific RR type.
 func hasType(bitmap []uint16, rrtype uint16) bool {
 	for _, t := range bitmap {
 		if t == rrtype {
 			return true
 		}
 	}
+
 	return false
 }
 
 // getWildcardNames returns all possible wildcard names for a qname
-// For "a.b.c.example.com.", returns: ["*.b.c.example.com.", "*.c.example.com.", "*.example.com."]
+// For "a.b.c.example.com.", returns: ["*.b.c.example.com.", "*.c.example.com.", "*.example.com."].
 func getWildcardNames(qname string) []string {
 	qname = dns.Fqdn(qname)
 	labels := strings.Split(strings.TrimSuffix(qname, "."), ".")
@@ -202,7 +205,7 @@ func getWildcardNames(qname string) []string {
 	return wildcards
 }
 
-// ExtractNSECRecords extracts NSEC records from a DNS message
+// ExtractNSECRecords extracts NSEC records from a DNS message.
 func ExtractNSECRecords(msg *dns.Msg) []*dns.NSEC {
 	nsecs := make([]*dns.NSEC, 0)
 
@@ -224,7 +227,7 @@ func ExtractNSECRecords(msg *dns.Msg) []*dns.NSEC {
 }
 
 // ValidateNSECChain validates the NSEC chain consistency
-// Ensures NSEC records form a proper chain without gaps
+// Ensures NSEC records form a proper chain without gaps.
 func (nv *NSECValidator) ValidateNSECChain(nsecRecords []*dns.NSEC) error {
 	if len(nsecRecords) < 2 {
 		// Single NSEC record doesn't form a chain

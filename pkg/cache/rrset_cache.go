@@ -11,7 +11,7 @@ import (
 
 // RRsetCacheEntry represents a cached resource record set
 // Unlike MessageCache which stores complete responses, RRset cache stores
-// individual resource records that can be assembled into responses
+// individual resource records that can be assembled into responses.
 type RRsetCacheEntry struct {
 	// RRs are the resource records for this RRset
 	RRs []dns.RR
@@ -32,18 +32,18 @@ type RRsetCacheEntry struct {
 	LastHit atomic.Int64
 }
 
-// IsExpired checks if the RRset has expired
+// IsExpired checks if the RRset has expired.
 func (e *RRsetCacheEntry) IsExpired() bool {
 	return time.Now().After(e.Expiry)
 }
 
-// IncrementHitCount atomically increments the hit counter
+// IncrementHitCount atomically increments the hit counter.
 func (e *RRsetCacheEntry) IncrementHitCount() {
 	e.HitCount.Add(1)
 	e.LastHit.Store(time.Now().Unix())
 }
 
-// RRsetCacheShard is a single shard of the RRset cache
+// RRsetCacheShard is a single shard of the RRset cache.
 type RRsetCacheShard struct {
 	data sync.Map // Lock-free map for reads
 	size atomic.Int64
@@ -53,7 +53,7 @@ type RRsetCacheShard struct {
 // This provides more flexibility than MessageCache:
 // - Can answer queries with different flags from same data
 // - Can construct responses for DNSSEC vs non-DNSSEC queries
-// - Better cache utilization (same records used for multiple queries)
+// - Better cache utilization (same records used for multiple queries).
 type RRsetCache struct {
 	shards []*RRsetCacheShard
 	config RRsetCacheConfig
@@ -64,7 +64,7 @@ type RRsetCache struct {
 	evicts atomic.Int64
 }
 
-// RRsetCacheConfig holds configuration for the RRset cache
+// RRsetCacheConfig holds configuration for the RRset cache.
 type RRsetCacheConfig struct {
 	// NumShards should be power of 2, typically NumCPU * 8
 	// (more than message cache due to higher contention)
@@ -81,20 +81,20 @@ type RRsetCacheConfig struct {
 }
 
 // DefaultRRsetCacheConfig returns configuration with sensible defaults
-// Note: RRset cache is typically 2x size of message cache (Unbound recommendation)
+// Note: RRset cache is typically 2x size of message cache (Unbound recommendation).
 func DefaultRRsetCacheConfig() RRsetCacheConfig {
 	return RRsetCacheConfig{
-		NumShards:    128,                   // More shards due to higher contention
-		MaxSizeBytes: 256 * 1024 * 1024,     // 256 MB (2x message cache)
+		NumShards:    128,               // More shards due to higher contention
+		MaxSizeBytes: 256 * 1024 * 1024, // 256 MB (2x message cache)
 		MinTTL:       60 * time.Second,
 		MaxTTL:       24 * time.Hour,
 	}
 }
 
-// NewRRsetCache creates a new sharded RRset cache
+// NewRRsetCache creates a new sharded RRset cache.
 func NewRRsetCache(config RRsetCacheConfig) *RRsetCache {
 	shards := make([]*RRsetCacheShard, config.NumShards)
-	for i := 0; i < config.NumShards; i++ {
+	for i := range config.NumShards {
 		shards[i] = &RRsetCacheShard{}
 	}
 
@@ -104,22 +104,24 @@ func NewRRsetCache(config RRsetCacheConfig) *RRsetCache {
 	}
 }
 
-// hashKey generates a hash for the cache key
+// hashKey generates a hash for the cache key.
 func (rc *RRsetCache) hashKey(key string) uint64 {
 	h := fnv.New64a()
 	h.Write([]byte(key))
+
 	return h.Sum64()
 }
 
-// getShard returns the shard for a given key
+// getShard returns the shard for a given key.
 func (rc *RRsetCache) getShard(key string) *RRsetCacheShard {
 	hash := rc.hashKey(key)
 	shardIdx := hash & uint64(len(rc.shards)-1)
+
 	return rc.shards[shardIdx]
 }
 
 // Get retrieves a cached RRset
-// Returns nil if not found or expired
+// Returns nil if not found or expired.
 func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
 	key := MakeRRsetKey(name, qtype)
 	shard := rc.getShard(key)
@@ -127,6 +129,7 @@ func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
 	value, ok := shard.data.Load(key)
 	if !ok {
 		rc.misses.Add(1)
+
 		return nil
 	}
 
@@ -139,6 +142,7 @@ func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
 		shard.size.Add(-int64(estimateRRsetSize(entry.RRs)))
 		rc.evicts.Add(1)
 		rc.misses.Add(1)
+
 		return nil
 	}
 
@@ -150,7 +154,7 @@ func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
 }
 
 // GetEntryForPrefetch retrieves a cache entry for prefetch checking
-// Returns nil if not found
+// Returns nil if not found.
 func (rc *RRsetCache) GetEntryForPrefetch(key string) *RRsetCacheEntry {
 	shard := rc.getShard(key)
 
@@ -162,7 +166,7 @@ func (rc *RRsetCache) GetEntryForPrefetch(key string) *RRsetCacheEntry {
 	return value.(*RRsetCacheEntry)
 }
 
-// Set stores an RRset in the cache
+// Set stores an RRset in the cache.
 func (rc *RRsetCache) Set(name string, qtype uint16, rrs []dns.RR, ttl time.Duration) {
 	if len(rrs) == 0 {
 		return
@@ -201,7 +205,7 @@ func (rc *RRsetCache) Set(name string, qtype uint16, rrs []dns.RR, ttl time.Dura
 	}
 }
 
-// Delete removes an RRset from the cache
+// Delete removes an RRset from the cache.
 func (rc *RRsetCache) Delete(name string, qtype uint16) {
 	key := MakeRRsetKey(name, qtype)
 	shard := rc.getShard(key)
@@ -213,7 +217,7 @@ func (rc *RRsetCache) Delete(name string, qtype uint16) {
 	}
 }
 
-// RRsetCacheStats holds RRset cache statistics
+// RRsetCacheStats holds RRset cache statistics.
 type RRsetCacheStats struct {
 	Hits    int64
 	Misses  int64
@@ -222,7 +226,7 @@ type RRsetCacheStats struct {
 	Size    int64
 }
 
-// GetStats returns cache statistics
+// GetStats returns cache statistics.
 func (rc *RRsetCache) GetStats() RRsetCacheStats {
 	hits := rc.hits.Load()
 	misses := rc.misses.Load()
@@ -247,11 +251,12 @@ func (rc *RRsetCache) GetStats() RRsetCacheStats {
 	}
 }
 
-// Clear removes all entries from the cache
+// Clear removes all entries from the cache.
 func (rc *RRsetCache) Clear() {
 	for _, shard := range rc.shards {
 		shard.data.Range(func(key, value interface{}) bool {
 			shard.data.Delete(key)
+
 			return true
 		})
 		shard.size.Store(0)
@@ -263,18 +268,19 @@ func (rc *RRsetCache) Clear() {
 }
 
 // MakeRRsetKey generates a cache key for an RRset
-// Format: "name:type"
+// Format: "name:type".
 func MakeRRsetKey(name string, qtype uint16) string {
 	// Pre-allocate buffer
 	buf := make([]byte, 0, 128)
 	buf = append(buf, name...)
 	buf = append(buf, ':')
 	buf = appendUint16(buf, qtype)
+
 	return string(buf)
 }
 
 // estimateRRsetSize estimates the memory size of an RRset in bytes
-// This is approximate but good enough for cache size management
+// This is approximate but good enough for cache size management.
 func estimateRRsetSize(rrs []dns.RR) int {
 	if len(rrs) == 0 {
 		return 0
@@ -286,7 +292,7 @@ func estimateRRsetSize(rrs []dns.RR) int {
 }
 
 // BuildResponse constructs a DNS response from cached RRsets
-// This is used when we have RRset cache hits but not message cache hits
+// This is used when we have RRset cache hits but not message cache hits.
 func BuildResponse(query *dns.Msg, answers []dns.RR) *dns.Msg {
 	response := new(dns.Msg)
 	response.SetReply(query)
@@ -298,7 +304,7 @@ func BuildResponse(query *dns.Msg, answers []dns.RR) *dns.Msg {
 }
 
 // ExtractRRsets extracts RRsets from a DNS message for caching
-// Groups records by name and type
+// Groups records by name and type.
 func ExtractRRsets(msg *dns.Msg) map[string][]dns.RR {
 	rrsets := make(map[string][]dns.RR)
 
@@ -322,7 +328,7 @@ func ExtractRRsets(msg *dns.Msg) map[string][]dns.RR {
 	return rrsets
 }
 
-// GetMinTTL returns the minimum TTL from a set of resource records
+// GetMinTTL returns the minimum TTL from a set of resource records.
 func GetMinTTL(rrs []dns.RR) time.Duration {
 	if len(rrs) == 0 {
 		return 0

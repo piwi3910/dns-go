@@ -2,18 +2,19 @@ package zone
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
 	"github.com/miekg/dns"
 )
 
-// AXFRHandler handles AXFR (full zone transfer) requests per RFC 5936
+// AXFRHandler handles AXFR (full zone transfer) requests per RFC 5936.
 type AXFRHandler struct {
 	zone *Zone
 }
 
-// NewAXFRHandler creates a new AXFR handler for a zone
+// NewAXFRHandler creates a new AXFR handler for a zone.
 func NewAXFRHandler(zone *Zone) *AXFRHandler {
 	return &AXFRHandler{
 		zone: zone,
@@ -21,16 +22,16 @@ func NewAXFRHandler(zone *Zone) *AXFRHandler {
 }
 
 // HandleAXFR handles an AXFR query and returns the complete zone
-// Returns multiple DNS messages (zone transfer is multi-message)
+// Returns multiple DNS messages (zone transfer is multi-message).
 func (h *AXFRHandler) HandleAXFR(query *dns.Msg, clientIP string) ([]*dns.Msg, error) {
 	// Validate query
 	if len(query.Question) != 1 {
-		return nil, fmt.Errorf("AXFR query must have exactly one question")
+		return nil, errors.New("AXFR query must have exactly one question")
 	}
 
 	q := query.Question[0]
 	if q.Qtype != dns.TypeAXFR {
-		return nil, fmt.Errorf("not an AXFR query")
+		return nil, errors.New("not an AXFR query")
 	}
 
 	// Check ACL
@@ -42,7 +43,7 @@ func (h *AXFRHandler) HandleAXFR(query *dns.Msg, clientIP string) ([]*dns.Msg, e
 	records := h.zone.GetAllRecordsOrdered()
 
 	if len(records) == 0 {
-		return nil, fmt.Errorf("zone is empty")
+		return nil, errors.New("zone is empty")
 	}
 
 	// Split records into multiple messages
@@ -53,7 +54,7 @@ func (h *AXFRHandler) HandleAXFR(query *dns.Msg, clientIP string) ([]*dns.Msg, e
 }
 
 // splitIntoMessages splits zone records into multiple DNS messages
-// RFC 5936 Section 2.2: Split large zones across multiple messages
+// RFC 5936 Section 2.2: Split large zones across multiple messages.
 func (h *AXFRHandler) splitIntoMessages(query *dns.Msg, records []dns.RR) []*dns.Msg {
 	var messages []*dns.Msg
 
@@ -84,17 +85,18 @@ func (h *AXFRHandler) splitIntoMessages(query *dns.Msg, records []dns.RR) []*dns
 	return messages
 }
 
-// createAXFRMessage creates a base AXFR response message
+// createAXFRMessage creates a base AXFR response message.
 func (h *AXFRHandler) createAXFRMessage(query *dns.Msg) *dns.Msg {
 	msg := &dns.Msg{}
 	msg.SetReply(query)
 	msg.Authoritative = true
 	msg.Compress = true // Enable compression for efficiency
+
 	return msg
 }
 
 // ServeAXFR serves an AXFR zone transfer over TCP
-// RFC 5936 Section 2.2: AXFR must use TCP
+// RFC 5936 Section 2.2: AXFR must use TCP.
 func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Conn) error {
 	// Extract client IP
 	clientAddr := conn.RemoteAddr().String()
@@ -107,6 +109,7 @@ func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Co
 		errorMsg := &dns.Msg{}
 		errorMsg.SetReply(query)
 		errorMsg.Rcode = dns.RcodeRefused
+
 		return h.writeMessage(conn, errorMsg)
 	}
 
@@ -126,35 +129,36 @@ func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Co
 }
 
 // writeMessage writes a DNS message to a TCP connection with length prefix
-// RFC 5936 Section 2.2.1: TCP messages are prefixed with 2-byte length
+// RFC 5936 Section 2.2.1: TCP messages are prefixed with 2-byte length.
 func (h *AXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 	// Write with length prefix using dns.Conn
 	dnsConn := &dns.Conn{Conn: conn}
+
 	return dnsConn.WriteMsg(msg)
 }
 
-// ValidateAXFRQuery validates an AXFR query per RFC 5936
+// ValidateAXFRQuery validates an AXFR query per RFC 5936.
 func ValidateAXFRQuery(query *dns.Msg) error {
 	// Must be a query
 	if query.Response {
-		return fmt.Errorf("AXFR request must be a query, not a response")
+		return errors.New("AXFR request must be a query, not a response")
 	}
 
 	// Must have exactly one question
 	if len(query.Question) != 1 {
-		return fmt.Errorf("AXFR query must have exactly one question")
+		return errors.New("AXFR query must have exactly one question")
 	}
 
 	q := query.Question[0]
 
 	// Must be AXFR type
 	if q.Qtype != dns.TypeAXFR {
-		return fmt.Errorf("question type must be AXFR")
+		return errors.New("question type must be AXFR")
 	}
 
 	// Class must be IN (or ANY)
 	if q.Qclass != dns.ClassINET && q.Qclass != dns.ClassANY {
-		return fmt.Errorf("AXFR class must be IN or ANY")
+		return errors.New("AXFR class must be IN or ANY")
 	}
 
 	return nil

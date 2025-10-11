@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"hash"
 	"sync"
@@ -13,14 +14,14 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DNSKEYCache caches DNSKEY records for DNSSEC validation
+// DNSKEYCache caches DNSKEY records for DNSSEC validation.
 type DNSKEYCache struct {
 	keys   map[string]*CachedDNSKEY
 	mu     sync.RWMutex
 	config DNSKEYCacheConfig
 }
 
-// DNSKEYCacheConfig holds configuration for DNSKEY caching
+// DNSKEYCacheConfig holds configuration for DNSKEY caching.
 type DNSKEYCacheConfig struct {
 	// MaxSize is the maximum number of cached keys (default: 1000)
 	MaxSize int
@@ -35,7 +36,7 @@ type DNSKEYCacheConfig struct {
 	MaxTTL time.Duration
 }
 
-// DefaultDNSKEYCacheConfig returns default configuration
+// DefaultDNSKEYCacheConfig returns default configuration.
 func DefaultDNSKEYCacheConfig() DNSKEYCacheConfig {
 	return DNSKEYCacheConfig{
 		MaxSize:    1000,
@@ -45,14 +46,14 @@ func DefaultDNSKEYCacheConfig() DNSKEYCacheConfig {
 	}
 }
 
-// CachedDNSKEY represents a cached DNSKEY with metadata
+// CachedDNSKEY represents a cached DNSKEY with metadata.
 type CachedDNSKEY struct {
 	Key       *dns.DNSKEY
 	Expiry    time.Time
 	Validated bool // Whether this key has been validated via chain of trust
 }
 
-// NewDNSKEYCache creates a new DNSKEY cache
+// NewDNSKEYCache creates a new DNSKEY cache.
 func NewDNSKEYCache(config DNSKEYCacheConfig) *DNSKEYCache {
 	return &DNSKEYCache{
 		keys:   make(map[string]*CachedDNSKEY),
@@ -60,7 +61,7 @@ func NewDNSKEYCache(config DNSKEYCacheConfig) *DNSKEYCache {
 	}
 }
 
-// Add adds a DNSKEY to the cache
+// Add adds a DNSKEY to the cache.
 func (kc *DNSKEYCache) Add(key *dns.DNSKEY, validated bool) {
 	kc.mu.Lock()
 	defer kc.mu.Unlock()
@@ -87,7 +88,7 @@ func (kc *DNSKEYCache) Add(key *dns.DNSKEY, validated bool) {
 	}
 }
 
-// Get retrieves a DNSKEY from the cache
+// Get retrieves a DNSKEY from the cache.
 func (kc *DNSKEYCache) Get(name string, keyTag uint16, algorithm uint8) *dns.DNSKEY {
 	kc.mu.RLock()
 	defer kc.mu.RUnlock()
@@ -106,7 +107,7 @@ func (kc *DNSKEYCache) Get(name string, keyTag uint16, algorithm uint8) *dns.DNS
 	return cached.Key
 }
 
-// IsValidated checks if a DNSKEY has been validated via chain of trust
+// IsValidated checks if a DNSKEY has been validated via chain of trust.
 func (kc *DNSKEYCache) IsValidated(name string, keyTag uint16, algorithm uint8) bool {
 	kc.mu.RLock()
 	defer kc.mu.RUnlock()
@@ -120,7 +121,7 @@ func (kc *DNSKEYCache) IsValidated(name string, keyTag uint16, algorithm uint8) 
 	return cached.Validated && time.Now().Before(cached.Expiry)
 }
 
-// evictExpired removes expired entries from cache
+// evictExpired removes expired entries from cache.
 func (kc *DNSKEYCache) evictExpired() {
 	now := time.Now()
 	for key, cached := range kc.keys {
@@ -130,13 +131,13 @@ func (kc *DNSKEYCache) evictExpired() {
 	}
 }
 
-// makeDNSKEYCacheKey creates a cache key for a DNSKEY
+// makeDNSKEYCacheKey creates a cache key for a DNSKEY.
 func makeDNSKEYCacheKey(name string, keyTag uint16, algorithm uint8) string {
 	return fmt.Sprintf("%s:%d:%d", dns.Fqdn(name), keyTag, algorithm)
 }
 
 // ValidateDNSKEYWithDS validates a DNSKEY using a DS record
-// Returns true if the DNSKEY matches the DS record hash
+// Returns true if the DNSKEY matches the DS record hash.
 func ValidateDNSKEYWithDS(dnskey *dns.DNSKEY, ds *dns.DS) error {
 	// RFC 4034 §5.1.4: DS RR Wire Format
 	// Verify algorithm match
@@ -158,13 +159,13 @@ func ValidateDNSKEYWithDS(dnskey *dns.DNSKEY, ds *dns.DS) error {
 
 	// Compare digests
 	if digest != ds.Digest {
-		return fmt.Errorf("digest mismatch: DNSKEY hash does not match DS record")
+		return errors.New("digest mismatch: DNSKEY hash does not match DS record")
 	}
 
 	return nil
 }
 
-// calculateDNSKEYDigest calculates the digest of a DNSKEY (RFC 4034 §5.1.4)
+// calculateDNSKEYDigest calculates the digest of a DNSKEY (RFC 4034 §5.1.4).
 func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error) {
 	// Construct owner name + DNSKEY RDATA
 	buf := make([]byte, 0, 512)
@@ -196,12 +197,14 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	for i := 0; i < len(wireBuf) && wireBuf[i] != 0; {
 		if wireBuf[i]&0xC0 == 0xC0 {
 			nameEnd = i + 2
+
 			break
 		}
 		labelLen := int(wireBuf[i])
 		i += labelLen + 1
 		if i < len(wireBuf) && wireBuf[i] == 0 {
 			nameEnd = i + 1
+
 			break
 		}
 	}
@@ -209,7 +212,7 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	// RDATA starts at nameEnd + 10 (type + class + ttl + rdlength)
 	rdataStart := nameEnd + 10
 	if rdataStart >= off {
-		return "", fmt.Errorf("invalid DNSKEY wire format")
+		return "", errors.New("invalid DNSKEY wire format")
 	}
 
 	buf = append(ownerWire, wireBuf[rdataStart:off]...)
@@ -234,7 +237,7 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	return fmt.Sprintf("%X", digest), nil
 }
 
-// DNSKEYFetcher is an interface for fetching DNSKEYs from DNS
+// DNSKEYFetcher is an interface for fetching DNSKEYs from DNS.
 type DNSKEYFetcher interface {
 	// FetchDNSKEY fetches DNSKEY records for a zone
 	FetchDNSKEY(ctx context.Context, zone string) ([]*dns.DNSKEY, error)
@@ -243,7 +246,7 @@ type DNSKEYFetcher interface {
 	FetchDS(ctx context.Context, zone string) ([]*dns.DS, error)
 }
 
-// IsKSK returns true if the DNSKEY is a Key Signing Key
+// IsKSK returns true if the DNSKEY is a Key Signing Key.
 func IsKSK(key *dns.DNSKEY) bool {
 	// Bit 7 of Flags (0x0100) is Zone Key flag (always 1 for DNSSEC)
 	// Bit 15 of Flags (0x0001 in wire format, bit 0 counting from right) is Secure Entry Point (SEP) flag (KSK indicator)
@@ -251,13 +254,13 @@ func IsKSK(key *dns.DNSKEY) bool {
 	return key.Flags&0x0100 == 0x0100 && key.Flags&0x0001 == 0x0001
 }
 
-// IsZSK returns true if the DNSKEY is a Zone Signing Key
+// IsZSK returns true if the DNSKEY is a Zone Signing Key.
 func IsZSK(key *dns.DNSKEY) bool {
 	// ZSK: flags = 256 (0x0100) = Zone Key only, no SEP
 	return key.Flags&0x0100 == 0x0100 && key.Flags&0x0001 == 0
 }
 
-// GetActiveKSKs returns all KSKs from a set of DNSKEYs
+// GetActiveKSKs returns all KSKs from a set of DNSKEYs.
 func GetActiveKSKs(keys []*dns.DNSKEY) []*dns.DNSKEY {
 	ksks := make([]*dns.DNSKEY, 0)
 	for _, key := range keys {
@@ -265,10 +268,11 @@ func GetActiveKSKs(keys []*dns.DNSKEY) []*dns.DNSKEY {
 			ksks = append(ksks, key)
 		}
 	}
+
 	return ksks
 }
 
-// GetActiveZSKs returns all ZSKs from a set of DNSKEYs
+// GetActiveZSKs returns all ZSKs from a set of DNSKEYs.
 func GetActiveZSKs(keys []*dns.DNSKEY) []*dns.DNSKEY {
 	zsks := make([]*dns.DNSKEY, 0)
 	for _, key := range keys {
@@ -276,5 +280,6 @@ func GetActiveZSKs(keys []*dns.DNSKEY) []*dns.DNSKEY {
 			zsks = append(zsks, key)
 		}
 	}
+
 	return zsks
 }

@@ -2,13 +2,14 @@ package dnssec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
 )
 
-// ChainOfTrustValidator validates DNSSEC chains of trust
+// ChainOfTrustValidator validates DNSSEC chains of trust.
 type ChainOfTrustValidator struct {
 	validator   *Validator
 	keyCache    *DNSKEYCache
@@ -16,7 +17,7 @@ type ChainOfTrustValidator struct {
 	maxChainLen int
 }
 
-// NewChainOfTrustValidator creates a new chain of trust validator
+// NewChainOfTrustValidator creates a new chain of trust validator.
 func NewChainOfTrustValidator(validator *Validator, keyCache *DNSKEYCache, keyFetcher DNSKEYFetcher, maxChainLen int) *ChainOfTrustValidator {
 	return &ChainOfTrustValidator{
 		validator:   validator,
@@ -27,7 +28,7 @@ func NewChainOfTrustValidator(validator *Validator, keyCache *DNSKEYCache, keyFe
 }
 
 // ValidateChain validates the chain of trust from a zone to a trust anchor
-// Returns the validated DNSKEY if successful, error otherwise
+// Returns the validated DNSKEY if successful, error otherwise.
 func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string, keyTag uint16, algorithm uint8) (*dns.DNSKEY, error) {
 	// Check if we've already validated this key
 	if ctv.keyCache.IsValidated(zone, keyTag, algorithm) {
@@ -52,6 +53,7 @@ func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string
 		}
 		// Cache as validated
 		ctv.keyCache.Add(dnskey, true)
+
 		return dnskey, nil
 	}
 
@@ -59,7 +61,7 @@ func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string
 	return ctv.walkChain(ctx, zone, keyTag, algorithm, 0)
 }
 
-// walkChain recursively walks the chain of trust upward
+// walkChain recursively walks the chain of trust upward.
 func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, keyTag uint16, algorithm uint8, depth int) (*dns.DNSKEY, error) {
 	// Prevent infinite recursion
 	if depth > ctv.maxChainLen {
@@ -84,6 +86,7 @@ func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, ke
 	for _, key := range dnskeys {
 		if key.KeyTag() == keyTag && key.Algorithm == algorithm {
 			targetKey = key
+
 			break
 		}
 	}
@@ -100,10 +103,11 @@ func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, ke
 		}
 		// Validate matches trust anchor
 		if ta.Algorithm != targetKey.Algorithm || ta.PublicKey != targetKey.PublicKey {
-			return nil, fmt.Errorf("root DNSKEY does not match trust anchor")
+			return nil, errors.New("root DNSKEY does not match trust anchor")
 		}
 		// Cache as validated
 		ctv.keyCache.Add(targetKey, true)
+
 		return targetKey, nil
 	}
 
@@ -128,6 +132,7 @@ func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, ke
 	for _, ds := range dsRecords {
 		if ds.KeyTag == keyTag && ds.Algorithm == algorithm {
 			matchingDS = ds
+
 			break
 		}
 	}
@@ -171,11 +176,12 @@ func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, ke
 	// Parent is validated, so our DS record is trusted
 	// Therefore, our DNSKEY is validated
 	ctv.keyCache.Add(targetKey, true)
+
 	return targetKey, nil
 }
 
 // ValidateRRSIGChain validates an RRSIG and its chain of trust
-// This is the main entry point for validating signed responses
+// This is the main entry point for validating signed responses.
 func (ctv *ChainOfTrustValidator) ValidateRRSIGChain(ctx context.Context, rrsig *dns.RRSIG, rrset []dns.RR) error {
 	// First, validate the RRSIG signature itself
 	// Get the DNSKEY
@@ -192,7 +198,7 @@ func (ctv *ChainOfTrustValidator) ValidateRRSIGChain(ctx context.Context, rrsig 
 	return nil
 }
 
-// getParentZone returns the parent zone of a given zone
+// getParentZone returns the parent zone of a given zone.
 func getParentZone(zone string) string {
 	zone = dns.Fqdn(zone)
 
@@ -211,14 +217,14 @@ func getParentZone(zone string) string {
 	return parts[1]
 }
 
-// ValidateDelegation validates a delegation from parent to child
+// ValidateDelegation validates a delegation from parent to child.
 func ValidateDelegation(parentZone, childZone string, dsRecords []*dns.DS, childKeys []*dns.DNSKEY) error {
 	if len(dsRecords) == 0 {
-		return fmt.Errorf("no DS records for delegation")
+		return errors.New("no DS records for delegation")
 	}
 
 	if len(childKeys) == 0 {
-		return fmt.Errorf("no DNSKEY records for child zone")
+		return errors.New("no DNSKEY records for child zone")
 	}
 
 	// At least one DS must match a child KSK
@@ -232,6 +238,7 @@ func ValidateDelegation(parentZone, childZone string, dsRecords []*dns.DS, child
 			if key.KeyTag() == ds.KeyTag && key.Algorithm == ds.Algorithm {
 				if err := ValidateDNSKEYWithDS(key, ds); err == nil {
 					matched = true
+
 					break
 				}
 			}
@@ -248,7 +255,7 @@ func ValidateDelegation(parentZone, childZone string, dsRecords []*dns.DS, child
 	return nil
 }
 
-// BuildChainPath returns the list of zones in the chain from leaf to root
+// BuildChainPath returns the list of zones in the chain from leaf to root.
 func BuildChainPath(zone string) []string {
 	zone = dns.Fqdn(zone)
 	path := []string{zone}

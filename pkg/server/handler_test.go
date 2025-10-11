@@ -10,8 +10,9 @@ import (
 	"github.com/piwi3910/dns-go/pkg/cache"
 )
 
-// TestHandlerFastPathCacheHit tests fast-path with cache hit
+// TestHandlerFastPathCacheHit tests fast-path with cache hit.
 func TestHandlerFastPathCacheHit(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Create a query
@@ -54,8 +55,9 @@ func TestHandlerFastPathCacheHit(t *testing.T) {
 	}
 }
 
-// TestHandlerFastPathCacheMiss tests fast-path with cache miss
+// TestHandlerFastPathCacheMiss tests fast-path with cache miss.
 func TestHandlerFastPathCacheMiss(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Create a query
@@ -82,8 +84,9 @@ func TestHandlerFastPathCacheMiss(t *testing.T) {
 	}
 }
 
-// TestHandlerRRsetCache tests RRset cache hit
+// TestHandlerRRsetCache tests RRset cache hit.
 func TestHandlerRRsetCache(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Pre-populate RRset cache
@@ -118,8 +121,9 @@ func TestHandlerRRsetCache(t *testing.T) {
 	}
 }
 
-// TestHandlerSlowPath tests slow-path processing
+// TestHandlerSlowPath tests slow-path processing.
 func TestHandlerSlowPath(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Create a query with EDNS0 (forces slow path)
@@ -149,8 +153,9 @@ func TestHandlerSlowPath(t *testing.T) {
 	}
 }
 
-// TestHandlerCacheResponse tests caching a resolved response
+// TestHandlerCacheResponse tests caching a resolved response.
 func TestHandlerCacheResponse(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Create a response to cache
@@ -181,8 +186,9 @@ func TestHandlerCacheResponse(t *testing.T) {
 	}
 }
 
-// TestHandlerGetStats tests statistics retrieval
+// TestHandlerGetStats tests statistics retrieval.
 func TestHandlerGetStats(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Generate some cache activity
@@ -200,8 +206,9 @@ func TestHandlerGetStats(t *testing.T) {
 	}
 }
 
-// TestHandlerClearCaches tests cache clearing
+// TestHandlerClearCaches tests cache clearing.
 func TestHandlerClearCaches(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Populate caches
@@ -223,8 +230,9 @@ func TestHandlerClearCaches(t *testing.T) {
 	}
 }
 
-// TestHandlerMalformedQuery tests handling of malformed queries
+// TestHandlerMalformedQuery tests handling of malformed queries.
 func TestHandlerMalformedQuery(t *testing.T) {
+	t.Parallel()
 	handler := NewHandler(DefaultHandlerConfig())
 
 	// Malformed query
@@ -248,7 +256,7 @@ func TestHandlerMalformedQuery(t *testing.T) {
 }
 
 // BenchmarkHandlerFastPathCacheHit benchmarks fast-path cache hit
-// Target: minimal allocations, <1µs per query
+// Target: minimal allocations, <1µs per query.
 func BenchmarkHandlerFastPathCacheHit(b *testing.B) {
 	handler := NewHandler(DefaultHandlerConfig())
 
@@ -272,12 +280,12 @@ func BenchmarkHandlerFastPathCacheHit(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = handler.HandleQuery(ctx, queryBytes, addr)
 	}
 }
 
-// BenchmarkHandlerFastPathCacheHitParallel benchmarks parallel cache hits
+// BenchmarkHandlerFastPathCacheHitParallel benchmarks parallel cache hits.
 func BenchmarkHandlerFastPathCacheHitParallel(b *testing.B) {
 	handler := NewHandler(DefaultHandlerConfig())
 

@@ -8,8 +8,9 @@ import (
 	"github.com/miekg/dns"
 )
 
-// TestRateLimiter_Allow tests basic rate limiting
+// TestRateLimiter_Allow tests basic rate limiting.
 func TestRateLimiter_Allow(t *testing.T) {
+	t.Parallel()
 	config := RateLimitConfig{
 		QueriesPerSecond: 10,
 		BurstSize:        10,
@@ -24,7 +25,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.100"), Port: 53}
 
 	// Should allow first 10 requests (burst)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if !rl.Allow(addr) {
 			t.Errorf("Request %d should be allowed (within burst)", i+1)
 		}
@@ -38,8 +39,9 @@ func TestRateLimiter_Allow(t *testing.T) {
 	t.Logf("✓ Rate limiting: Allowed 10 requests, blocked 11th")
 }
 
-// TestRateLimiter_Refill tests token refill over time
+// TestRateLimiter_Refill tests token refill over time.
 func TestRateLimiter_Refill(t *testing.T) {
+	t.Parallel()
 	config := RateLimitConfig{
 		QueriesPerSecond: 100, // 100 QPS = 10ms per token
 		BurstSize:        5,
@@ -54,7 +56,7 @@ func TestRateLimiter_Refill(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.101"), Port: 53}
 
 	// Exhaust burst
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		rl.Allow(addr)
 	}
 
@@ -74,8 +76,9 @@ func TestRateLimiter_Refill(t *testing.T) {
 	t.Logf("✓ Token refill working correctly")
 }
 
-// TestRateLimiter_MultipleIPs tests independent buckets per IP
+// TestRateLimiter_MultipleIPs tests independent buckets per IP.
 func TestRateLimiter_MultipleIPs(t *testing.T) {
+	t.Parallel()
 	config := RateLimitConfig{
 		QueriesPerSecond: 10,
 		BurstSize:        5,
@@ -91,7 +94,7 @@ func TestRateLimiter_MultipleIPs(t *testing.T) {
 	addr2 := &net.UDPAddr{IP: net.ParseIP("192.168.1.103"), Port: 53}
 
 	// Exhaust burst for addr1
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		rl.Allow(addr1)
 	}
 
@@ -108,8 +111,9 @@ func TestRateLimiter_MultipleIPs(t *testing.T) {
 	t.Logf("✓ Independent rate limiting per IP working correctly")
 }
 
-// TestRateLimiter_Disabled tests that disabled rate limiter allows all
+// TestRateLimiter_Disabled tests that disabled rate limiter allows all.
 func TestRateLimiter_Disabled(t *testing.T) {
+	t.Parallel()
 	config := RateLimitConfig{
 		QueriesPerSecond: 1,
 		BurstSize:        1,
@@ -121,7 +125,7 @@ func TestRateLimiter_Disabled(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.104"), Port: 53}
 
 	// Should allow all requests when disabled
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if !rl.Allow(addr) {
 			t.Error("All requests should be allowed when rate limiting is disabled")
 		}
@@ -130,8 +134,9 @@ func TestRateLimiter_Disabled(t *testing.T) {
 	t.Logf("✓ Disabled rate limiter allows all requests")
 }
 
-// TestQueryValidator_ValidQuery tests valid query validation
+// TestQueryValidator_ValidQuery tests valid query validation.
 func TestQueryValidator_ValidQuery(t *testing.T) {
+	t.Parallel()
 	validator := NewQueryValidator(DefaultValidationConfig())
 
 	msg := new(dns.Msg)
@@ -144,8 +149,9 @@ func TestQueryValidator_ValidQuery(t *testing.T) {
 	t.Logf("✓ Valid query passes validation")
 }
 
-// TestQueryValidator_TooManyQuestions tests multiple questions rejection
+// TestQueryValidator_TooManyQuestions tests multiple questions rejection.
 func TestQueryValidator_TooManyQuestions(t *testing.T) {
+	t.Parallel()
 	validator := NewQueryValidator(DefaultValidationConfig())
 
 	msg := new(dns.Msg)
@@ -161,8 +167,9 @@ func TestQueryValidator_TooManyQuestions(t *testing.T) {
 	t.Logf("✓ Multiple questions rejected correctly")
 }
 
-// TestQueryValidator_NoQuestions tests empty question rejection
+// TestQueryValidator_NoQuestions tests empty question rejection.
 func TestQueryValidator_NoQuestions(t *testing.T) {
+	t.Parallel()
 	validator := NewQueryValidator(DefaultValidationConfig())
 
 	msg := new(dns.Msg)
@@ -175,13 +182,14 @@ func TestQueryValidator_NoQuestions(t *testing.T) {
 	t.Logf("✓ Empty questions rejected correctly")
 }
 
-// TestQueryValidator_LongDomainName tests domain length validation
+// TestQueryValidator_LongDomainName tests domain length validation.
 func TestQueryValidator_LongDomainName(t *testing.T) {
+	t.Parallel()
 	validator := NewQueryValidator(DefaultValidationConfig())
 
 	// Create domain name longer than 255 bytes
 	longDomain := ""
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		longDomain += "verylonglabel."
 	}
 
@@ -195,8 +203,9 @@ func TestQueryValidator_LongDomainName(t *testing.T) {
 	t.Logf("✓ Long domain name rejected correctly")
 }
 
-// TestCachePoisoningProtector_ValidResponse tests valid response validation
+// TestCachePoisoningProtector_ValidResponse tests valid response validation.
 func TestCachePoisoningProtector_ValidResponse(t *testing.T) {
+	t.Parallel()
 	protector := NewCachePoisoningProtector(DefaultCachePoisoningConfig())
 
 	query := new(dns.Msg)
@@ -214,8 +223,9 @@ func TestCachePoisoningProtector_ValidResponse(t *testing.T) {
 	t.Logf("✓ Valid response passes validation")
 }
 
-// TestCachePoisoningProtector_IDMismatch tests response ID validation
+// TestCachePoisoningProtector_IDMismatch tests response ID validation.
 func TestCachePoisoningProtector_IDMismatch(t *testing.T) {
+	t.Parallel()
 	protector := NewCachePoisoningProtector(DefaultCachePoisoningConfig())
 
 	query := new(dns.Msg)
@@ -233,8 +243,9 @@ func TestCachePoisoningProtector_IDMismatch(t *testing.T) {
 	t.Logf("✓ ID mismatch detected correctly")
 }
 
-// TestCachePoisoningProtector_QuestionMismatch tests question validation
+// TestCachePoisoningProtector_QuestionMismatch tests question validation.
 func TestCachePoisoningProtector_QuestionMismatch(t *testing.T) {
+	t.Parallel()
 	protector := NewCachePoisoningProtector(DefaultCachePoisoningConfig())
 
 	query := new(dns.Msg)
@@ -253,12 +264,13 @@ func TestCachePoisoningProtector_QuestionMismatch(t *testing.T) {
 	t.Logf("✓ Question mismatch detected correctly")
 }
 
-// TestRandomizeQueryID tests query ID randomization
+// TestRandomizeQueryID tests query ID randomization.
 func TestRandomizeQueryID(t *testing.T) {
+	t.Parallel()
 	// Generate 100 random IDs and ensure they're different
 	seen := make(map[uint16]bool)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := RandomizeQueryID()
 		if seen[id] {
 			// Collision is possible but unlikely
@@ -274,10 +286,11 @@ func TestRandomizeQueryID(t *testing.T) {
 	t.Logf("✓ Query ID randomization working (%d unique IDs out of 100)", len(seen))
 }
 
-// TestRandomizeSourcePort tests source port randomization
+// TestRandomizeSourcePort tests source port randomization.
 func TestRandomizeSourcePort(t *testing.T) {
+	t.Parallel()
 	// Generate 100 random ports and ensure they're in valid range
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		port := RandomizeSourcePort()
 
 		if port < 1024 || port > 65535 {
@@ -288,8 +301,9 @@ func TestRandomizeSourcePort(t *testing.T) {
 	t.Logf("✓ Source port randomization working correctly")
 }
 
-// TestValidateResponseSize tests response size validation
+// TestValidateResponseSize tests response size validation.
 func TestValidateResponseSize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		size      int
@@ -316,8 +330,9 @@ func TestValidateResponseSize(t *testing.T) {
 	t.Logf("✓ Response size validation working correctly")
 }
 
-// TestIsValidLabel tests DNS label validation
+// TestIsValidLabel tests DNS label validation.
 func TestIsValidLabel(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		label string
 		valid bool
@@ -325,8 +340,8 @@ func TestIsValidLabel(t *testing.T) {
 		{"example", true},
 		{"test123", true},
 		{"test-label", true},
-		{"-invalid", false},  // Starts with hyphen
-		{"invalid-", false},  // Ends with hyphen
+		{"-invalid", false},   // Starts with hyphen
+		{"invalid-", false},   // Ends with hyphen
 		{"test@label", false}, // Invalid character
 		{"", true},            // Empty (root) is valid
 		{"_srv", true},        // Underscore allowed
@@ -342,8 +357,9 @@ func TestIsValidLabel(t *testing.T) {
 	t.Logf("✓ Label validation working correctly")
 }
 
-// TestRateLimiterCleanup tests bucket cleanup
+// TestRateLimiterCleanup tests bucket cleanup.
 func TestRateLimiterCleanup(t *testing.T) {
+	t.Parallel()
 	config := RateLimitConfig{
 		QueriesPerSecond: 10,
 		BurstSize:        5,

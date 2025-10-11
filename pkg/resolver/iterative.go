@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -10,23 +11,23 @@ import (
 	"github.com/miekg/dns"
 )
 
-// IterativeResolver performs iterative DNS resolution starting from root servers
+// IterativeResolver performs iterative DNS resolution starting from root servers.
 type IterativeResolver struct {
-	client           *dns.Client
-	rootPool         *RootServerPool
-	maxDepth         int           // Maximum delegation depth to prevent loops
-	parallelNSLimit  int           // Number of nameservers to query in parallel
-	queryCache       map[string]*iterativeCacheEntry // Cache for NS records and glue
+	client          *dns.Client
+	rootPool        *RootServerPool
+	maxDepth        int                             // Maximum delegation depth to prevent loops
+	parallelNSLimit int                             // Number of nameservers to query in parallel
+	queryCache      map[string]*iterativeCacheEntry // Cache for NS records and glue
 }
 
-// iterativeCacheEntry caches nameserver information
+// iterativeCacheEntry caches nameserver information.
 type iterativeCacheEntry struct {
-	nameservers []string // NS names
+	nameservers []string            // NS names
 	glue        map[string][]string // NS name -> IP addresses
 	expiry      time.Time
 }
 
-// NewIterativeResolver creates a new iterative resolver
+// NewIterativeResolver creates a new iterative resolver.
 func NewIterativeResolver() *IterativeResolver {
 	return &IterativeResolver{
 		client: &dns.Client{
@@ -40,7 +41,7 @@ func NewIterativeResolver() *IterativeResolver {
 	}
 }
 
-// Resolve performs iterative resolution starting from root servers
+// Resolve performs iterative resolution starting from root servers.
 func (ir *IterativeResolver) Resolve(ctx context.Context, qname string, qtype uint16) (*dns.Msg, error) {
 	// Normalize query name
 	if !strings.HasSuffix(qname, ".") {
@@ -51,11 +52,11 @@ func (ir *IterativeResolver) Resolve(ctx context.Context, qname string, qtype ui
 	return ir.resolveIterative(ctx, qname, qtype, 0)
 }
 
-// resolveIterative performs the iterative resolution process
+// resolveIterative performs the iterative resolution process.
 func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string, qtype uint16, depth int) (*dns.Msg, error) {
 	// Check depth limit to prevent infinite loops
 	if depth > ir.maxDepth {
-		return nil, fmt.Errorf("maximum delegation depth exceeded")
+		return nil, errors.New("maximum delegation depth exceeded")
 	}
 
 	// Build query
@@ -90,6 +91,7 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 				resolved, err := ir.resolveNS(ctx, ns, depth+1)
 				if err != nil {
 					lastErr = err
+
 					continue
 				}
 				nsAddrs = resolved
@@ -109,11 +111,13 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 
 			if err != nil {
 				lastErr = err
+
 				continue
 			}
 
 			if response == nil {
 				lastErr = fmt.Errorf("nil response from %s", addr)
+
 				continue
 			}
 
@@ -152,11 +156,13 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 			case dns.RcodeServerFailure:
 				// SERVFAIL - try next server
 				lastErr = fmt.Errorf("SERVFAIL from %s", addr)
+
 				continue
 
 			default:
 				// Other error - try next server
 				lastErr = fmt.Errorf("error response from %s: %s", addr, dns.RcodeToString[response.Rcode])
+
 				continue
 			}
 		}
@@ -166,11 +172,11 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 		return nil, fmt.Errorf("all nameservers failed: %w", lastErr)
 	}
 
-	return nil, fmt.Errorf("no nameservers available")
+	return nil, errors.New("no nameservers available")
 }
 
 // resolveWithNS continues resolution with specific nameservers
-// Uses parallel queries for faster resolution
+// Uses parallel queries for faster resolution.
 func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qtype uint16, nameservers []string, glue map[string][]string, depth int) (*dns.Msg, error) {
 	query := new(dns.Msg)
 	query.SetQuestion(qname, qtype)
@@ -219,24 +225,26 @@ func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qt
 				response, _, err := ir.client.ExchangeContext(queryCtx, query, address)
 				if err != nil {
 					results <- result{nil, err}
+
 					return
 				}
 
 				if response != nil {
 					results <- result{response, nil}
 				} else {
-					results <- result{nil, fmt.Errorf("nil response")}
+					results <- result{nil, errors.New("nil response")}
 				}
 			}(addr)
 		}
 
 		// Wait for results from this NS's addresses
 		var lastErr error
-		for i := 0; i < len(nsAddrs); i++ {
+		for range nsAddrs {
 			select {
 			case res := <-results:
 				if res.err != nil {
 					lastErr = res.err
+
 					continue
 				}
 
@@ -247,6 +255,7 @@ func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qt
 				case dns.RcodeSuccess:
 					if len(response.Answer) > 0 {
 						cancel() // Cancel other queries for this NS
+
 						return response, nil
 					}
 
@@ -256,24 +265,29 @@ func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qt
 						if len(newNS) > 0 {
 							cancel() // Cancel other queries for this NS
 							ir.cacheNS(qname, newNS, newGlue)
+
 							return ir.resolveWithNS(ctx, qname, qtype, newNS, newGlue, depth+1)
 						}
 					}
 
 					cancel() // Cancel other queries for this NS
+
 					return response, nil
 
 				case dns.RcodeNameError:
 					cancel() // Cancel other queries for this NS
+
 					return response, nil
 
 				default:
 					lastErr = fmt.Errorf("error rcode: %s", dns.RcodeToString[response.Rcode])
+
 					continue
 				}
 
 			case <-ctx.Done():
 				cancel()
+
 				return nil, ctx.Err()
 			}
 		}
@@ -286,10 +300,10 @@ func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qt
 	}
 
 	// All nameservers failed
-	return nil, fmt.Errorf("all nameservers failed")
+	return nil, errors.New("all nameservers failed")
 }
 
-// resolveNS resolves a nameserver name to IP addresses
+// resolveNS resolves a nameserver name to IP addresses.
 func (ir *IterativeResolver) resolveNS(ctx context.Context, nsName string, depth int) ([]string, error) {
 	// Query for A record
 	response, err := ir.resolveIterative(ctx, nsName, dns.TypeA, depth)
@@ -313,12 +327,12 @@ func (ir *IterativeResolver) resolveNS(ctx context.Context, nsName string, depth
 	return addresses, nil
 }
 
-// findNameservers finds cached nameservers for a domain
+// findNameservers finds cached nameservers for a domain.
 func (ir *IterativeResolver) findNameservers(qname string) ([]string, map[string][]string) {
 	// Walk up the domain hierarchy looking for cached NS records
 	labels := dns.SplitDomainName(qname)
 
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		domain := dns.Fqdn(strings.Join(labels[i:], "."))
 		if entry, exists := ir.queryCache[domain]; exists {
 			if time.Now().Before(entry.expiry) {
@@ -332,7 +346,7 @@ func (ir *IterativeResolver) findNameservers(qname string) ([]string, map[string
 	return nil, nil
 }
 
-// cacheNS caches nameserver information
+// cacheNS caches nameserver information.
 func (ir *IterativeResolver) cacheNS(domain string, nameservers []string, glue map[string][]string) {
 	ir.queryCache[domain] = &iterativeCacheEntry{
 		nameservers: nameservers,
@@ -341,7 +355,7 @@ func (ir *IterativeResolver) cacheNS(domain string, nameservers []string, glue m
 	}
 }
 
-// extractNSAndGlue extracts NS records and glue records from a response
+// extractNSAndGlue extracts NS records and glue records from a response.
 func extractNSAndGlue(msg *dns.Msg) ([]string, map[string][]string) {
 	nameservers := []string{}
 	glue := make(map[string][]string)
@@ -368,12 +382,13 @@ func extractNSAndGlue(msg *dns.Msg) ([]string, map[string][]string) {
 	return nameservers, glue
 }
 
-// isIPAddress checks if a string is an IP address
+// isIPAddress checks if a string is an IP address.
 func isIPAddress(s string) bool {
 	// Remove port if present
 	host := s
 	if idx := strings.LastIndex(s, ":"); idx > 0 {
 		host = s[:idx]
 	}
+
 	return net.ParseIP(host) != nil
 }

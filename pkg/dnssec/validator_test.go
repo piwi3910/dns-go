@@ -8,8 +8,9 @@ import (
 	"github.com/miekg/dns"
 )
 
-// TestValidatorCreation tests basic validator creation
+// TestValidatorCreation tests basic validator creation.
 func TestValidatorCreation(t *testing.T) {
+	t.Parallel()
 	config := DefaultValidatorConfig()
 	validator := NewValidator(config)
 
@@ -24,8 +25,9 @@ func TestValidatorCreation(t *testing.T) {
 	t.Logf("✓ DNSSEC Validator created with %d trust anchors", len(validator.trustAnchors))
 }
 
-// TestRootTrustAnchor tests root zone trust anchor loading
+// TestRootTrustAnchor tests root zone trust anchor loading.
 func TestRootTrustAnchor(t *testing.T) {
+	t.Parallel()
 	validator := NewValidator(DefaultValidatorConfig())
 
 	// Check for root KSK-2017 (key tag 20326)
@@ -45,8 +47,9 @@ func TestRootTrustAnchor(t *testing.T) {
 	t.Logf("✓ Root trust anchor verified: KeyTag=%d, Algorithm=%d", rootTA.KeyTag, rootTA.Algorithm)
 }
 
-// TestValidateResponse_NoRRSIG tests validation of responses without RRSIG
+// TestValidateResponse_NoRRSIG tests validation of responses without RRSIG.
 func TestValidateResponse_NoRRSIG(t *testing.T) {
+	t.Parallel()
 	validator := NewValidator(DefaultValidatorConfig())
 
 	// Create a simple response without RRSIG
@@ -74,8 +77,9 @@ func TestValidateResponse_NoRRSIG(t *testing.T) {
 	t.Logf("✓ Insecure response handled correctly: %s", result.Message)
 }
 
-// TestValidateResponse_Disabled tests validation when disabled
+// TestValidateResponse_Disabled tests validation when disabled.
 func TestValidateResponse_Disabled(t *testing.T) {
+	t.Parallel()
 	config := DefaultValidatorConfig()
 	config.EnableValidation = false
 	validator := NewValidator(config)
@@ -101,8 +105,9 @@ func TestValidateResponse_Disabled(t *testing.T) {
 	t.Logf("✓ Disabled validation returns insecure: %s", result.Message)
 }
 
-// TestCalculateKeyTag tests key tag calculation
+// TestCalculateKeyTag tests key tag calculation.
 func TestCalculateKeyTag(t *testing.T) {
+	t.Parallel()
 	// Create a test DNSKEY
 	dnskey := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
@@ -128,8 +133,9 @@ func TestCalculateKeyTag(t *testing.T) {
 	t.Logf("✓ Key tag calculated correctly: %d", keyTag)
 }
 
-// TestAddTrustAnchor tests adding custom trust anchors
+// TestAddTrustAnchor tests adding custom trust anchors.
 func TestAddTrustAnchor(t *testing.T) {
+	t.Parallel()
 	validator := NewValidator(DefaultValidatorConfig())
 
 	// Add a custom trust anchor
@@ -155,8 +161,9 @@ func TestAddTrustAnchor(t *testing.T) {
 	t.Logf("✓ Custom trust anchor added and retrieved successfully")
 }
 
-// TestValidatorConfig tests configuration options
+// TestValidatorConfig tests configuration options.
 func TestValidatorConfig(t *testing.T) {
+	t.Parallel()
 	config := ValidatorConfig{
 		EnableValidation:   true,
 		ValidateExpiration: false,
@@ -185,8 +192,9 @@ func TestValidatorConfig(t *testing.T) {
 	t.Logf("✓ Validator configuration set correctly")
 }
 
-// TestDNSKEYCache tests DNSKEY caching functionality
+// TestDNSKEYCache tests DNSKEY caching functionality.
 func TestDNSKEYCache(t *testing.T) {
+	t.Parallel()
 	cache := NewDNSKEYCache(DefaultDNSKEYCacheConfig())
 
 	// Create a test DNSKEY
@@ -224,8 +232,9 @@ func TestDNSKEYCache(t *testing.T) {
 	t.Logf("✓ DNSKEY cache working correctly")
 }
 
-// TestIsKSK tests KSK flag detection
+// TestIsKSK tests KSK flag detection.
 func TestIsKSK(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		flags    uint16
@@ -254,8 +263,9 @@ func TestIsKSK(t *testing.T) {
 	t.Logf("✓ KSK detection working correctly")
 }
 
-// TestIsZSK tests ZSK flag detection
+// TestIsZSK tests ZSK flag detection.
 func TestIsZSK(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		flags    uint16
@@ -284,8 +294,9 @@ func TestIsZSK(t *testing.T) {
 	t.Logf("✓ ZSK detection working correctly")
 }
 
-// TestCanonicalName tests canonical name conversion
+// TestCanonicalName tests canonical name conversion.
 func TestCanonicalName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected []byte
@@ -314,8 +325,9 @@ func TestCanonicalName(t *testing.T) {
 	t.Logf("✓ Canonical name conversion working correctly")
 }
 
-// TestNSECCoversName tests NSEC name covering logic
+// TestNSECCoversName tests NSEC name covering logic.
 func TestNSECCoversName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		owner    string
@@ -366,8 +378,9 @@ func TestNSECCoversName(t *testing.T) {
 	t.Logf("✓ NSEC coverage logic working correctly")
 }
 
-// TestGetParentZone tests parent zone extraction
+// TestGetParentZone tests parent zone extraction.
 func TestGetParentZone(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		zone     string
 		expected string
@@ -388,8 +401,9 @@ func TestGetParentZone(t *testing.T) {
 	t.Logf("✓ Parent zone extraction working correctly")
 }
 
-// TestBuildChainPath tests chain path building
+// TestBuildChainPath tests chain path building.
 func TestBuildChainPath(t *testing.T) {
+	t.Parallel()
 	path := BuildChainPath("www.example.com.")
 
 	expected := []string{
@@ -412,8 +426,9 @@ func TestBuildChainPath(t *testing.T) {
 	t.Logf("✓ Chain path building working correctly: %v", path)
 }
 
-// TestNSEC3HashName tests NSEC3 name hashing
+// TestNSEC3HashName tests NSEC3 name hashing.
 func TestNSEC3HashName(t *testing.T) {
+	t.Parallel()
 	// Test with known values from RFC 5155 examples
 	nsec3 := &dns.NSEC3{
 		Hash:       dns.SHA1,
@@ -438,8 +453,9 @@ func TestNSEC3HashName(t *testing.T) {
 	t.Logf("✓ NSEC3 hash for %s: %s", name, hash)
 }
 
-// TestNSEC3OptOut tests opt-out flag detection
+// TestNSEC3OptOut tests opt-out flag detection.
 func TestNSEC3OptOut(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		flags    uint8
 		expected bool
@@ -462,8 +478,9 @@ func TestNSEC3OptOut(t *testing.T) {
 	t.Logf("✓ NSEC3 opt-out detection working correctly")
 }
 
-// TestValidateNSEC3Params tests NSEC3 parameter validation
+// TestValidateNSEC3Params tests NSEC3 parameter validation.
 func TestValidateNSEC3Params(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		nsec3      *dns.NSEC3
@@ -511,8 +528,9 @@ func TestValidateNSEC3Params(t *testing.T) {
 	t.Logf("✓ NSEC3 parameter validation working correctly")
 }
 
-// TestExtractNSECRecords tests NSEC record extraction from messages
+// TestExtractNSECRecords tests NSEC record extraction from messages.
 func TestExtractNSECRecords(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -530,8 +548,9 @@ func TestExtractNSECRecords(t *testing.T) {
 	t.Logf("✓ NSEC record extraction working correctly")
 }
 
-// TestExtractNSEC3Records tests NSEC3 record extraction from messages
+// TestExtractNSEC3Records tests NSEC3 record extraction from messages.
 func TestExtractNSEC3Records(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -561,8 +580,9 @@ func TestExtractNSEC3Records(t *testing.T) {
 	t.Logf("✓ NSEC3 record extraction working correctly")
 }
 
-// TestNSECValidator_ValidateNXDOMAIN tests NXDOMAIN validation with NSEC
+// TestNSECValidator_ValidateNXDOMAIN tests NXDOMAIN validation with NSEC.
 func TestNSECValidator_ValidateNXDOMAIN(t *testing.T) {
+	t.Parallel()
 	v := NewValidator(DefaultValidatorConfig())
 	validator := NewNSECValidator(v)
 
@@ -579,8 +599,9 @@ func TestNSECValidator_ValidateNXDOMAIN(t *testing.T) {
 	t.Logf("✓ NSEC NXDOMAIN validation working correctly")
 }
 
-// TestNSECValidator_ValidateNODATA tests NODATA validation with NSEC
+// TestNSECValidator_ValidateNODATA tests NODATA validation with NSEC.
 func TestNSECValidator_ValidateNODATA(t *testing.T) {
+	t.Parallel()
 	v := NewValidator(DefaultValidatorConfig())
 	validator := NewNSECValidator(v)
 
@@ -597,8 +618,9 @@ func TestNSECValidator_ValidateNODATA(t *testing.T) {
 	t.Logf("✓ NSEC NODATA validation working correctly")
 }
 
-// TestNSEC3Validator_ValidateNXDOMAIN tests NXDOMAIN validation with NSEC3
+// TestNSEC3Validator_ValidateNXDOMAIN tests NXDOMAIN validation with NSEC3.
 func TestNSEC3Validator_ValidateNXDOMAIN(t *testing.T) {
+	t.Parallel()
 	v := NewValidator(DefaultValidatorConfig())
 	validator := NewNSEC3Validator(v)
 
@@ -629,8 +651,9 @@ func TestNSEC3Validator_ValidateNXDOMAIN(t *testing.T) {
 	t.Logf("✓ NSEC3 NXDOMAIN validation code path exercised")
 }
 
-// TestNSEC3Validator_ValidateNODATA tests NODATA validation with NSEC3
+// TestNSEC3Validator_ValidateNODATA tests NODATA validation with NSEC3.
 func TestNSEC3Validator_ValidateNODATA(t *testing.T) {
+	t.Parallel()
 	v := NewValidator(DefaultValidatorConfig())
 	validator := NewNSEC3Validator(v)
 
@@ -658,8 +681,9 @@ func TestNSEC3Validator_ValidateNODATA(t *testing.T) {
 	t.Logf("✓ NSEC3 NODATA validation code path exercised")
 }
 
-// TestValidateDelegation tests delegation validation
+// TestValidateDelegation tests delegation validation.
 func TestValidateDelegation(t *testing.T) {
+	t.Parallel()
 	// Create child DNSKEY (KSK)
 	childKey := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
@@ -702,8 +726,9 @@ func TestValidateDelegation(t *testing.T) {
 	t.Logf("✓ ValidateDelegation input validation working")
 }
 
-// TestGetActiveKSKs tests filtering of active KSKs
+// TestGetActiveKSKs tests filtering of active KSKs.
 func TestGetActiveKSKs(t *testing.T) {
+	t.Parallel()
 	keys := []*dns.DNSKEY{
 		{
 			Hdr: dns.RR_Header{
@@ -743,8 +768,9 @@ func TestGetActiveKSKs(t *testing.T) {
 	t.Logf("✓ GetActiveKSKs filtering working correctly")
 }
 
-// TestGetActiveZSKs tests filtering of active ZSKs
+// TestGetActiveZSKs tests filtering of active ZSKs.
 func TestGetActiveZSKs(t *testing.T) {
+	t.Parallel()
 	keys := []*dns.DNSKEY{
 		{
 			Hdr: dns.RR_Header{
@@ -784,8 +810,9 @@ func TestGetActiveZSKs(t *testing.T) {
 	t.Logf("✓ GetActiveZSKs filtering working correctly")
 }
 
-// TestValidatorCacheHit tests validator response caching
+// TestValidatorCacheHit tests validator response caching.
 func TestValidatorCacheHit(t *testing.T) {
+	t.Parallel()
 	validator := NewValidator(DefaultValidatorConfig())
 
 	msg1 := new(dns.Msg)
@@ -812,8 +839,9 @@ func TestValidatorCacheHit(t *testing.T) {
 	t.Logf("✓ Validator caching working correctly")
 }
 
-// TestValidationResult tests validation result structure
+// TestValidationResult tests validation result structure.
 func TestValidationResult(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		result   *ValidationResult
@@ -847,8 +875,9 @@ func TestValidationResult(t *testing.T) {
 	t.Logf("✓ ValidationResult structure working correctly")
 }
 
-// TestDNSKEYCacheEviction tests cache eviction
+// TestDNSKEYCacheEviction tests cache eviction.
 func TestDNSKEYCacheEviction(t *testing.T) {
+	t.Parallel()
 	config := DNSKEYCacheConfig{
 		MaxSize:    2, // Small cache for testing
 		DefaultTTL: time.Hour,
@@ -856,7 +885,7 @@ func TestDNSKEYCacheEviction(t *testing.T) {
 	cache := NewDNSKEYCache(config)
 
 	// Add more keys than cache can hold
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := &dns.DNSKEY{
 			Hdr: dns.RR_Header{
 				Name:   "example.com.",
@@ -876,8 +905,9 @@ func TestDNSKEYCacheEviction(t *testing.T) {
 	t.Logf("✓ DNSKEY cache eviction test completed")
 }
 
-// TestDNSKEYCacheOperations tests basic cache operations
+// TestDNSKEYCacheOperations tests basic cache operations.
 func TestDNSKEYCacheOperations(t *testing.T) {
+	t.Parallel()
 	cache := NewDNSKEYCache(DefaultDNSKEYCacheConfig())
 
 	key := &dns.DNSKEY{

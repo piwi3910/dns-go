@@ -11,6 +11,7 @@ import (
 )
 
 func TestDefaultResolverConfig(t *testing.T) {
+	t.Parallel()
 	config := DefaultResolverConfig()
 
 	if config.Mode != RecursiveMode {
@@ -39,6 +40,7 @@ func TestDefaultResolverConfig(t *testing.T) {
 }
 
 func TestDefaultForwardingConfig(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 
 	if config.Mode != ForwardingMode {
@@ -46,7 +48,7 @@ func TestDefaultForwardingConfig(t *testing.T) {
 	}
 }
 
-// Helper function to create test upstream pool
+// Helper function to create test upstream pool.
 func createTestUpstreamPool(upstreams []string) *UpstreamPool {
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -55,10 +57,12 @@ func createTestUpstreamPool(upstreams []string) *UpstreamPool {
 		ConnectionsPerUpstream: 4,
 	}
 	infraCache := cache.NewInfraCache()
+
 	return NewUpstreamPool(config, infraCache)
 }
 
 func TestNewResolver(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 
@@ -86,6 +90,7 @@ func TestNewResolver(t *testing.T) {
 }
 
 func TestNewResolver_RecursiveMode(t *testing.T) {
+	t.Parallel()
 	config := DefaultResolverConfig()
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 
@@ -97,6 +102,7 @@ func TestNewResolver_RecursiveMode(t *testing.T) {
 }
 
 func TestNewResolver_DNSSECDisabled(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	config.EnableDNSSEC = false
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
@@ -113,6 +119,7 @@ func TestNewResolver_DNSSECDisabled(t *testing.T) {
 }
 
 func TestResolve_NoQuestions(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
@@ -129,6 +136,7 @@ func TestResolve_NoQuestions(t *testing.T) {
 }
 
 func TestMakeQueryKey(t *testing.T) {
+	t.Parallel()
 	key1 := makeQueryKey("example.com.", dns.TypeA, dns.ClassINET)
 	key2 := makeQueryKey("example.com.", dns.TypeA, dns.ClassINET)
 	key3 := makeQueryKey("example.com.", dns.TypeAAAA, dns.ClassINET)
@@ -143,6 +151,7 @@ func TestMakeQueryKey(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
@@ -163,6 +172,7 @@ func TestGetStats(t *testing.T) {
 }
 
 func TestResolveWithCoalescing_SameQuery(t *testing.T) {
+	t.Parallel()
 	query1 := &dns.Msg{}
 	query1.SetQuestion("example.com.", dns.TypeA)
 
@@ -179,6 +189,7 @@ func TestResolveWithCoalescing_SameQuery(t *testing.T) {
 }
 
 func TestDoResolve_UnknownMode(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	config.Mode = RecursionMode(999) // Invalid mode
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
@@ -196,6 +207,7 @@ func TestDoResolve_UnknownMode(t *testing.T) {
 }
 
 func TestResolveWithCoalescing_Disabled(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	config.EnableCoalescing = false
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
@@ -215,6 +227,7 @@ func TestResolveWithCoalescing_Disabled(t *testing.T) {
 }
 
 func TestDoRecursiveResolve_NoIterativeResolver(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig() // ForwardingMode
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
@@ -235,6 +248,7 @@ func TestDoRecursiveResolve_NoIterativeResolver(t *testing.T) {
 }
 
 func TestDoRecursiveResolve_NoQuestions(t *testing.T) {
+	t.Parallel()
 	config := DefaultResolverConfig()
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
@@ -251,6 +265,7 @@ func TestDoRecursiveResolve_NoQuestions(t *testing.T) {
 }
 
 func TestInflightRequest(t *testing.T) {
+	t.Parallel()
 	inflight := &inflightRequest{
 		done: make(chan struct{}),
 	}
@@ -283,6 +298,7 @@ func TestInflightRequest(t *testing.T) {
 }
 
 func TestResolverConfig_Validation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		modify func(*ResolverConfig)
@@ -332,6 +348,7 @@ func TestResolverConfig_Validation(t *testing.T) {
 }
 
 func TestResolverStats(t *testing.T) {
+	t.Parallel()
 	stats := ResolverStats{
 		InFlightQueries: 5,
 		Upstreams:       []cache.UpstreamSnapshot{{Address: "8.8.8.8:53", TotalQueries: 100}},
@@ -347,6 +364,7 @@ func TestResolverStats(t *testing.T) {
 }
 
 func TestDNSSECIntegration(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	config.EnableDNSSEC = true
 	config.DNSSECConfig = dnssec.DefaultValidatorConfig()
@@ -364,6 +382,7 @@ func TestDNSSECIntegration(t *testing.T) {
 }
 
 func TestCoalescingInFlightMap(t *testing.T) {
+	t.Parallel()
 	config := DefaultForwardingConfig()
 	config.EnableCoalescing = true
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})

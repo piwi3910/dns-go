@@ -7,7 +7,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Helper function to create a test zone
+// Helper function to create a test zone.
 func createTestZone() *Zone {
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
@@ -63,6 +63,7 @@ func createTestZone() *Zone {
 // AXFR Tests
 
 func TestValidateAXFRQuery(t *testing.T) {
+	t.Parallel()
 	// Valid AXFR query
 	query := &dns.Msg{}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
@@ -100,6 +101,7 @@ func TestValidateAXFRQuery(t *testing.T) {
 }
 
 func TestAXFRHandler_HandleAXFR(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewAXFRHandler(zone)
 
@@ -135,6 +137,7 @@ func TestAXFRHandler_HandleAXFR(t *testing.T) {
 }
 
 func TestAXFRHandler_HandleAXFR_ACLDenied(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewAXFRHandler(zone)
 
@@ -149,6 +152,7 @@ func TestAXFRHandler_HandleAXFR_ACLDenied(t *testing.T) {
 }
 
 func TestAXFRHandler_HandleAXFR_EmptyZone(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"any"},
@@ -167,6 +171,7 @@ func TestAXFRHandler_HandleAXFR_EmptyZone(t *testing.T) {
 // IXFR Tests
 
 func TestValidateIXFRQuery(t *testing.T) {
+	t.Parallel()
 	// Valid IXFR query
 	query := &dns.Msg{}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
@@ -198,6 +203,7 @@ func TestValidateIXFRQuery(t *testing.T) {
 }
 
 func TestExtractClientSerial(t *testing.T) {
+	t.Parallel()
 	query := &dns.Msg{}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
@@ -230,6 +236,7 @@ func TestExtractClientSerial(t *testing.T) {
 }
 
 func TestIXFRHandler_HandleIXFR_UpToDate(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
@@ -258,6 +265,7 @@ func TestIXFRHandler_HandleIXFR_UpToDate(t *testing.T) {
 }
 
 func TestIXFRHandler_HandleIXFR_NeedsDelta(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
@@ -302,6 +310,7 @@ func TestIXFRHandler_HandleIXFR_NeedsDelta(t *testing.T) {
 }
 
 func TestIXFRHandler_HandleIXFR_FallbackToAXFR(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
@@ -320,6 +329,7 @@ func TestIXFRHandler_HandleIXFR_FallbackToAXFR(t *testing.T) {
 }
 
 func TestIXFRHandler_RecordDelta(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
@@ -362,6 +372,7 @@ func TestIXFRHandler_RecordDelta(t *testing.T) {
 }
 
 func TestIXFRHandler_PruneDeltaLog(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"any"},
@@ -401,20 +412,21 @@ func TestIXFRHandler_PruneDeltaLog(t *testing.T) {
 }
 
 func TestSerialCompare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		s1       uint32
 		s2       uint32
 		expected int
 	}{
-		{100, 100, 0},         // Equal
-		{100, 101, -1},        // s1 < s2 (normal case)
-		{101, 100, 1},         // s1 > s2 (normal case)
-		{0, 1, -1},            // 0 < 1
-		{1, 2147483647, -1},   // 1 < 2147483647 (maximum difference that's < half-range)
-		{2147483648, 1, 1},    // 2147483648 > 1 (wrap-around)
-		{4294967295, 0, -1},   // 4294967295 < 0 (wrap-around, 0 is newer)
-		{0, 4294967295, 1},    // 0 > 4294967295 (0 is newer)
-		{100, 1000, -1},       // 100 < 1000 (normal increment)
+		{100, 100, 0},       // Equal
+		{100, 101, -1},      // s1 < s2 (normal case)
+		{101, 100, 1},       // s1 > s2 (normal case)
+		{0, 1, -1},          // 0 < 1
+		{1, 2147483647, -1}, // 1 < 2147483647 (maximum difference that's < half-range)
+		{2147483648, 1, 1},  // 2147483648 > 1 (wrap-around)
+		{4294967295, 0, -1}, // 4294967295 < 0 (wrap-around, 0 is newer)
+		{0, 4294967295, 1},  // 0 > 4294967295 (0 is newer)
+		{100, 1000, -1},     // 100 < 1000 (normal increment)
 	}
 
 	for _, tt := range tests {
@@ -426,10 +438,11 @@ func TestSerialCompare(t *testing.T) {
 }
 
 func TestAXFRHandler_SplitIntoMessages(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 
 	// Add many records to trigger splitting
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		a := &dns.A{
 			Hdr: dns.RR_Header{
 				Name:   dns.Fqdn(fmt.Sprintf("host%d.example.com", i)),
@@ -466,6 +479,7 @@ func TestAXFRHandler_SplitIntoMessages(t *testing.T) {
 }
 
 func TestIXFRHandler_FindDeltas(t *testing.T) {
+	t.Parallel()
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 

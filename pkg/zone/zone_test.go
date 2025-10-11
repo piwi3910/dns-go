@@ -7,6 +7,7 @@ import (
 )
 
 func TestNewZone(t *testing.T) {
+	t.Parallel()
 	config := ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
@@ -24,6 +25,7 @@ func TestNewZone(t *testing.T) {
 }
 
 func TestZone_AddRecord(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	// Add A record
@@ -59,6 +61,7 @@ func TestZone_AddRecord(t *testing.T) {
 }
 
 func TestZone_AddRecord_OutOfZone(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	// Try to add record outside zone
@@ -79,6 +82,7 @@ func TestZone_AddRecord_OutOfZone(t *testing.T) {
 }
 
 func TestZone_AddSOA(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	soa := &dns.SOA{
@@ -112,6 +116,7 @@ func TestZone_AddSOA(t *testing.T) {
 }
 
 func TestZone_GetAllRecords(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	// Add multiple records for same owner
@@ -144,6 +149,7 @@ func TestZone_GetAllRecords(t *testing.T) {
 }
 
 func TestZone_IncrementSerial(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	soa := &dns.SOA{
@@ -170,11 +176,12 @@ func TestZone_IncrementSerial(t *testing.T) {
 }
 
 func TestZone_IsTransferAllowed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name      string
-		acl       []string
-		clientIP  string
-		allowed   bool
+		name     string
+		acl      []string
+		clientIP string
+		allowed  bool
 	}{
 		{"Empty ACL", []string{}, "192.0.2.1", false},
 		{"Explicit allow", []string{"192.0.2.1"}, "192.0.2.1", true},
@@ -199,6 +206,7 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 }
 
 func TestZone_RecordCount(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	if zone.RecordCount() != 0 {
@@ -224,6 +232,7 @@ func TestZone_RecordCount(t *testing.T) {
 }
 
 func TestZone_Clear(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	// Add records
@@ -250,6 +259,7 @@ func TestZone_Clear(t *testing.T) {
 }
 
 func TestZone_Clone(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
@@ -293,6 +303,7 @@ func TestZone_Clone(t *testing.T) {
 }
 
 func TestZone_GetAllRecordsOrdered(t *testing.T) {
+	t.Parallel()
 	zone := NewZone(ZoneConfig{Origin: "example.com"})
 
 	// Add SOA

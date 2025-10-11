@@ -8,7 +8,7 @@ import (
 )
 
 // BenchmarkMessageCacheGet tests zero-allocation cache lookup
-// Target: 0 allocs/op
+// Target: 0 allocs/op.
 func BenchmarkMessageCacheGet(b *testing.B) {
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
@@ -23,12 +23,12 @@ func BenchmarkMessageCacheGet(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = cache.Get(key)
 	}
 }
 
-// BenchmarkMessageCacheGetParallel tests concurrent cache lookups
+// BenchmarkMessageCacheGetParallel tests concurrent cache lookups.
 func BenchmarkMessageCacheGetParallel(b *testing.B) {
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
@@ -50,7 +50,7 @@ func BenchmarkMessageCacheGetParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkMessageCacheSet tests cache insertion
+// BenchmarkMessageCacheSet tests cache insertion.
 func BenchmarkMessageCacheSet(b *testing.B) {
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
@@ -62,25 +62,26 @@ func BenchmarkMessageCacheSet(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		key := MakeKey("example.com.", dns.TypeA, dns.ClassINET)
 		cache.Set(key, response, 5*time.Minute)
 	}
 }
 
 // BenchmarkMakeKey tests cache key generation
-// Target: < 100ns, minimal allocs
+// Target: < 100ns, minimal allocs.
 func BenchmarkMakeKey(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = MakeKey("example.com.", dns.TypeA, dns.ClassINET)
 	}
 }
 
-// TestMessageCacheGetSet tests basic cache operations
+// TestMessageCacheGetSet tests basic cache operations.
 func TestMessageCacheGetSet(t *testing.T) {
+	t.Parallel()
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
 	// Create a response
@@ -106,8 +107,9 @@ func TestMessageCacheGetSet(t *testing.T) {
 	}
 }
 
-// TestMessageCacheExpiry tests TTL expiration
+// TestMessageCacheExpiry tests TTL expiration.
 func TestMessageCacheExpiry(t *testing.T) {
+	t.Parallel()
 	// Create cache with very low MinTTL for testing
 	config := DefaultMessageCacheConfig()
 	config.MinTTL = 10 * time.Millisecond
@@ -136,8 +138,9 @@ func TestMessageCacheExpiry(t *testing.T) {
 	}
 }
 
-// TestMessageCacheMiss tests cache miss behavior
+// TestMessageCacheMiss tests cache miss behavior.
 func TestMessageCacheMiss(t *testing.T) {
+	t.Parallel()
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
 	key := MakeKey("nonexistent.com.", dns.TypeA, dns.ClassINET)
@@ -153,8 +156,9 @@ func TestMessageCacheMiss(t *testing.T) {
 	}
 }
 
-// TestMessageCacheStats tests statistics tracking
+// TestMessageCacheStats tests statistics tracking.
 func TestMessageCacheStats(t *testing.T) {
+	t.Parallel()
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
 	msg := new(dns.Msg)
@@ -166,12 +170,12 @@ func TestMessageCacheStats(t *testing.T) {
 	cache.Set(key, response, 5*time.Minute)
 
 	// Generate hits
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		cache.Get(key)
 	}
 
 	// Generate misses
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		cache.Get("nonexistent")
 	}
 
@@ -191,8 +195,9 @@ func TestMessageCacheStats(t *testing.T) {
 	}
 }
 
-// TestMessageCacheSharding tests that different keys go to different shards
+// TestMessageCacheSharding tests that different keys go to different shards.
 func TestMessageCacheSharding(t *testing.T) {
+	t.Parallel()
 	config := DefaultMessageCacheConfig()
 	config.NumShards = 4
 	cache := NewMessageCache(config)
@@ -219,8 +224,9 @@ func TestMessageCacheSharding(t *testing.T) {
 	}
 }
 
-// TestMessageCacheDelete tests cache deletion
+// TestMessageCacheDelete tests cache deletion.
 func TestMessageCacheDelete(t *testing.T) {
+	t.Parallel()
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
 	msg := new(dns.Msg)
@@ -245,8 +251,9 @@ func TestMessageCacheDelete(t *testing.T) {
 	}
 }
 
-// TestMessageCacheClear tests clearing entire cache
+// TestMessageCacheClear tests clearing entire cache.
 func TestMessageCacheClear(t *testing.T) {
+	t.Parallel()
 	cache := NewMessageCache(DefaultMessageCacheConfig())
 
 	msg := new(dns.Msg)
@@ -255,7 +262,7 @@ func TestMessageCacheClear(t *testing.T) {
 	response, _ := msg.Pack()
 
 	// Add multiple entries
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		key := MakeKey("example.com.", dns.TypeA, dns.ClassINET)
 		cache.Set(key, response, 5*time.Minute)
 	}
@@ -270,8 +277,9 @@ func TestMessageCacheClear(t *testing.T) {
 	}
 }
 
-// TestMessageCacheTTLBounds tests TTL enforcement
+// TestMessageCacheTTLBounds tests TTL enforcement.
 func TestMessageCacheTTLBounds(t *testing.T) {
+	t.Parallel()
 	config := DefaultMessageCacheConfig()
 	config.MinTTL = 60 * time.Second
 	config.MaxTTL = 1 * time.Hour
@@ -299,8 +307,9 @@ func TestMessageCacheTTLBounds(t *testing.T) {
 	}
 }
 
-// TestShouldPrefetch tests prefetch heuristic
+// TestShouldPrefetch tests prefetch heuristic.
 func TestShouldPrefetch(t *testing.T) {
+	t.Parallel()
 	// Create entry that expires in 1 second, was created 10 seconds ago
 	// This simulates an entry with original TTL of 11 seconds, now with 1 second left
 	// TTL remaining = 1/11 = ~9% which is below 10% threshold

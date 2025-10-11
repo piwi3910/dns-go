@@ -14,7 +14,7 @@ import (
 	"github.com/piwi3910/dns-go/pkg/security"
 )
 
-// Handler implements the DNS query handler with fast-path optimization
+// Handler implements the DNS query handler with fast-path optimization.
 type Handler struct {
 	// Caches
 	messageCache *cache.MessageCache
@@ -32,15 +32,15 @@ type Handler struct {
 	dnssecValidator *dnssec.Validator
 
 	// Security components
-	rateLimiter            *security.RateLimiter
-	queryValidator         *security.QueryValidator
+	rateLimiter             *security.RateLimiter
+	queryValidator          *security.QueryValidator
 	cachePoisoningProtector *security.CachePoisoningProtector
 
 	// Config
 	config HandlerConfig
 }
 
-// HandlerConfig holds configuration for the handler
+// HandlerConfig holds configuration for the handler.
 type HandlerConfig struct {
 	// EnableCache enables caching (default: true)
 	EnableCache bool
@@ -68,21 +68,21 @@ type HandlerConfig struct {
 }
 
 // DefaultHandlerConfig returns configuration with sensible defaults
-// Uses forwarding mode for best performance
+// Uses forwarding mode for best performance.
 func DefaultHandlerConfig() HandlerConfig {
 	return HandlerConfig{
 		EnableCache:                    true,
 		EnableFastPath:                 true,
 		DefaultTTL:                     5 * time.Minute,
 		ResolverMode:                   resolver.ForwardingMode, // Default to forwarding for performance
-		EnableDNSSEC:                   true,                     // Enable DNSSEC validation by default
-		EnableRateLimiting:             true,                     // Enable rate limiting by default
-		EnableQueryValidation:          true,                     // Enable query validation by default
-		EnableCachePoisoningProtection: true,                     // Enable cache poisoning protection by default
+		EnableDNSSEC:                   true,                    // Enable DNSSEC validation by default
+		EnableRateLimiting:             true,                    // Enable rate limiting by default
+		EnableQueryValidation:          true,                    // Enable query validation by default
+		EnableCachePoisoningProtection: true,                    // Enable cache poisoning protection by default
 	}
 }
 
-// NewHandler creates a new DNS query handler
+// NewHandler creates a new DNS query handler.
 func NewHandler(config HandlerConfig) *Handler {
 	infraCache := cache.NewInfraCache()
 
@@ -130,7 +130,7 @@ func NewHandler(config HandlerConfig) *Handler {
 }
 
 // HandleQuery processes a DNS query and returns a response
-// This is the main entry point for all queries
+// This is the main entry point for all queries.
 func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
 	// Security: Rate limiting check
 	if h.config.EnableRateLimiting && !h.rateLimiter.Allow(addr) {
@@ -143,6 +143,7 @@ func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) 
 		msg := h.msgPool.Get()
 		if err := msg.Unpack(query); err != nil {
 			h.msgPool.Put(msg)
+
 			return h.buildErrorResponse(query, dns.RcodeFormatError)
 		}
 
@@ -164,7 +165,7 @@ func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) 
 }
 
 // handleFastPath processes queries that can use the optimized fast path
-// This is the HOT PATH - must be extremely fast and allocation-free
+// This is the HOT PATH - must be extremely fast and allocation-free.
 func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
 	// Parse query to get cache key
 	fpq, err := dnsio.ParseFastPathQuery(query)
@@ -198,6 +199,7 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 						// Update message ID
 						finalBytes[0] = query[0]
 						finalBytes[1] = query[1]
+
 						return finalBytes, nil
 					}
 				}
@@ -209,6 +211,7 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 		result[0] = query[0]
 		result[1] = query[1]
 		copy(result[2:], cachedResponse[2:])
+
 		return result, nil
 	}
 
@@ -285,6 +288,7 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 					// Update message ID from query
 					finalBytes[0] = query[0]
 					finalBytes[1] = query[1]
+
 					return h.handleResponseSize(msg, finalBytes)
 				}
 			}
@@ -294,6 +298,7 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 			result[0] = query[0]
 			result[1] = query[1]
 			copy(result[2:], cachedResponse[2:])
+
 			return h.handleResponseSize(msg, result)
 		}
 
@@ -328,7 +333,7 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 	})
 }
 
-// handleCacheMiss handles queries that are not in cache
+// handleCacheMiss handles queries that are not in cache.
 func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.FastPathQuery) ([]byte, error) {
 	// Parse query
 	msg := h.msgPool.Get()
@@ -392,7 +397,7 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 	return h.handleResponseSize(msg, responseBytes)
 }
 
-// buildErrorResponse builds an error response for a query
+// buildErrorResponse builds an error response for a query.
 func (h *Handler) buildErrorResponse(query []byte, rcode int) ([]byte, error) {
 	msg := h.msgPool.Get()
 	defer h.msgPool.Put(msg)
@@ -402,17 +407,19 @@ func (h *Handler) buildErrorResponse(query []byte, rcode int) ([]byte, error) {
 		// If we can't parse, build minimal error response
 		response := new(dns.Msg)
 		response.SetRcode(&dns.Msg{}, rcode)
+
 		return response.Pack()
 	}
 
 	// Build error response maintaining question
 	response := new(dns.Msg)
 	response.SetRcode(msg, rcode)
+
 	return response.Pack()
 }
 
 // CacheResponse stores a response in both caches
-// This is called after successful resolution
+// This is called after successful resolution.
 func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
 	if !h.config.EnableCache {
 		return nil
@@ -456,13 +463,13 @@ func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
 	return nil
 }
 
-// GetStats returns combined statistics from all caches
+// GetStats returns combined statistics from all caches.
 type Stats struct {
 	MessageCache cache.MessageCacheStats
 	RRsetCache   cache.RRsetCacheStats
 }
 
-// GetStats returns statistics from the handler
+// GetStats returns statistics from the handler.
 func (h *Handler) GetStats() Stats {
 	return Stats{
 		MessageCache: h.messageCache.GetStats(),
@@ -470,7 +477,7 @@ func (h *Handler) GetStats() Stats {
 	}
 }
 
-// ClearCaches clears all caches
+// ClearCaches clears all caches.
 func (h *Handler) ClearCaches() {
 	h.messageCache.Clear()
 	h.rrsetCache.Clear()
@@ -478,7 +485,7 @@ func (h *Handler) ClearCaches() {
 }
 
 // applyEDNS0 adds EDNS0 OPT record to response if query had EDNS0
-// Also handles response truncation if response exceeds buffer size
+// Also handles response truncation if response exceeds buffer size.
 func (h *Handler) applyEDNS0(queryMsg, responseMsg *dns.Msg) {
 	// Parse EDNS0 from query
 	ednsInfo := edns0.ParseEDNS0(queryMsg)
@@ -497,7 +504,7 @@ func (h *Handler) applyEDNS0(queryMsg, responseMsg *dns.Msg) {
 	edns0.AddOPTRecord(responseMsg, bufferSize, ednsInfo.DO)
 }
 
-// handleResponseSize checks if response fits in EDNS0 buffer and truncates if needed
+// handleResponseSize checks if response fits in EDNS0 buffer and truncates if needed.
 func (h *Handler) handleResponseSize(queryMsg *dns.Msg, responseBytes []byte) ([]byte, error) {
 	// Parse EDNS0 from query
 	ednsInfo := edns0.ParseEDNS0(queryMsg)

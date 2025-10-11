@@ -2,7 +2,7 @@ package resolver
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net"
 	"runtime"
 	"sync"
@@ -13,7 +13,7 @@ import (
 )
 
 // UpstreamPool manages connections to upstream DNS servers
-// Uses client pooling for efficient query handling
+// Uses client pooling for efficient query handling.
 type UpstreamPool struct {
 	// infraCache tracks server statistics for smart selection
 	infraCache *cache.InfraCache
@@ -37,7 +37,7 @@ type UpstreamPool struct {
 	maxConnsPerUpstream int
 }
 
-// UpstreamConfig holds configuration for the upstream pool
+// UpstreamConfig holds configuration for the upstream pool.
 type UpstreamConfig struct {
 	// Upstreams is the list of upstream DNS servers
 	Upstreams []string
@@ -52,14 +52,14 @@ type UpstreamConfig struct {
 	ConnectionsPerUpstream int
 }
 
-// DefaultUpstreamConfig returns configuration with sensible defaults
+// DefaultUpstreamConfig returns configuration with sensible defaults.
 func DefaultUpstreamConfig() UpstreamConfig {
 	return UpstreamConfig{
 		Upstreams: []string{
-			"8.8.8.8:53",   // Google DNS
-			"8.8.4.4:53",   // Google DNS
-			"1.1.1.1:53",   // Cloudflare DNS
-			"1.0.0.1:53",   // Cloudflare DNS
+			"8.8.8.8:53", // Google DNS
+			"8.8.4.4:53", // Google DNS
+			"1.1.1.1:53", // Cloudflare DNS
+			"1.0.0.1:53", // Cloudflare DNS
 		},
 		Timeout:                5 * time.Second,
 		MaxRetries:             2,
@@ -67,7 +67,7 @@ func DefaultUpstreamConfig() UpstreamConfig {
 	}
 }
 
-// NewUpstreamPool creates a new upstream connection pool
+// NewUpstreamPool creates a new upstream connection pool.
 func NewUpstreamPool(config UpstreamConfig, infraCache *cache.InfraCache) *UpstreamPool {
 	timeout := config.Timeout
 
@@ -77,10 +77,10 @@ func NewUpstreamPool(config UpstreamConfig, infraCache *cache.InfraCache) *Upstr
 	}
 
 	pool := &UpstreamPool{
-		infraCache: infraCache,
-		timeout:   timeout,
-		upstreams: config.Upstreams,
-		udpPools:  make(map[string]*udpConnPool),
+		infraCache:          infraCache,
+		timeout:             timeout,
+		upstreams:           config.Upstreams,
+		udpPools:            make(map[string]*udpConnPool),
 		maxConnsPerUpstream: maxConns,
 	}
 
@@ -92,7 +92,7 @@ func NewUpstreamPool(config UpstreamConfig, infraCache *cache.InfraCache) *Upstr
 }
 
 // Query sends a DNS query to an upstream server
-// Automatically selects the best upstream based on statistics
+// Automatically selects the best upstream based on statistics.
 func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, error) {
 	up.mu.RLock()
 	upstreams := up.upstreams
@@ -117,6 +117,7 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	conn, err := pool.Get(queryCtx)
 	if err != nil {
 		stats.RecordFailure()
+
 		return nil, err
 	}
 
@@ -124,6 +125,7 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	if err != nil {
 		pool.Discard(conn)
 		stats.RecordFailure()
+
 		return nil, err
 	}
 
@@ -131,7 +133,8 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 
 	if response == nil {
 		stats.RecordFailure()
-		return nil, fmt.Errorf("nil response from upstream")
+
+		return nil, errors.New("nil response from upstream")
 	}
 
 	stats.RecordSuccess(rtt)
@@ -144,7 +147,7 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	return response, nil
 }
 
-// queryTCP performs a query over TCP (for truncated responses)
+// queryTCP performs a query over TCP (for truncated responses).
 func (up *UpstreamPool) queryTCP(ctx context.Context, msg *dns.Msg, addr string, stats *cache.UpstreamStats) (*dns.Msg, error) {
 	tcpClient := &dns.Client{
 		Net:     "tcp",
@@ -156,6 +159,7 @@ func (up *UpstreamPool) queryTCP(ctx context.Context, msg *dns.Msg, addr string,
 
 	if err != nil {
 		stats.RecordFailure()
+
 		return nil, err
 	}
 
@@ -165,7 +169,7 @@ func (up *UpstreamPool) queryTCP(ctx context.Context, msg *dns.Msg, addr string,
 	return response, nil
 }
 
-// QueryWithFallback queries upstream with automatic fallback to other servers on failure
+// QueryWithFallback queries upstream with automatic fallback to other servers on failure.
 func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, maxRetries int) (*dns.Msg, error) {
 	up.mu.RLock()
 	upstreams := up.upstreams
@@ -177,7 +181,7 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 
 	var lastErr error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for range maxRetries {
 		// Select best upstream (may be different after failures)
 		addr := up.infraCache.SelectBest(upstreams)
 		stats := up.infraCache.GetOrCreate(addr)
@@ -192,6 +196,7 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 			stats.RecordFailure()
 			stats.RecordQueryEnd()
 			lastErr = err
+
 			continue
 		}
 
@@ -202,6 +207,7 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 			stats.RecordFailure()
 			stats.RecordQueryEnd()
 			lastErr = err
+
 			continue
 		}
 
@@ -210,7 +216,8 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 
 		if response == nil {
 			stats.RecordFailure()
-			lastErr = fmt.Errorf("nil response from upstream")
+			lastErr = errors.New("nil response from upstream")
+
 			continue
 		}
 
@@ -223,6 +230,7 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 				return tcpResponse, nil
 			}
 			lastErr = tcpErr
+
 			continue
 		}
 
@@ -231,13 +239,13 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 
 	// All attempts failed
 	if lastErr == nil {
-		lastErr = fmt.Errorf("all upstreams failed")
+		lastErr = errors.New("all upstreams failed")
 	}
 
 	return nil, lastErr
 }
 
-// SetUpstreams updates the list of upstream servers
+// SetUpstreams updates the list of upstream servers.
 func (up *UpstreamPool) SetUpstreams(upstreams []string) {
 	up.mu.Lock()
 	defer up.mu.Unlock()
@@ -262,23 +270,24 @@ func (up *UpstreamPool) SetUpstreams(upstreams []string) {
 	}
 }
 
-// GetUpstreams returns the current list of upstream servers
+// GetUpstreams returns the current list of upstream servers.
 func (up *UpstreamPool) GetUpstreams() []string {
 	up.mu.RLock()
 	defer up.mu.RUnlock()
 
 	result := make([]string, len(up.upstreams))
 	copy(result, up.upstreams)
+
 	return result
 }
 
-// GetStats returns statistics for all upstream servers
+// GetStats returns statistics for all upstream servers.
 func (up *UpstreamPool) GetStats() []cache.UpstreamSnapshot {
 	return up.infraCache.GetAllStats()
 }
 
 // Close closes the upstream pool
-// dns.Client doesn't need explicit closing
+// dns.Client doesn't need explicit closing.
 func (up *UpstreamPool) Close() error {
 	up.poolMu.Lock()
 	defer up.poolMu.Unlock()
@@ -291,10 +300,10 @@ func (up *UpstreamPool) Close() error {
 	return nil
 }
 
-// exchangeWithConn performs a single query over an existing UDP connection
+// exchangeWithConn performs a single query over an existing UDP connection.
 func (up *UpstreamPool) exchangeWithConn(ctx context.Context, conn *dns.Conn, msg *dns.Msg) (*dns.Msg, time.Duration, error) {
 	if conn == nil {
-		return nil, 0, fmt.Errorf("nil UDP connection")
+		return nil, 0, errors.New("nil UDP connection")
 	}
 
 	deadline, ok := ctx.Deadline()
@@ -320,7 +329,7 @@ func (up *UpstreamPool) exchangeWithConn(ctx context.Context, conn *dns.Conn, ms
 	return response, rtt, nil
 }
 
-// getPool returns (creating if needed) the UDP connection pool for an address
+// getPool returns (creating if needed) the UDP connection pool for an address.
 func (up *UpstreamPool) getPool(addr string) *udpConnPool {
 	up.poolMu.RLock()
 	pool := up.udpPools[addr]
@@ -339,6 +348,7 @@ func (up *UpstreamPool) getPool(addr string) *udpConnPool {
 
 	pool = newUDPConnPool(addr, up.maxConnsPerUpstream, up.timeout)
 	up.udpPools[addr] = pool
+
 	return pool
 }
 
@@ -377,8 +387,10 @@ func (p *udpConnPool) Get(ctx context.Context) (*dns.Conn, error) {
 		conn, err := p.dial(ctx)
 		if err != nil {
 			p.decrementTotal()
+
 			return nil, err
 		}
+
 		return conn, nil
 	}
 
@@ -438,6 +450,7 @@ func (p *udpConnPool) incrementTotal() bool {
 	}
 
 	p.total++
+
 	return true
 }
 

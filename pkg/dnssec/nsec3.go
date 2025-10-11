@@ -3,18 +3,19 @@ package dnssec
 import (
 	"crypto/sha1"
 	"encoding/base32"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
 )
 
-// NSEC3Validator validates NSEC3 records for authenticated denial of existence
+// NSEC3Validator validates NSEC3 records for authenticated denial of existence.
 type NSEC3Validator struct {
 	validator *Validator
 }
 
-// NewNSEC3Validator creates a new NSEC3 validator
+// NewNSEC3Validator creates a new NSEC3 validator.
 func NewNSEC3Validator(validator *Validator) *NSEC3Validator {
 	return &NSEC3Validator{
 		validator: validator,
@@ -22,10 +23,10 @@ func NewNSEC3Validator(validator *Validator) *NSEC3Validator {
 }
 
 // ValidateNXDOMAIN validates that a name does not exist using NSEC3
-// RFC 5155 §8.4: Closest Encloser Proof
+// RFC 5155 §8.4: Closest Encloser Proof.
 func (n3v *NSEC3Validator) ValidateNXDOMAIN(qname string, nsec3Records []*dns.NSEC3) error {
 	if len(nsec3Records) == 0 {
-		return fmt.Errorf("no NSEC3 records provided for NXDOMAIN proof")
+		return errors.New("no NSEC3 records provided for NXDOMAIN proof")
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -61,10 +62,10 @@ func (n3v *NSEC3Validator) ValidateNXDOMAIN(qname string, nsec3Records []*dns.NS
 }
 
 // ValidateNODATA validates that a name exists but has no data for the requested type
-// RFC 5155 §8.5-8.7: NODATA proofs
+// RFC 5155 §8.5-8.7: NODATA proofs.
 func (n3v *NSEC3Validator) ValidateNODATA(qname string, qtype uint16, nsec3Records []*dns.NSEC3) error {
 	if len(nsec3Records) == 0 {
-		return fmt.Errorf("no NSEC3 records provided for NODATA proof")
+		return errors.New("no NSEC3 records provided for NODATA proof")
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -90,7 +91,7 @@ func (n3v *NSEC3Validator) ValidateNODATA(qname string, qtype uint16, nsec3Recor
 	return fmt.Errorf("no matching NSEC3 record found for %s (hash: %s)", qname, hashedName)
 }
 
-// proveNameDoesNotExist proves a name doesn't exist using NSEC3
+// proveNameDoesNotExist proves a name doesn't exist using NSEC3.
 func (n3v *NSEC3Validator) proveNameDoesNotExist(name string, nsec3Records []*dns.NSEC3, param *nsec3Params) error {
 	name = dns.Fqdn(strings.ToLower(name))
 	hashedName := hashNameWithParams(name, param)
@@ -109,14 +110,14 @@ func (n3v *NSEC3Validator) proveNameDoesNotExist(name string, nsec3Records []*dn
 	return fmt.Errorf("no NSEC3 covers hashed name %s", hashedName)
 }
 
-// findClosestEncloser finds the closest enclosing name that exists
+// findClosestEncloser finds the closest enclosing name that exists.
 func (n3v *NSEC3Validator) findClosestEncloser(qname string, nsec3Records []*dns.NSEC3, nsec3 *dns.NSEC3) (string, error) {
 	qname = dns.Fqdn(strings.ToLower(qname))
 
 	// Start from the query name and walk up the tree
 	labels := strings.Split(strings.TrimSuffix(qname, "."), ".")
 
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		testName := strings.Join(labels[i:], ".") + "."
 		hashedName := hashName(testName, nsec3)
 
@@ -133,7 +134,7 @@ func (n3v *NSEC3Validator) findClosestEncloser(qname string, nsec3Records []*dns
 	return "", fmt.Errorf("no closest encloser found for %s", qname)
 }
 
-// getNextCloser returns the next closer name to the closest encloser
+// getNextCloser returns the next closer name to the closest encloser.
 func getNextCloser(qname, closestEncloser string) string {
 	qname = dns.Fqdn(strings.ToLower(qname))
 	closestEncloser = dns.Fqdn(strings.ToLower(closestEncloser))
@@ -150,7 +151,7 @@ func getNextCloser(qname, closestEncloser string) string {
 	return strings.Join(qLabels[len(qLabels)-len(ceLabels)-1:], ".") + "."
 }
 
-// coversHash checks if an NSEC3 record covers a hashed name
+// coversHash checks if an NSEC3 record covers a hashed name.
 func coversHash(owner, next, hash string) bool {
 	// NSEC3 uses base32hex encoding (no padding)
 	// Comparison is lexicographic on the hash values
@@ -168,15 +169,15 @@ func coversHash(owner, next, hash string) bool {
 	}
 }
 
-// nsec3Params holds NSEC3 hash parameters
+// nsec3Params holds NSEC3 hash parameters.
 type nsec3Params struct {
-	HashAlg   uint8
-	Flags     uint8
+	HashAlg    uint8
+	Flags      uint8
 	Iterations uint16
-	Salt      string
+	Salt       string
 }
 
-// extractNSEC3Params extracts hash parameters from an NSEC3 record
+// extractNSEC3Params extracts hash parameters from an NSEC3 record.
 func extractNSEC3Params(nsec3 *dns.NSEC3) *nsec3Params {
 	return &nsec3Params{
 		HashAlg:    nsec3.Hash,
@@ -186,13 +187,14 @@ func extractNSEC3Params(nsec3 *dns.NSEC3) *nsec3Params {
 	}
 }
 
-// hashName hashes a domain name using NSEC3 parameters from an NSEC3 record
+// hashName hashes a domain name using NSEC3 parameters from an NSEC3 record.
 func hashName(name string, nsec3 *dns.NSEC3) string {
 	param := extractNSEC3Params(nsec3)
+
 	return hashNameWithParams(name, param)
 }
 
-// hashNameWithParams hashes a domain name using NSEC3 parameters
+// hashNameWithParams hashes a domain name using NSEC3 parameters.
 func hashNameWithParams(name string, param *nsec3Params) string {
 	name = dns.Fqdn(strings.ToLower(name))
 
@@ -220,7 +222,7 @@ func hashNameWithParams(name string, param *nsec3Params) string {
 	return base32Encode(hash)
 }
 
-// nsec3Hash performs NSEC3 hash with iterations (RFC 5155 §5)
+// nsec3Hash performs NSEC3 hash with iterations (RFC 5155 §5).
 func nsec3Hash(data, salt []byte, iterations uint16) []byte {
 	// IH(salt, x, 0) = H(x || salt)
 	// IH(salt, x, k) = H(IH(salt, x, k-1) || salt), k > 0
@@ -231,7 +233,7 @@ func nsec3Hash(data, salt []byte, iterations uint16) []byte {
 	digest := h.Sum(nil)
 
 	// Iterate
-	for i := uint16(0); i < iterations; i++ {
+	for range iterations {
 		h.Reset()
 		h.Write(digest)
 		h.Write(salt)
@@ -241,31 +243,34 @@ func nsec3Hash(data, salt []byte, iterations uint16) []byte {
 	return digest
 }
 
-// base32Encode encodes data in base32hex without padding
+// base32Encode encodes data in base32hex without padding.
 func base32Encode(data []byte) string {
 	// RFC 4648 base32hex alphabet (extended hex)
 	encoder := base32.HexEncoding.WithPadding(base32.NoPadding)
+
 	return strings.ToUpper(encoder.EncodeToString(data))
 }
 
-// base32Decode decodes base32hex without padding
+// base32Decode decodes base32hex without padding.
 func base32Decode(encoded string) ([]byte, error) {
 	encoder := base32.HexEncoding.WithPadding(base32.NoPadding)
+
 	return encoder.DecodeString(strings.ToUpper(encoded))
 }
 
 // extractHashFromNSEC3Owner extracts the hash portion from an NSEC3 owner name
-// NSEC3 owner format: <hash>.<zone>
+// NSEC3 owner format: <hash>.<zone>.
 func extractHashFromNSEC3Owner(owner string) string {
 	owner = dns.Fqdn(strings.ToLower(owner))
 	parts := strings.SplitN(owner, ".", 2)
 	if len(parts) < 1 {
 		return ""
 	}
+
 	return strings.ToUpper(parts[0])
 }
 
-// ExtractNSEC3Records extracts NSEC3 records from a DNS message
+// ExtractNSEC3Records extracts NSEC3 records from a DNS message.
 func ExtractNSEC3Records(msg *dns.Msg) []*dns.NSEC3 {
 	nsec3s := make([]*dns.NSEC3, 0)
 
@@ -286,13 +291,13 @@ func ExtractNSEC3Records(msg *dns.Msg) []*dns.NSEC3 {
 	return nsec3s
 }
 
-// IsOptOut checks if NSEC3 opt-out is enabled
+// IsOptOut checks if NSEC3 opt-out is enabled.
 func IsOptOut(nsec3 *dns.NSEC3) bool {
 	// Bit 0 of flags is opt-out flag
 	return nsec3.Flags&0x01 == 0x01
 }
 
-// ValidateNSEC3Params validates NSEC3 parameters are acceptable
+// ValidateNSEC3Params validates NSEC3 parameters are acceptable.
 func ValidateNSEC3Params(nsec3 *dns.NSEC3) error {
 	// Check hash algorithm (only SHA-1 is defined)
 	if nsec3.Hash != dns.SHA1 {

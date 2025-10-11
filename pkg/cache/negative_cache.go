@@ -9,7 +9,7 @@ import (
 )
 
 // NegativeCacheEntry represents a cached negative response
-// Per RFC 2308, negative responses (NXDOMAIN and NODATA) should be cached
+// Per RFC 2308, negative responses (NXDOMAIN and NODATA) should be cached.
 type NegativeCacheEntry struct {
 	// Type of negative response
 	Type NegativeType
@@ -27,33 +27,33 @@ type NegativeCacheEntry struct {
 	SOA *dns.SOA
 }
 
-// NegativeType represents the type of negative response
+// NegativeType represents the type of negative response.
 type NegativeType int
 
 const (
-	// NegativeNXDOMAIN indicates the domain name does not exist
+	// NegativeNXDOMAIN indicates the domain name does not exist.
 	NegativeNXDOMAIN NegativeType = iota
 
-	// NegativeNODATA indicates the domain exists but has no records of the requested type
+	// NegativeNODATA indicates the domain exists but has no records of the requested type.
 	NegativeNODATA
 )
 
-// IsExpired checks if the cache entry has expired
+// IsExpired checks if the cache entry has expired.
 func (e *NegativeCacheEntry) IsExpired() bool {
 	return time.Now().After(e.Expiry)
 }
 
-// IncrementHitCount atomically increments the hit counter
+// IncrementHitCount atomically increments the hit counter.
 func (e *NegativeCacheEntry) IncrementHitCount() {
 	e.HitCount.Add(1)
 }
 
-// NegativeCacheShard is a single shard of the negative cache
+// NegativeCacheShard is a single shard of the negative cache.
 type NegativeCacheShard struct {
 	data sync.Map // Lock-free map for reads
 }
 
-// NegativeCache caches negative DNS responses (NXDOMAIN and NODATA)
+// NegativeCache caches negative DNS responses (NXDOMAIN and NODATA).
 type NegativeCache struct {
 	shards []*NegativeCacheShard
 	config NegativeCacheConfig
@@ -63,7 +63,7 @@ type NegativeCache struct {
 	misses atomic.Int64
 }
 
-// NegativeCacheConfig holds configuration for negative caching
+// NegativeCacheConfig holds configuration for negative caching.
 type NegativeCacheConfig struct {
 	// NumShards is the number of shards (should be power of 2)
 	NumShards int
@@ -81,21 +81,21 @@ type NegativeCacheConfig struct {
 	DefaultTTL time.Duration
 }
 
-// DefaultNegativeCacheConfig returns configuration with RFC 2308 recommendations
+// DefaultNegativeCacheConfig returns configuration with RFC 2308 recommendations.
 func DefaultNegativeCacheConfig() NegativeCacheConfig {
 	return NegativeCacheConfig{
-		NumShards:  32,                // Smaller than message cache
+		NumShards:  32, // Smaller than message cache
 		Enable:     true,
-		MinTTL:     5 * time.Minute,   // RFC 2308 Section 5
-		MaxTTL:     3 * time.Hour,     // RFC 2308 Section 5
-		DefaultTTL: 10 * time.Minute,  // Fallback if no SOA
+		MinTTL:     5 * time.Minute,  // RFC 2308 Section 5
+		MaxTTL:     3 * time.Hour,    // RFC 2308 Section 5
+		DefaultTTL: 10 * time.Minute, // Fallback if no SOA
 	}
 }
 
-// NewNegativeCache creates a new negative cache
+// NewNegativeCache creates a new negative cache.
 func NewNegativeCache(config NegativeCacheConfig) *NegativeCache {
 	shards := make([]*NegativeCacheShard, config.NumShards)
-	for i := 0; i < config.NumShards; i++ {
+	for i := range config.NumShards {
 		shards[i] = &NegativeCacheShard{}
 	}
 
@@ -105,7 +105,7 @@ func NewNegativeCache(config NegativeCacheConfig) *NegativeCache {
 	}
 }
 
-// Get retrieves a negative cache entry
+// Get retrieves a negative cache entry.
 func (nc *NegativeCache) Get(key string) *NegativeCacheEntry {
 	if !nc.config.Enable {
 		return nil
@@ -116,6 +116,7 @@ func (nc *NegativeCache) Get(key string) *NegativeCacheEntry {
 	value, ok := shard.data.Load(key)
 	if !ok {
 		nc.misses.Add(1)
+
 		return nil
 	}
 
@@ -126,6 +127,7 @@ func (nc *NegativeCache) Get(key string) *NegativeCacheEntry {
 		// Lazy eviction
 		shard.data.Delete(key)
 		nc.misses.Add(1)
+
 		return nil
 	}
 
@@ -136,7 +138,7 @@ func (nc *NegativeCache) Get(key string) *NegativeCacheEntry {
 	return entry
 }
 
-// Set stores a negative response in the cache
+// Set stores a negative response in the cache.
 func (nc *NegativeCache) Set(key string, negType NegativeType, soa *dns.SOA) {
 	if !nc.config.Enable {
 		return
@@ -157,7 +159,7 @@ func (nc *NegativeCache) Set(key string, negType NegativeType, soa *dns.SOA) {
 }
 
 // calculateNegativeTTL calculates the TTL for a negative response per RFC 2308
-// Uses the minimum of SOA TTL and SOA MINIMUM field
+// Uses the minimum of SOA TTL and SOA MINIMUM field.
 func (nc *NegativeCache) calculateNegativeTTL(soa *dns.SOA) time.Duration {
 	var ttl time.Duration
 
@@ -187,27 +189,28 @@ func (nc *NegativeCache) calculateNegativeTTL(soa *dns.SOA) time.Duration {
 	return ttl
 }
 
-// getShard returns the shard for a given key
+// getShard returns the shard for a given key.
 func (nc *NegativeCache) getShard(key string) *NegativeCacheShard {
 	hash := fnvHash(key)
 	shardIdx := hash & uint64(len(nc.shards)-1)
+
 	return nc.shards[shardIdx]
 }
 
-// Delete removes an entry from the negative cache
+// Delete removes an entry from the negative cache.
 func (nc *NegativeCache) Delete(key string) {
 	shard := nc.getShard(key)
 	shard.data.Delete(key)
 }
 
-// Stats returns negative cache statistics
+// Stats returns negative cache statistics.
 type NegativeCacheStats struct {
 	Hits    int64
 	Misses  int64
 	HitRate float64
 }
 
-// GetStats returns cache statistics
+// GetStats returns cache statistics.
 func (nc *NegativeCache) GetStats() NegativeCacheStats {
 	hits := nc.hits.Load()
 	misses := nc.misses.Load()
@@ -226,18 +229,19 @@ func (nc *NegativeCache) GetStats() NegativeCacheStats {
 }
 
 // ExtractSOA extracts the SOA record from a DNS message's authority section
-// Per RFC 2308, negative responses should have an SOA in the authority section
+// Per RFC 2308, negative responses should have an SOA in the authority section.
 func ExtractSOA(msg *dns.Msg) *dns.SOA {
 	for _, rr := range msg.Ns {
 		if soa, ok := rr.(*dns.SOA); ok {
 			return soa
 		}
 	}
+
 	return nil
 }
 
 // IsNegativeResponse checks if a DNS response is a negative response
-// Returns (isNegative, negType, soa)
+// Returns (isNegative, negType, soa).
 func IsNegativeResponse(msg *dns.Msg) (bool, NegativeType, *dns.SOA) {
 	// Must be a response
 	if !msg.Response {
@@ -264,7 +268,7 @@ func IsNegativeResponse(msg *dns.Msg) (bool, NegativeType, *dns.SOA) {
 }
 
 // CreateNegativeResponse creates a negative response message
-// Used for serving from negative cache
+// Used for serving from negative cache.
 func CreateNegativeResponse(query *dns.Msg, negType NegativeType, soa *dns.SOA) *dns.Msg {
 	response := &dns.Msg{}
 	response.SetReply(query)
@@ -290,12 +294,13 @@ func CreateNegativeResponse(query *dns.Msg, negType NegativeType, soa *dns.SOA) 
 	return response
 }
 
-// fnvHash is a helper for FNV-1a hashing
+// fnvHash is a helper for FNV-1a hashing.
 func fnvHash(key string) uint64 {
 	hash := uint64(14695981039346656037)
-	for i := 0; i < len(key); i++ {
+	for i := range len(key) {
 		hash ^= uint64(key[i])
 		hash *= 1099511628211
 	}
+
 	return hash
 }

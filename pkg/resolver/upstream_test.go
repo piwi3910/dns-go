@@ -10,6 +10,7 @@ import (
 )
 
 func TestNewUpstreamPool(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -30,6 +31,7 @@ func TestNewUpstreamPool(t *testing.T) {
 }
 
 func TestNewUpstreamPool_EmptyList(t *testing.T) {
+	t.Parallel()
 	config := UpstreamConfig{
 		Upstreams:              []string{},
 		Timeout:                5 * time.Second,
@@ -49,6 +51,7 @@ func TestNewUpstreamPool_EmptyList(t *testing.T) {
 }
 
 func TestUpstreamPool_GetStats(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -97,6 +100,7 @@ func TestUpstreamPool_GetStats(t *testing.T) {
 }
 
 func TestQuery_Timeout(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"192.0.2.1:53"} // Non-existent IP
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -121,6 +125,7 @@ func TestQuery_Timeout(t *testing.T) {
 }
 
 func TestQueryWithFallback_AllFail(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"192.0.2.1:53", "192.0.2.2:53"} // Non-existent IPs
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -145,6 +150,7 @@ func TestQueryWithFallback_AllFail(t *testing.T) {
 }
 
 func TestUpstreamPool_SetUpstreams(t *testing.T) {
+	t.Parallel()
 	config := UpstreamConfig{
 		Upstreams:              []string{"8.8.8.8:53"},
 		Timeout:                5 * time.Second,
@@ -173,6 +179,7 @@ func TestUpstreamPool_SetUpstreams(t *testing.T) {
 }
 
 func TestUpstreamPool_GetUpstreams(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -195,6 +202,7 @@ func TestUpstreamPool_GetUpstreams(t *testing.T) {
 }
 
 func TestUpstreamPool_Close(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -212,6 +220,7 @@ func TestUpstreamPool_Close(t *testing.T) {
 }
 
 func TestDefaultUpstreamConfig(t *testing.T) {
+	t.Parallel()
 	config := DefaultUpstreamConfig()
 
 	if len(config.Upstreams) == 0 {
@@ -232,6 +241,7 @@ func TestDefaultUpstreamConfig(t *testing.T) {
 }
 
 func TestUpstreamConfig_CustomValues(t *testing.T) {
+	t.Parallel()
 	config := UpstreamConfig{
 		Upstreams:              []string{"custom.dns:53"},
 		Timeout:                10 * time.Second,
@@ -253,6 +263,7 @@ func TestUpstreamConfig_CustomValues(t *testing.T) {
 }
 
 func TestUpstreamPool_EmptyPoolQuery(t *testing.T) {
+	t.Parallel()
 	config := UpstreamConfig{
 		Upstreams:              []string{},
 		Timeout:                5 * time.Second,
@@ -274,6 +285,7 @@ func TestUpstreamPool_EmptyPoolQuery(t *testing.T) {
 }
 
 func TestInfraCacheIntegration(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53"}
 	infraCache := cache.NewInfraCache()
 	config := UpstreamConfig{
@@ -312,6 +324,7 @@ func TestInfraCacheIntegration(t *testing.T) {
 }
 
 func TestUpstreamPool_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,
@@ -324,7 +337,7 @@ func TestUpstreamPool_ConcurrentAccess(t *testing.T) {
 
 	// Test concurrent GetUpstreams calls
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			upstreams := pool.GetUpstreams()
 			if len(upstreams) != 2 {
@@ -335,12 +348,13 @@ func TestUpstreamPool_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }
 
 func TestConnectionPool_PerUpstream(t *testing.T) {
+	t.Parallel()
 	upstreams := []string{"8.8.8.8:53", "1.1.1.1:53"}
 	config := UpstreamConfig{
 		Upstreams:              upstreams,

@@ -13,16 +13,18 @@ import (
 // RFC Compliance Test Suite
 // Based on dns-c project: https://github.com/piwi3910/dns-c/blob/main/test/src/dns_rfc_test.cpp
 
-// createTestHandler creates a handler for testing
+// createTestHandler creates a handler for testing.
 func createTestHandler() *Handler {
 	config := DefaultHandlerConfig()
 	config.ResolverMode = resolver.ForwardingMode
+
 	return NewHandler(config)
 }
 
 // TestRFC1035_BasicDNSFunctionality tests core DNS query/response mechanism
-// RFC 1035: Domain Names - Implementation and Specification
+// RFC 1035: Domain Names - Implementation and Specification.
 func TestRFC1035_BasicDNSFunctionality(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -114,8 +116,9 @@ func TestRFC1035_BasicDNSFunctionality(t *testing.T) {
 }
 
 // TestRFC2308_NegativeCaching tests proper handling of non-existent domains
-// RFC 2308: Negative Caching of DNS Queries
+// RFC 2308: Negative Caching of DNS Queries.
 func TestRFC2308_NegativeCaching(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -149,6 +152,7 @@ func TestRFC2308_NegativeCaching(t *testing.T) {
 	for _, rr := range respMsg.Ns {
 		if _, ok := rr.(*dns.SOA); ok {
 			hasSoa = true
+
 			break
 		}
 	}
@@ -161,8 +165,9 @@ func TestRFC2308_NegativeCaching(t *testing.T) {
 }
 
 // TestRFC6891_EDNS0Support tests Extended DNS support
-// RFC 6891: Extension Mechanisms for DNS (EDNS0)
+// RFC 6891: Extension Mechanisms for DNS (EDNS0).
 func TestRFC6891_EDNS0Support(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -197,6 +202,7 @@ func TestRFC6891_EDNS0Support(t *testing.T) {
 	for _, rr := range respMsg.Extra {
 		if _, ok := rr.(*dns.OPT); ok {
 			hasOpt = true
+
 			break
 		}
 	}
@@ -209,8 +215,9 @@ func TestRFC6891_EDNS0Support(t *testing.T) {
 }
 
 // TestRFC8020_NXDOMAINHandling tests consistent NXDOMAIN for subdomains
-// RFC 8020: NXDOMAIN: There Really Is Nothing Underneath
+// RFC 8020: NXDOMAIN: There Really Is Nothing Underneath.
 func TestRFC8020_NXDOMAINHandling(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -251,8 +258,9 @@ func TestRFC8020_NXDOMAINHandling(t *testing.T) {
 }
 
 // TestRFC8482_ANYQueryResponse tests minimal response to ANY queries
-// RFC 8482: Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY
+// RFC 8482: Providing Minimal-Sized Responses to DNS Queries That Have QTYPE=ANY.
 func TestRFC8482_ANYQueryResponse(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -287,8 +295,9 @@ func TestRFC8482_ANYQueryResponse(t *testing.T) {
 }
 
 // TestRFC1035_HeaderFlagsCompliance tests correct DNS header flag usage
-// RFC 1035 Section 4.1.1: Header section format
+// RFC 1035 Section 4.1.1: Header section format.
 func TestRFC1035_HeaderFlagsCompliance(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -336,8 +345,9 @@ func TestRFC1035_HeaderFlagsCompliance(t *testing.T) {
 }
 
 // TestRFC1035_ResponseCodeCompliance tests correct response code handling
-// RFC 1035 Section 4.1.1: Response codes
+// RFC 1035 Section 4.1.1: Response codes.
 func TestRFC1035_ResponseCodeCompliance(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -384,8 +394,9 @@ func TestRFC1035_ResponseCodeCompliance(t *testing.T) {
 }
 
 // TestRFC1035_MessageSizeLimits tests handling of large DNS responses
-// RFC 1035 Section 2.3.4: Size limits
+// RFC 1035 Section 2.3.4: Size limits.
 func TestRFC1035_MessageSizeLimits(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -422,6 +433,7 @@ func TestRFC1035_MessageSizeLimits(t *testing.T) {
 			for _, rr := range respMsg.Extra {
 				if _, ok := rr.(*dns.OPT); ok {
 					hasEdns = true
+
 					break
 				}
 			}
@@ -440,8 +452,9 @@ func TestRFC1035_MessageSizeLimits(t *testing.T) {
 		responseSize, respMsg.Truncated)
 }
 
-// TestRFC_CachingBehavior tests proper caching of DNS responses
+// TestRFC_CachingBehavior tests proper caching of DNS responses.
 func TestRFC_CachingBehavior(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -492,8 +505,9 @@ func TestRFC_CachingBehavior(t *testing.T) {
 	}
 }
 
-// TestRFC_FastPathOptimization tests the fast-path query handling
+// TestRFC_FastPathOptimization tests the fast-path query handling.
 func TestRFC_FastPathOptimization(t *testing.T) {
+	t.Parallel()
 	// Test that common queries use fast path
 	commonQueries := []struct {
 		name  string
@@ -521,8 +535,9 @@ func TestRFC_FastPathOptimization(t *testing.T) {
 }
 
 // TestRFC1035_QueryClasses tests different DNS query classes
-// RFC 1035 Section 3.2.4: CLASS values
+// RFC 1035 Section 3.2.4: CLASS values.
 func TestRFC1035_QueryClasses(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -565,8 +580,9 @@ func TestRFC1035_QueryClasses(t *testing.T) {
 }
 
 // TestRFC1035_CaseSensitivity tests DNS case insensitivity
-// RFC 1035: Domain names are case-insensitive
+// RFC 1035: Domain names are case-insensitive.
 func TestRFC1035_CaseSensitivity(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -613,8 +629,9 @@ func TestRFC1035_CaseSensitivity(t *testing.T) {
 }
 
 // TestRFC1035_CompressionPointers tests DNS name compression
-// RFC 1035 Section 4.1.4: Message compression
+// RFC 1035 Section 4.1.4: Message compression.
 func TestRFC1035_CompressionPointers(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -639,8 +656,9 @@ func TestRFC1035_CompressionPointers(t *testing.T) {
 }
 
 // TestRFC1035_MultipleQuestions tests handling of multiple questions
-// RFC 1035: Most implementations only support 1 question
+// RFC 1035: Most implementations only support 1 question.
 func TestRFC1035_MultipleQuestions(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -657,6 +675,7 @@ func TestRFC1035_MultipleQuestions(t *testing.T) {
 	response, err := handler.HandleQuery(ctx, query, nil)
 	if err != nil {
 		t.Logf("✓ Multiple questions rejected (expected behavior)")
+
 		return
 	}
 
@@ -674,8 +693,9 @@ func TestRFC1035_MultipleQuestions(t *testing.T) {
 }
 
 // TestRFC6891_EDNSBufferSizes tests various EDNS0 buffer size negotiations
-// RFC 6891: Extension Mechanisms for DNS
+// RFC 6891: Extension Mechanisms for DNS.
 func TestRFC6891_EDNSBufferSizes(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -707,8 +727,9 @@ func TestRFC6891_EDNSBufferSizes(t *testing.T) {
 }
 
 // TestRFC1035_InvalidQueries tests handling of malformed queries
-// RFC 1035: Servers should handle malformed queries gracefully
+// RFC 1035: Servers should handle malformed queries gracefully.
 func TestRFC1035_InvalidQueries(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
@@ -731,6 +752,7 @@ func TestRFC1035_InvalidQueries(t *testing.T) {
 
 			if err != nil {
 				t.Logf("✓ Invalid query rejected with error (safe)")
+
 				return
 			}
 
@@ -753,14 +775,15 @@ func TestRFC1035_InvalidQueries(t *testing.T) {
 }
 
 // TestRFC1035_LongDomainNames tests maximum domain name length handling
-// RFC 1035: Domain name max 255 octets
+// RFC 1035: Domain name max 255 octets.
 func TestRFC1035_LongDomainNames(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 
 	// Create a 253-character domain (max valid length)
 	longLabel := ""
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		longLabel += "abcd."
 	}
 	longLabel += "com."
@@ -770,12 +793,14 @@ func TestRFC1035_LongDomainNames(t *testing.T) {
 	query, err := msg.Pack()
 	if err != nil {
 		t.Logf("✓ Extremely long domain rejected at pack stage")
+
 		return
 	}
 
 	response, err := handler.HandleQuery(ctx, query, nil)
 	if err != nil {
 		t.Logf("✓ Long domain handled (error returned)")
+
 		return
 	}
 
@@ -783,18 +808,20 @@ func TestRFC1035_LongDomainNames(t *testing.T) {
 	respMsg.Unpack(response)
 
 	// Should work or return NXDOMAIN/FORMERR
-	if respMsg.Rcode == dns.RcodeFormatError {
+	switch respMsg.Rcode {
+	case dns.RcodeFormatError:
 		t.Logf("✓ Long domain returned FORMERR")
-	} else if respMsg.Rcode == dns.RcodeNameError {
+	case dns.RcodeNameError:
 		t.Logf("✓ Long domain returned NXDOMAIN")
-	} else {
+	default:
 		t.Logf("✓ Long domain processed (rcode: %s)", dns.RcodeToString[respMsg.Rcode])
 	}
 }
 
 // TestRFC3597_UnknownRecordTypes tests handling of unknown RR types
-// RFC 3597: Handling of Unknown DNS Resource Record Types
+// RFC 3597: Handling of Unknown DNS Resource Record Types.
 func TestRFC3597_UnknownRecordTypes(t *testing.T) {
+	t.Parallel()
 	handler := createTestHandler()
 	ctx := context.Background()
 

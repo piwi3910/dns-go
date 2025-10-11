@@ -8,6 +8,7 @@ import (
 )
 
 func TestNegativeCacheEntry_IsExpired(t *testing.T) {
+	t.Parallel()
 	entry := &NegativeCacheEntry{
 		Type:   NegativeNXDOMAIN,
 		Expiry: time.Now().Add(-1 * time.Second), // Expired 1 second ago
@@ -24,6 +25,7 @@ func TestNegativeCacheEntry_IsExpired(t *testing.T) {
 }
 
 func TestNegativeCacheEntry_IncrementHitCount(t *testing.T) {
+	t.Parallel()
 	entry := &NegativeCacheEntry{
 		Type: NegativeNXDOMAIN,
 	}
@@ -40,6 +42,7 @@ func TestNegativeCacheEntry_IncrementHitCount(t *testing.T) {
 }
 
 func TestNegativeCache_SetAndGet(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	nc := NewNegativeCache(config)
 
@@ -81,6 +84,7 @@ func TestNegativeCache_SetAndGet(t *testing.T) {
 }
 
 func TestNegativeCache_GetExpired(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	config.MinTTL = 1 * time.Millisecond
 	config.MaxTTL = 1 * time.Millisecond
@@ -102,6 +106,7 @@ func TestNegativeCache_GetExpired(t *testing.T) {
 }
 
 func TestNegativeCache_Disabled(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	config.Enable = false
 	nc := NewNegativeCache(config)
@@ -119,6 +124,7 @@ func TestNegativeCache_Disabled(t *testing.T) {
 }
 
 func TestCalculateNegativeTTL_WithSOA(t *testing.T) {
+	t.Parallel()
 	nc := NewNegativeCache(DefaultNegativeCacheConfig())
 
 	tests := []struct {
@@ -165,6 +171,7 @@ func TestCalculateNegativeTTL_WithSOA(t *testing.T) {
 }
 
 func TestCalculateNegativeTTL_Bounds(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	config.MinTTL = 5 * time.Minute
 	config.MaxTTL = 1 * time.Hour
@@ -190,6 +197,7 @@ func TestCalculateNegativeTTL_Bounds(t *testing.T) {
 }
 
 func TestCalculateNegativeTTL_NoSOA(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	config.DefaultTTL = 10 * time.Minute
 	nc := NewNegativeCache(config)
@@ -201,6 +209,7 @@ func TestCalculateNegativeTTL_NoSOA(t *testing.T) {
 }
 
 func TestExtractSOA(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 
 	// No SOA
@@ -232,6 +241,7 @@ func TestExtractSOA(t *testing.T) {
 }
 
 func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.Response = true
 	msg.Rcode = dns.RcodeNameError
@@ -260,6 +270,7 @@ func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
 }
 
 func TestIsNegativeResponse_NODATA(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.Response = true
 	msg.Rcode = dns.RcodeSuccess
@@ -289,6 +300,7 @@ func TestIsNegativeResponse_NODATA(t *testing.T) {
 }
 
 func TestIsNegativeResponse_NotNegative(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.Response = true
 	msg.Rcode = dns.RcodeSuccess
@@ -312,6 +324,7 @@ func TestIsNegativeResponse_NotNegative(t *testing.T) {
 }
 
 func TestIsNegativeResponse_NotResponse(t *testing.T) {
+	t.Parallel()
 	msg := &dns.Msg{}
 	msg.Response = false
 	msg.Rcode = dns.RcodeNameError
@@ -323,6 +336,7 @@ func TestIsNegativeResponse_NotResponse(t *testing.T) {
 }
 
 func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
+	t.Parallel()
 	query := &dns.Msg{}
 	query.SetQuestion("nonexistent.example.com.", dns.TypeA)
 
@@ -361,6 +375,7 @@ func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
 }
 
 func TestCreateNegativeResponse_NODATA(t *testing.T) {
+	t.Parallel()
 	query := &dns.Msg{}
 	query.SetQuestion("example.com.", dns.TypeAAAA)
 
@@ -389,6 +404,7 @@ func TestCreateNegativeResponse_NODATA(t *testing.T) {
 }
 
 func TestNegativeCache_Stats(t *testing.T) {
+	t.Parallel()
 	nc := NewNegativeCache(DefaultNegativeCacheConfig())
 
 	key := MakeKey("nonexistent.example.com.", dns.TypeA, dns.ClassINET)
@@ -421,6 +437,7 @@ func TestNegativeCache_Stats(t *testing.T) {
 }
 
 func TestNegativeCache_Delete(t *testing.T) {
+	t.Parallel()
 	nc := NewNegativeCache(DefaultNegativeCacheConfig())
 
 	key := MakeKey("nonexistent.example.com.", dns.TypeA, dns.ClassINET)
@@ -443,6 +460,7 @@ func TestNegativeCache_Delete(t *testing.T) {
 }
 
 func TestNegativeCache_Sharding(t *testing.T) {
+	t.Parallel()
 	config := DefaultNegativeCacheConfig()
 	config.NumShards = 4
 	nc := NewNegativeCache(config)

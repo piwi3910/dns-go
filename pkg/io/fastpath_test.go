@@ -7,7 +7,7 @@ import (
 )
 
 // BenchmarkCanUseFastPath tests zero-allocation fast path detection
-// Target: <50ns per call, 0 allocs/op
+// Target: <50ns per call, 0 allocs/op.
 func BenchmarkCanUseFastPath(b *testing.B) {
 	// Create a typical A record query
 	msg := new(dns.Msg)
@@ -17,12 +17,12 @@ func BenchmarkCanUseFastPath(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = CanUseFastPath(query)
 	}
 }
 
-// BenchmarkCanUseFastPathParallel tests concurrent fast path detection
+// BenchmarkCanUseFastPathParallel tests concurrent fast path detection.
 func BenchmarkCanUseFastPathParallel(b *testing.B) {
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -38,8 +38,9 @@ func BenchmarkCanUseFastPathParallel(b *testing.B) {
 	})
 }
 
-// TestCanUseFastPath_CommonQueries tests fast path detection for common queries
+// TestCanUseFastPath_CommonQueries tests fast path detection for common queries.
 func TestCanUseFastPath_CommonQueries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		qtype    uint16
@@ -72,8 +73,9 @@ func TestCanUseFastPath_CommonQueries(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_UncommonQueries tests queries that should use slow path
+// TestCanUseFastPath_UncommonQueries tests queries that should use slow path.
 func TestCanUseFastPath_UncommonQueries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		qtype uint16
@@ -102,8 +104,9 @@ func TestCanUseFastPath_UncommonQueries(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_EDNS0 tests that EDNS0 queries use fast path when DO bit is not set
+// TestCanUseFastPath_EDNS0 tests that EDNS0 queries use fast path when DO bit is not set.
 func TestCanUseFastPath_EDNS0(t *testing.T) {
+	t.Parallel()
 	// EDNS0 without DO bit should use fast path
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -135,8 +138,9 @@ func TestCanUseFastPath_EDNS0(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_MultipleQuestions tests that queries with multiple questions go to slow path
+// TestCanUseFastPath_MultipleQuestions tests that queries with multiple questions go to slow path.
 func TestCanUseFastPath_MultipleQuestions(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.Question = []dns.Question{
 		{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET},
@@ -154,8 +158,9 @@ func TestCanUseFastPath_MultipleQuestions(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_Response tests that responses are rejected
+// TestCanUseFastPath_Response tests that responses are rejected.
 func TestCanUseFastPath_Response(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 	msg.Response = true // Mark as response
@@ -171,8 +176,9 @@ func TestCanUseFastPath_Response(t *testing.T) {
 	}
 }
 
-// TestCanUseFastPath_InvalidQuery tests handling of malformed queries
+// TestCanUseFastPath_InvalidQuery tests handling of malformed queries.
 func TestCanUseFastPath_InvalidQuery(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		query []byte
@@ -192,8 +198,9 @@ func TestCanUseFastPath_InvalidQuery(t *testing.T) {
 	}
 }
 
-// TestParseFastPathQuery tests query parsing
+// TestParseFastPathQuery tests query parsing.
 func TestParseFastPathQuery(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 	query, err := msg.Pack()

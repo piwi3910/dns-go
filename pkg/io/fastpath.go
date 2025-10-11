@@ -10,7 +10,7 @@ import (
 // - No DNSSEC required (DO bit not set)
 // - Standard query (QR=0, OPCODE=QUERY)
 // - Single question
-// - Response size likely < 512 bytes (fits in single UDP packet)
+// - Response size likely < 512 bytes (fits in single UDP packet).
 type FastPathQuery struct {
 	Name  string
 	Type  uint16
@@ -19,7 +19,7 @@ type FastPathQuery struct {
 
 // CanUseFastPath determines if a DNS query can use the fast path
 // This function MUST be allocation-free and extremely fast (<50ns)
-// It's called inline for every query before any other processing
+// It's called inline for every query before any other processing.
 func CanUseFastPath(query []byte) bool {
 	// Minimum DNS header is 12 bytes
 	if len(query) < 12 {
@@ -70,11 +70,13 @@ func CanUseFastPath(query []byte) bool {
 		if labelLen == 0 {
 			// End of QNAME
 			offset++
+
 			break
 		}
 		if labelLen >= 192 {
 			// Compression pointer (2 bytes)
 			offset += 2
+
 			break
 		}
 		// Regular label
@@ -116,10 +118,10 @@ func CanUseFastPath(query []byte) bool {
 // - TXT (16): Text records
 // - CNAME (5): Canonical name
 // - NS (2): Name server
-// - SOA (6): Start of authority
+// - SOA (6): Start of authority.
 func isCommonQueryType(qtype uint16) bool {
 	switch qtype {
-	case dns.TypeA,     // 1
+	case dns.TypeA, // 1
 		dns.TypeNS,    // 2
 		dns.TypeCNAME, // 5
 		dns.TypeSOA,   // 6
@@ -134,7 +136,7 @@ func isCommonQueryType(qtype uint16) bool {
 }
 
 // ParseFastPathQuery extracts query information with minimal allocations
-// Only call this after CanUseFastPath returns true
+// Only call this after CanUseFastPath returns true.
 func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 	// We already validated the query in CanUseFastPath
 	// Parse directly from wire format to avoid dns.Msg.Unpack() allocations
@@ -158,6 +160,7 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 				nameBytes = append(nameBytes, '.')
 			}
 			offset++
+
 			break
 		}
 		if labelLen >= 192 {
@@ -171,6 +174,7 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 				return nil, dns.ErrId
 			}
 			q := msg.Question[0]
+
 			return &FastPathQuery{
 				Name:  q.Name,
 				Type:  q.Qtype,
@@ -209,7 +213,7 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 }
 
 // canUseFastPathWithEDNS0 checks if a query with additional records can use fast path
-// Returns true if the additional record is EDNS0 without DO bit set
+// Returns true if the additional record is EDNS0 without DO bit set.
 func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 	// Only handle single additional record (typical for EDNS0)
 	if arcount != 1 {
@@ -223,16 +227,18 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 
 	// Skip question section (QDCOUNT questions)
 	qdcount := uint16(query[4])<<8 | uint16(query[5])
-	for i := uint16(0); i < qdcount; i++ {
+	for range qdcount {
 		// Skip QNAME
 		for offset < len(query) {
 			labelLen := int(query[offset])
 			if labelLen == 0 {
 				offset++
+
 				break
 			}
 			if labelLen >= 192 {
 				offset += 2
+
 				break
 			}
 			offset += 1 + labelLen
@@ -249,7 +255,7 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 
 	// Skip answer section (ANCOUNT records)
 	ancount := uint16(query[6])<<8 | uint16(query[7])
-	for i := uint16(0); i < ancount; i++ {
+	for range ancount {
 		offset = skipRR(query, offset)
 		if offset < 0 || offset > len(query) {
 			return false
@@ -258,7 +264,7 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 
 	// Skip authority section (NSCOUNT records)
 	nscount := uint16(query[8])<<8 | uint16(query[9])
-	for i := uint16(0); i < nscount; i++ {
+	for range nscount {
 		offset = skipRR(query, offset)
 		if offset < 0 || offset > len(query) {
 			return false
@@ -313,18 +319,20 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 }
 
 // skipRR skips over a resource record in the wire format
-// Returns new offset, or -1 on error
+// Returns new offset, or -1 on error.
 func skipRR(query []byte, offset int) int {
 	// Skip NAME
 	for offset < len(query) {
 		labelLen := int(query[offset])
 		if labelLen == 0 {
 			offset++
+
 			break
 		}
 		if labelLen >= 192 {
 			// Compression pointer
 			offset += 2
+
 			break
 		}
 		offset += 1 + labelLen
@@ -355,16 +363,17 @@ func skipRR(query []byte, offset int) int {
 }
 
 // GetMessageID extracts the message ID from a DNS message
-// DNS message ID is at bytes 0-1 in network byte order (big endian)
+// DNS message ID is at bytes 0-1 in network byte order (big endian).
 func GetMessageID(msg []byte) uint16 {
 	if len(msg) < 2 {
 		return 0
 	}
+
 	return uint16(msg[0])<<8 | uint16(msg[1])
 }
 
 // SetMessageID sets the message ID in a DNS message
-// DNS message ID is at bytes 0-1 in network byte order (big endian)
+// DNS message ID is at bytes 0-1 in network byte order (big endian).
 func SetMessageID(msg []byte, id uint16) {
 	if len(msg) < 2 {
 		return

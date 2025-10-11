@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"hash"
 	"math/big"
@@ -19,13 +20,13 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Validator handles DNSSEC validation of DNS responses
+// Validator handles DNSSEC validation of DNS responses.
 type Validator struct {
 	trustAnchors map[string]*TrustAnchor
 	config       ValidatorConfig
 }
 
-// ValidatorConfig holds configuration for DNSSEC validation
+// ValidatorConfig holds configuration for DNSSEC validation.
 type ValidatorConfig struct {
 	// EnableValidation enables DNSSEC validation (default: true)
 	EnableValidation bool
@@ -41,7 +42,7 @@ type ValidatorConfig struct {
 	RequireValidation bool
 }
 
-// DefaultValidatorConfig returns default configuration
+// DefaultValidatorConfig returns default configuration.
 func DefaultValidatorConfig() ValidatorConfig {
 	return ValidatorConfig{
 		EnableValidation:   true,
@@ -51,7 +52,7 @@ func DefaultValidatorConfig() ValidatorConfig {
 	}
 }
 
-// TrustAnchor represents a trusted DNSKEY
+// TrustAnchor represents a trusted DNSKEY.
 type TrustAnchor struct {
 	Name      string
 	Algorithm uint8
@@ -60,7 +61,7 @@ type TrustAnchor struct {
 	DS        *dns.DS // Optional DS record
 }
 
-// ValidationResult represents the result of DNSSEC validation
+// ValidationResult represents the result of DNSSEC validation.
 type ValidationResult struct {
 	Secure      bool
 	Bogus       bool
@@ -69,7 +70,7 @@ type ValidationResult struct {
 	ChainLength int
 }
 
-// NewValidator creates a new DNSSEC validator
+// NewValidator creates a new DNSSEC validator.
 func NewValidator(config ValidatorConfig) *Validator {
 	v := &Validator{
 		trustAnchors: make(map[string]*TrustAnchor),
@@ -83,7 +84,7 @@ func NewValidator(config ValidatorConfig) *Validator {
 }
 
 // LoadRootTrustAnchors loads the current root zone trust anchors
-// Root KSK (Key Signing Key) 2017 - currently active
+// Root KSK (Key Signing Key) 2017 - currently active.
 func (v *Validator) LoadRootTrustAnchors() {
 	// Root zone KSK-2017 (20326)
 	// Valid as of 2017 and currently active
@@ -97,19 +98,20 @@ func (v *Validator) LoadRootTrustAnchors() {
 	v.AddTrustAnchor(rootKSK)
 }
 
-// AddTrustAnchor adds a trust anchor to the validator
+// AddTrustAnchor adds a trust anchor to the validator.
 func (v *Validator) AddTrustAnchor(ta *TrustAnchor) {
 	key := fmt.Sprintf("%s:%d", strings.ToLower(ta.Name), ta.KeyTag)
 	v.trustAnchors[key] = ta
 }
 
-// GetTrustAnchor retrieves a trust anchor
+// GetTrustAnchor retrieves a trust anchor.
 func (v *Validator) GetTrustAnchor(name string, keyTag uint16) *TrustAnchor {
 	key := fmt.Sprintf("%s:%d", strings.ToLower(name), keyTag)
+
 	return v.trustAnchors[key]
 }
 
-// ValidateResponse validates a DNS response with DNSSEC
+// ValidateResponse validates a DNS response with DNSSEC.
 func (v *Validator) ValidateResponse(ctx context.Context, msg *dns.Msg) (*ValidationResult, error) {
 	if !v.config.EnableValidation {
 		return &ValidationResult{
@@ -140,7 +142,7 @@ func (v *Validator) ValidateResponse(ctx context.Context, msg *dns.Msg) (*Valida
 	}, nil
 }
 
-// validateRRSIGs validates all RRSIG records in a message
+// validateRRSIGs validates all RRSIG records in a message.
 func (v *Validator) validateRRSIGs(msg *dns.Msg) error {
 	// Collect RRSIGs and their corresponding RRsets
 	rrsigs := make([]*dns.RRSIG, 0)
@@ -175,7 +177,7 @@ func (v *Validator) validateRRSIGs(msg *dns.Msg) error {
 	return nil
 }
 
-// validateRRSIG validates a single RRSIG against an RRset
+// validateRRSIG validates a single RRSIG against an RRset.
 func (v *Validator) validateRRSIG(rrsig *dns.RRSIG, rrset []dns.RR) error {
 	// Check signature expiration
 	if v.config.ValidateExpiration {
@@ -205,7 +207,7 @@ func (v *Validator) validateRRSIG(rrsig *dns.RRSIG, rrset []dns.RR) error {
 }
 
 // findDNSKEY attempts to find a DNSKEY from trust anchors
-// Returns nil if not found (requires lookup from parent zone)
+// Returns nil if not found (requires lookup from parent zone).
 func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8) *dns.DNSKEY {
 	// Check trust anchors first
 	ta := v.GetTrustAnchor(signerName, keyTag)
@@ -223,6 +225,7 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 			Algorithm: ta.Algorithm,
 			PublicKey: ta.PublicKey,
 		}
+
 		return dnskey
 	}
 
@@ -232,7 +235,7 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 	return nil
 }
 
-// VerifyRRSIG verifies an RRSIG signature against a DNSKEY
+// VerifyRRSIG verifies an RRSIG signature against a DNSKEY.
 func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DNSKEY) error {
 	// Calculate signature data
 	sigData, err := v.calculateSignatureData(rrsig, rrset)
@@ -270,7 +273,7 @@ func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DN
 }
 
 // calculateSignatureData computes the data that was signed
-// Implements RFC 4034 Section 6: Canonical RR Ordering
+// Implements RFC 4034 Section 6: Canonical RR Ordering.
 func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) ([]byte, error) {
 	buf := make([]byte, 0, 4096)
 
@@ -332,7 +335,7 @@ func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) ([]
 	return buf, nil
 }
 
-// canonicalName converts a domain name to canonical wire format (RFC 4034 §6.2)
+// canonicalName converts a domain name to canonical wire format (RFC 4034 §6.2).
 func canonicalName(name string) []byte {
 	// Convert to lowercase and ensure FQDN
 	name = strings.ToLower(dns.Fqdn(name))
@@ -357,7 +360,7 @@ func canonicalName(name string) []byte {
 	return buf
 }
 
-// canonicalizeRR converts an RR to canonical wire format (RFC 4034 §6)
+// canonicalizeRR converts an RR to canonical wire format (RFC 4034 §6).
 func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 	// Create a copy with original TTL
 	rrCopy := dns.Copy(rr)
@@ -414,7 +417,7 @@ func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 	return buf
 }
 
-// packRDATA packs RR RDATA to wire format with canonical name lowercasing
+// packRDATA packs RR RDATA to wire format with canonical name lowercasing.
 func packRDATA(rr dns.RR) []byte {
 	// Use miekg/dns packing, then lowercase domain names in RDATA
 	// For types that contain domain names (CNAME, NS, MX, etc.)
@@ -431,12 +434,14 @@ func packRDATA(rr dns.RR) []byte {
 		if buf[i]&0xC0 == 0xC0 {
 			// Compression pointer
 			nameLen = i + 2
+
 			break
 		}
 		labelLen := int(buf[i])
 		i += labelLen + 1
 		if i < len(buf) && buf[i] == 0 {
 			nameLen = i + 1
+
 			break
 		}
 	}
@@ -450,10 +455,10 @@ func packRDATA(rr dns.RR) []byte {
 	return buf[rdataStart:off]
 }
 
-// sortCanonicalRRs sorts RRs in canonical order (RFC 4034 §6.3)
+// sortCanonicalRRs sorts RRs in canonical order (RFC 4034 §6.3).
 func sortCanonicalRRs(rrs [][]byte) {
 	// Sort by lexicographic order of wire format
-	for i := 0; i < len(rrs)-1; i++ {
+	for i := range len(rrs) - 1 {
 		for j := i + 1; j < len(rrs); j++ {
 			if compareWireFormat(rrs[i], rrs[j]) > 0 {
 				rrs[i], rrs[j] = rrs[j], rrs[i]
@@ -463,14 +468,14 @@ func sortCanonicalRRs(rrs [][]byte) {
 }
 
 // compareWireFormat compares two RRs in wire format
-// Returns: -1 if a < b, 0 if a == b, 1 if a > b
+// Returns: -1 if a < b, 0 if a == b, 1 if a > b.
 func compareWireFormat(a, b []byte) int {
 	minLen := len(a)
 	if len(b) < minLen {
 		minLen = len(b)
 	}
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		if a[i] < b[i] {
 			return -1
 		}
@@ -490,11 +495,11 @@ func compareWireFormat(a, b []byte) int {
 	return 0
 }
 
-// verifyRSA verifies an RSA signature
+// verifyRSA verifies an RSA signature.
 func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Hash) error {
 	// Parse RSA public key (RFC 3110 format)
 	if len(pubKey) < 3 {
-		return fmt.Errorf("public key too short")
+		return errors.New("public key too short")
 	}
 
 	// Extract exponent
@@ -512,7 +517,7 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	}
 
 	if modulusStart > len(pubKey) {
-		return fmt.Errorf("invalid public key format")
+		return errors.New("invalid public key format")
 	}
 
 	// Extract exponent bytes
@@ -539,7 +544,7 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	case crypto.SHA512:
 		h = sha512.New()
 	default:
-		return fmt.Errorf("unsupported hash algorithm")
+		return errors.New("unsupported hash algorithm")
 	}
 	h.Write(data)
 	hashed := h.Sum(nil)
@@ -548,13 +553,13 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	return rsa.VerifyPKCS1v15(rsaPub, hashAlgo, hashed, signature)
 }
 
-// verifyECDSA verifies an ECDSA signature
+// verifyECDSA verifies an ECDSA signature.
 func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.Hash) error {
 	// RFC 6605 - ECDSA for DNSSEC
 	// Public key format: 0x04 || X || Y (uncompressed point)
 
 	if len(pubKey) < 1 {
-		return fmt.Errorf("ECDSA public key too short")
+		return errors.New("ECDSA public key too short")
 	}
 
 	// Determine curve based on algorithm
@@ -571,7 +576,7 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 		curve.Curve = elliptic.P384()
 		expectedKeySize = 96 // 48 bytes X + 48 bytes Y
 	default:
-		return fmt.Errorf("unsupported ECDSA hash algorithm")
+		return errors.New("unsupported ECDSA hash algorithm")
 	}
 
 	// Uncompressed point format: 0x04 || X || Y
@@ -590,7 +595,7 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 
 	// ECDSA signature format: R || S (each 32 bytes for P-256, 48 bytes for P-384)
 	if len(signature) != expectedKeySize {
-		return fmt.Errorf("invalid ECDSA signature size")
+		return errors.New("invalid ECDSA signature size")
 	}
 
 	r := big.NewInt(0).SetBytes(signature[:coordSize])
@@ -604,20 +609,20 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 	case crypto.SHA512:
 		h = sha512.New()
 	default:
-		return fmt.Errorf("unsupported hash algorithm")
+		return errors.New("unsupported hash algorithm")
 	}
 	h.Write(data)
 	hashed := h.Sum(nil)
 
 	// Verify signature
 	if !ecdsa.Verify(&curve, hashed, r, s) {
-		return fmt.Errorf("ECDSA signature verification failed")
+		return errors.New("ECDSA signature verification failed")
 	}
 
 	return nil
 }
 
-// hasRRSIG checks if a message contains RRSIG records
+// hasRRSIG checks if a message contains RRSIG records.
 func hasRRSIG(msg *dns.Msg) bool {
 	for _, rr := range msg.Answer {
 		if _, ok := rr.(*dns.RRSIG); ok {
@@ -629,10 +634,11 @@ func hasRRSIG(msg *dns.Msg) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
-// CalculateKeyTag computes the key tag for a DNSKEY
+// CalculateKeyTag computes the key tag for a DNSKEY.
 func CalculateKeyTag(dnskey *dns.DNSKEY) uint16 {
 	// RFC 4034 Appendix B: Key Tag calculation
 	// Use miekg/dns KeyTag() method if available

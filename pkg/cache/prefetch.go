@@ -9,7 +9,7 @@ import (
 )
 
 // PrefetchEngine automatically refreshes popular cache entries before they expire
-// This keeps the cache warm and ensures low latency for frequently accessed domains
+// This keeps the cache warm and ensures low latency for frequently accessed domains.
 type PrefetchEngine struct {
 	messageCache *MessageCache
 	rrsetCache   *RRsetCache
@@ -22,39 +22,39 @@ type PrefetchEngine struct {
 	maxConcurrent  int     // Maximum concurrent prefetch operations
 
 	// State
-	mu             sync.RWMutex
-	candidates     map[string]*prefetchCandidate // Cache key → candidate
-	prefetchQueue  chan *prefetchCandidate
-	stopCh         chan struct{}
-	wg             sync.WaitGroup
+	mu            sync.RWMutex
+	candidates    map[string]*prefetchCandidate // Cache key → candidate
+	prefetchQueue chan *prefetchCandidate
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 }
 
-// PrefetchResolver is the interface for resolving queries during prefetch
+// PrefetchResolver is the interface for resolving queries during prefetch.
 type PrefetchResolver interface {
 	Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error)
 }
 
-// prefetchCandidate represents an entry that may need prefetching
+// prefetchCandidate represents an entry that may need prefetching.
 type prefetchCandidate struct {
-	key       string
-	name      string
-	qtype     uint16
-	qclass    uint16
-	hits      int
-	lastCheck time.Time
+	key         string
+	name        string
+	qtype       uint16
+	qclass      uint16
+	hits        int
+	lastCheck   time.Time
 	prefetching bool
 }
 
-// PrefetchConfig holds configuration for the prefetch engine
+// PrefetchConfig holds configuration for the prefetch engine.
 type PrefetchConfig struct {
 	Enabled        bool
-	PrefetchThresh float64 // When to prefetch (0.1 = at 10% TTL remaining)
-	MinHits        int     // Minimum hits before considering prefetch
-	MaxConcurrent  int     // Max concurrent prefetch operations
+	PrefetchThresh float64       // When to prefetch (0.1 = at 10% TTL remaining)
+	MinHits        int           // Minimum hits before considering prefetch
+	MaxConcurrent  int           // Max concurrent prefetch operations
 	CheckInterval  time.Duration // How often to check for candidates
 }
 
-// DefaultPrefetchConfig returns sensible defaults
+// DefaultPrefetchConfig returns sensible defaults.
 func DefaultPrefetchConfig() PrefetchConfig {
 	return PrefetchConfig{
 		Enabled:        true,
@@ -65,7 +65,7 @@ func DefaultPrefetchConfig() PrefetchConfig {
 	}
 }
 
-// NewPrefetchEngine creates a new prefetch engine
+// NewPrefetchEngine creates a new prefetch engine.
 func NewPrefetchEngine(config PrefetchConfig, messageCache *MessageCache, rrsetCache *RRsetCache, resolver PrefetchResolver) *PrefetchEngine {
 	return &PrefetchEngine{
 		messageCache:   messageCache,
@@ -81,14 +81,14 @@ func NewPrefetchEngine(config PrefetchConfig, messageCache *MessageCache, rrsetC
 	}
 }
 
-// Start starts the prefetch engine
+// Start starts the prefetch engine.
 func (pe *PrefetchEngine) Start(checkInterval time.Duration) {
 	if !pe.enabled {
 		return
 	}
 
 	// Start prefetch workers
-	for i := 0; i < pe.maxConcurrent; i++ {
+	for range pe.maxConcurrent {
 		pe.wg.Add(1)
 		go pe.prefetchWorker()
 	}
@@ -98,7 +98,7 @@ func (pe *PrefetchEngine) Start(checkInterval time.Duration) {
 	go pe.scanner(checkInterval)
 }
 
-// Stop stops the prefetch engine
+// Stop stops the prefetch engine.
 func (pe *PrefetchEngine) Stop() {
 	if !pe.enabled {
 		return
@@ -108,7 +108,7 @@ func (pe *PrefetchEngine) Stop() {
 	pe.wg.Wait()
 }
 
-// RecordAccess records a cache access for prefetch consideration
+// RecordAccess records a cache access for prefetch consideration.
 func (pe *PrefetchEngine) RecordAccess(key string, name string, qtype uint16, qclass uint16) {
 	if !pe.enabled {
 		return
@@ -132,7 +132,7 @@ func (pe *PrefetchEngine) RecordAccess(key string, name string, qtype uint16, qc
 	}
 }
 
-// scanner periodically scans cache entries to find prefetch candidates
+// scanner periodically scans cache entries to find prefetch candidates.
 func (pe *PrefetchEngine) scanner(interval time.Duration) {
 	defer pe.wg.Done()
 
@@ -149,7 +149,7 @@ func (pe *PrefetchEngine) scanner(interval time.Duration) {
 	}
 }
 
-// scanForCandidates scans the cache for entries that need prefetching
+// scanForCandidates scans the cache for entries that need prefetching.
 func (pe *PrefetchEngine) scanForCandidates() {
 	pe.mu.RLock()
 	candidates := make([]*prefetchCandidate, 0, len(pe.candidates))
@@ -187,7 +187,7 @@ func (pe *PrefetchEngine) scanForCandidates() {
 	}
 }
 
-// shouldPrefetch determines if an entry should be prefetched
+// shouldPrefetch determines if an entry should be prefetched.
 func (pe *PrefetchEngine) shouldPrefetch(candidate *prefetchCandidate) bool {
 	// Check message cache using the built-in ShouldPrefetch method
 	entry := pe.messageCache.GetEntryForPrefetch(candidate.key)
@@ -211,13 +211,14 @@ func (pe *PrefetchEngine) shouldPrefetch(candidate *prefetchCandidate) bool {
 		}
 
 		remainingFraction := float64(ttlRemaining) / float64(totalTTL)
+
 		return remainingFraction < pe.prefetchThresh
 	}
 
 	return false
 }
 
-// prefetchWorker handles prefetch operations
+// prefetchWorker handles prefetch operations.
 func (pe *PrefetchEngine) prefetchWorker() {
 	defer pe.wg.Done()
 
@@ -231,7 +232,7 @@ func (pe *PrefetchEngine) prefetchWorker() {
 	}
 }
 
-// prefetch performs the actual prefetch operation
+// prefetch performs the actual prefetch operation.
 func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 	// Create query
 	query := new(dns.Msg)
@@ -256,15 +257,15 @@ func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 	pe.mu.Unlock()
 }
 
-// GetStats returns prefetch statistics
+// GetStats returns prefetch statistics.
 type PrefetchStats struct {
-	Enabled       bool
-	Candidates    int
-	QueueSize     int
-	Prefetching   int
+	Enabled     bool
+	Candidates  int
+	QueueSize   int
+	Prefetching int
 }
 
-// GetStats returns current prefetch statistics
+// GetStats returns current prefetch statistics.
 func (pe *PrefetchEngine) GetStats() PrefetchStats {
 	if !pe.enabled {
 		return PrefetchStats{Enabled: false}

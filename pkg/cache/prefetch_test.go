@@ -9,7 +9,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// MockPrefetchResolver implements PrefetchResolver for testing
+// MockPrefetchResolver implements PrefetchResolver for testing.
 type MockPrefetchResolver struct {
 	mu            sync.Mutex
 	resolveCount  int
@@ -51,22 +51,26 @@ func (m *MockPrefetchResolver) Resolve(ctx context.Context, query *dns.Msg) (*dn
 	response.SetReply(query)
 	rr, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
 	response.Answer = append(response.Answer, rr)
+
 	return response, nil
 }
 
 func (m *MockPrefetchResolver) GetResolveCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.resolveCount
 }
 
 func (m *MockPrefetchResolver) GetResolveCalls() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return append([]string{}, m.resolveCalls...) // Return copy
 }
 
 func TestDefaultPrefetchConfig(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 
 	if !config.Enabled {
@@ -91,6 +95,7 @@ func TestDefaultPrefetchConfig(t *testing.T) {
 }
 
 func TestNewPrefetchEngine(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -128,6 +133,7 @@ func TestNewPrefetchEngine(t *testing.T) {
 }
 
 func TestPrefetchEngine_Disabled(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	config.Enabled = false
 
@@ -151,6 +157,7 @@ func TestPrefetchEngine_Disabled(t *testing.T) {
 }
 
 func TestPrefetchEngine_RecordAccess(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -185,7 +192,7 @@ func TestPrefetchEngine_RecordAccess(t *testing.T) {
 	engine.RecordAccess("key1", "example.com.", dns.TypeA, dns.ClassINET)
 
 	engine.mu.RLock()
-	candidate, _ = engine.candidates["key1"]
+	candidate = engine.candidates["key1"]
 	engine.mu.RUnlock()
 
 	if candidate.hits != 2 {
@@ -194,6 +201,7 @@ func TestPrefetchEngine_RecordAccess(t *testing.T) {
 }
 
 func TestPrefetchEngine_RecordAccess_MultipleKeys(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -232,6 +240,7 @@ func TestPrefetchEngine_RecordAccess_MultipleKeys(t *testing.T) {
 }
 
 func TestPrefetchEngine_StartStop(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -261,6 +270,7 @@ func TestPrefetchEngine_StartStop(t *testing.T) {
 }
 
 func TestPrefetchEngine_GetStats(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -299,6 +309,7 @@ func TestPrefetchEngine_GetStats(t *testing.T) {
 }
 
 func TestPrefetchEngine_ShouldPrefetch_MessageCache(t *testing.T) {
+	t.Parallel()
 	t.Skip("Timing-sensitive test - TTL calculation depends on precise timing which varies in CI environments")
 
 	config := DefaultPrefetchConfig()
@@ -330,7 +341,7 @@ func TestPrefetchEngine_ShouldPrefetch_MessageCache(t *testing.T) {
 	entry := messageCache.GetEntryForPrefetch(key)
 	if entry != nil {
 		// Simulate multiple accesses
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			entry.IncrementHitCount()
 		}
 	}
@@ -355,6 +366,7 @@ func TestPrefetchEngine_ShouldPrefetch_MessageCache(t *testing.T) {
 }
 
 func TestPrefetchEngine_ShouldPrefetch_RRsetCache(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	config.PrefetchThresh = 0.10 // 10% remaining TTL
 
@@ -405,6 +417,7 @@ func TestPrefetchEngine_ShouldPrefetch_RRsetCache(t *testing.T) {
 }
 
 func TestPrefetchEngine_ShouldPrefetch_NoEntry(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -429,6 +442,7 @@ func TestPrefetchEngine_ShouldPrefetch_NoEntry(t *testing.T) {
 }
 
 func TestPrefetchEngine_Prefetch(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	messageCache := NewMessageCache(DefaultMessageCacheConfig())
 	rrsetCache := NewRRsetCache(DefaultRRsetCacheConfig())
@@ -484,6 +498,7 @@ func TestPrefetchEngine_Prefetch(t *testing.T) {
 }
 
 func TestPrefetchEngine_ScanForCandidates(t *testing.T) {
+	t.Parallel()
 	t.Skip("Timing-sensitive test - depends on precise TTL expiry timing which varies in CI environments")
 
 	config := DefaultPrefetchConfig()
@@ -519,7 +534,7 @@ func TestPrefetchEngine_ScanForCandidates(t *testing.T) {
 		// Increment hit count in cache entry
 		entry := messageCache.GetEntryForPrefetch(key)
 		if entry != nil {
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				entry.IncrementHitCount()
 			}
 		}
@@ -546,9 +561,10 @@ func TestPrefetchEngine_ScanForCandidates(t *testing.T) {
 }
 
 func TestPrefetchEngine_Integration(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	config.MinHits = 2
-	config.PrefetchThresh = 0.40      // 40% remaining TTL
+	config.PrefetchThresh = 0.40 // 40% remaining TTL
 	config.MaxConcurrent = 2
 	config.CheckInterval = 200 * time.Millisecond
 
@@ -582,7 +598,7 @@ func TestPrefetchEngine_Integration(t *testing.T) {
 	entry := messageCache.GetEntryForPrefetch(key)
 	if entry != nil {
 		// Record enough accesses to trigger prefetch
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			entry.IncrementHitCount()
 		}
 	}
@@ -615,13 +631,14 @@ func TestPrefetchEngine_Integration(t *testing.T) {
 }
 
 func TestPrefetchCandidate(t *testing.T) {
+	t.Parallel()
 	candidate := &prefetchCandidate{
-		key:       "test-key",
-		name:      "example.com.",
-		qtype:     dns.TypeA,
-		qclass:    dns.ClassINET,
-		hits:      5,
-		lastCheck: time.Now(),
+		key:         "test-key",
+		name:        "example.com.",
+		qtype:       dns.TypeA,
+		qclass:      dns.ClassINET,
+		hits:        5,
+		lastCheck:   time.Now(),
 		prefetching: false,
 	}
 
@@ -647,6 +664,7 @@ func TestPrefetchCandidate(t *testing.T) {
 }
 
 func TestPrefetchEngine_QueueFull(t *testing.T) {
+	t.Parallel()
 	config := DefaultPrefetchConfig()
 	config.MinHits = 1
 
@@ -658,7 +676,7 @@ func TestPrefetchEngine_QueueFull(t *testing.T) {
 	engine := NewPrefetchEngine(config, messageCache, rrsetCache, resolver)
 
 	// Fill the prefetch queue
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		candidate := &prefetchCandidate{
 			key:    MakeKey("example.com.", dns.TypeA, dns.ClassINET),
 			name:   "example.com.",

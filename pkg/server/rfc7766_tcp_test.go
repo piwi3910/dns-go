@@ -12,8 +12,9 @@ import (
 	"github.com/piwi3910/dns-go/pkg/resolver"
 )
 
-// TestRFC7766_TCPLengthPrefix tests 2-byte length prefix handling
+// TestRFC7766_TCPLengthPrefix tests 2-byte length prefix handling.
 func TestRFC7766_TCPLengthPrefix(t *testing.T) {
+	t.Parallel()
 	// Start test server with TCP support
 	handler := setupTestHandler(resolver.ForwardingMode)
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
@@ -90,8 +91,9 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	t.Logf("✓ RFC 7766 TCP Length Prefix: Query succeeded, response length %d bytes", responseLength)
 }
 
-// TestRFC7766_PersistentConnections tests persistent TCP connections
+// TestRFC7766_PersistentConnections tests persistent TCP connections.
 func TestRFC7766_PersistentConnections(t *testing.T) {
+	t.Parallel()
 	handler := setupTestHandler(resolver.ForwardingMode)
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
@@ -164,8 +166,9 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 	t.Logf("✓ RFC 7766 Persistent Connections: %d queries on single connection", len(domains))
 }
 
-// TestRFC7766_TCPIdleTimeout tests 10-second idle timeout
+// TestRFC7766_TCPIdleTimeout tests 10-second idle timeout.
 func TestRFC7766_TCPIdleTimeout(t *testing.T) {
+	t.Parallel()
 	handler := setupTestHandler(resolver.ForwardingMode)
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
@@ -236,8 +239,9 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	t.Logf("✓ RFC 7766 Idle Timeout: Connection persisted after 9s idle (within 10s timeout)")
 }
 
-// TestRFC7766_LargeResponse tests large responses over TCP
+// TestRFC7766_LargeResponse tests large responses over TCP.
 func TestRFC7766_LargeResponse(t *testing.T) {
+	t.Parallel()
 	handler := setupTestHandler(resolver.ForwardingMode)
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
@@ -298,8 +302,9 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	t.Logf("✓ RFC 7766 Large Response: Successfully received %d bytes over TCP", responseLength)
 }
 
-// TestRFC7766_ConnectionLimit tests max connection limit
+// TestRFC7766_ConnectionLimit tests max connection limit.
 func TestRFC7766_ConnectionLimit(t *testing.T) {
+	t.Parallel()
 	handler := setupTestHandler(resolver.ForwardingMode)
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
@@ -319,7 +324,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 
 	// Open connections up to the limit
 	var conns []net.Conn
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to connect %d: %v", i, err)
@@ -337,6 +342,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	conn6, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Logf("✓ RFC 7766 Connection Limit: 6th connection rejected as expected")
+
 		return
 	}
 	defer conn6.Close()
@@ -357,15 +363,17 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	responseLengthBuf := make([]byte, 2)
 	if _, err := io.ReadFull(conn6, responseLengthBuf); err != nil {
 		t.Logf("✓ RFC 7766 Connection Limit: 6th connection rejected (closed during query)")
+
 		return
 	}
 
 	t.Logf("⚠ RFC 7766 Connection Limit: 6th connection accepted (may be async close)")
 }
 
-// Helper function to setup test handler
+// Helper function to setup test handler.
 func setupTestHandler(mode resolver.RecursionMode) *Handler {
 	config := DefaultHandlerConfig()
 	config.ResolverMode = mode
+
 	return NewHandler(config)
 }

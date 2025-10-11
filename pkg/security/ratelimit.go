@@ -7,7 +7,7 @@ import (
 )
 
 // RateLimiter implements token bucket rate limiting per client IP
-// This prevents DNS amplification attacks and abuse
+// This prevents DNS amplification attacks and abuse.
 type RateLimiter struct {
 	buckets  map[string]*TokenBucket
 	mu       sync.RWMutex
@@ -16,7 +16,7 @@ type RateLimiter struct {
 	stopCh   chan struct{}
 }
 
-// RateLimitConfig holds rate limiting configuration
+// RateLimitConfig holds rate limiting configuration.
 type RateLimitConfig struct {
 	// QueriesPerSecond is the maximum queries per second per IP
 	QueriesPerSecond int
@@ -37,19 +37,19 @@ type RateLimitConfig struct {
 	WhitelistedIPs []string
 }
 
-// DefaultRateLimitConfig returns sensible defaults
+// DefaultRateLimitConfig returns sensible defaults.
 func DefaultRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
-		QueriesPerSecond: 100,              // 100 QPS per IP
-		BurstSize:        200,              // Allow burst of 200
-		CleanupInterval:  1 * time.Minute,  // Clean up every minute
-		BucketTTL:        5 * time.Minute,  // Keep buckets for 5 minutes
-		Enabled:          true,             // Enabled by default
-		WhitelistedIPs:   []string{},       // No whitelist by default
+		QueriesPerSecond: 100,             // 100 QPS per IP
+		BurstSize:        200,             // Allow burst of 200
+		CleanupInterval:  1 * time.Minute, // Clean up every minute
+		BucketTTL:        5 * time.Minute, // Keep buckets for 5 minutes
+		Enabled:          true,            // Enabled by default
+		WhitelistedIPs:   []string{},      // No whitelist by default
 	}
 }
 
-// TokenBucket implements the token bucket algorithm
+// TokenBucket implements the token bucket algorithm.
 type TokenBucket struct {
 	tokens       float64
 	maxTokens    float64
@@ -59,7 +59,7 @@ type TokenBucket struct {
 	mu           sync.Mutex
 }
 
-// NewRateLimiter creates a new rate limiter
+// NewRateLimiter creates a new rate limiter.
 func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	rl := &RateLimiter{
 		buckets: make(map[string]*TokenBucket),
@@ -76,7 +76,7 @@ func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	return rl
 }
 
-// Allow checks if a request from the given address should be allowed
+// Allow checks if a request from the given address should be allowed.
 func (rl *RateLimiter) Allow(addr net.Addr) bool {
 	if !rl.config.Enabled {
 		return true
@@ -100,7 +100,7 @@ func (rl *RateLimiter) Allow(addr net.Addr) bool {
 	return bucket.consume()
 }
 
-// getBucket gets or creates a token bucket for an IP
+// getBucket gets or creates a token bucket for an IP.
 func (rl *RateLimiter) getBucket(ip string) *TokenBucket {
 	rl.mu.RLock()
 	bucket, exists := rl.buckets[ip]
@@ -129,7 +129,7 @@ func (rl *RateLimiter) getBucket(ip string) *TokenBucket {
 	return bucket
 }
 
-// consume tries to consume one token from the bucket
+// consume tries to consume one token from the bucket.
 func (tb *TokenBucket) consume() bool {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
@@ -149,13 +149,14 @@ func (tb *TokenBucket) consume() bool {
 	if tb.tokens >= 1.0 {
 		tb.tokens -= 1.0
 		tb.lastActivity = now
+
 		return true
 	}
 
 	return false
 }
 
-// cleanup periodically removes old buckets
+// cleanup periodically removes old buckets.
 func (rl *RateLimiter) cleanup() {
 	for {
 		select {
@@ -167,7 +168,7 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// doCleanup removes buckets that haven't been used recently
+// doCleanup removes buckets that haven't been used recently.
 func (rl *RateLimiter) doCleanup() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -186,7 +187,7 @@ func (rl *RateLimiter) doCleanup() {
 	}
 }
 
-// Stop stops the rate limiter cleanup goroutine
+// Stop stops the rate limiter cleanup goroutine.
 func (rl *RateLimiter) Stop() {
 	if rl.cleanupT != nil {
 		rl.cleanupT.Stop()
@@ -194,7 +195,7 @@ func (rl *RateLimiter) Stop() {
 	close(rl.stopCh)
 }
 
-// isWhitelisted checks if an IP is whitelisted
+// isWhitelisted checks if an IP is whitelisted.
 func (rl *RateLimiter) isWhitelisted(ip string) bool {
 	for _, whitelistedIP := range rl.config.WhitelistedIPs {
 		if ip == whitelistedIP {
@@ -202,10 +203,11 @@ func (rl *RateLimiter) isWhitelisted(ip string) bool {
 		}
 		// TODO: Support CIDR ranges
 	}
+
 	return false
 }
 
-// extractIP extracts the IP address from a net.Addr
+// extractIP extracts the IP address from a net.Addr.
 func extractIP(addr net.Addr) string {
 	if addr == nil {
 		return "" // No address, allow through
@@ -222,17 +224,18 @@ func extractIP(addr net.Addr) string {
 		if err != nil {
 			return addr.String()
 		}
+
 		return host
 	}
 }
 
-// GetStats returns rate limiting statistics
+// GetStats returns rate limiting statistics.
 type RateLimitStats struct {
 	ActiveBuckets int
 	TotalIPs      int
 }
 
-// GetStats returns current rate limiting statistics
+// GetStats returns current rate limiting statistics.
 func (rl *RateLimiter) GetStats() RateLimitStats {
 	rl.mu.RLock()
 	defer rl.mu.RUnlock()

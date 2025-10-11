@@ -7,7 +7,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// BenchmarkRRsetCacheGet tests zero-allocation RRset lookup
+// BenchmarkRRsetCacheGet tests zero-allocation RRset lookup.
 func BenchmarkRRsetCacheGet(b *testing.B) {
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
@@ -18,12 +18,12 @@ func BenchmarkRRsetCacheGet(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = cache.Get("example.com.", dns.TypeA)
 	}
 }
 
-// BenchmarkRRsetCacheGetParallel tests concurrent RRset lookups
+// BenchmarkRRsetCacheGetParallel tests concurrent RRset lookups.
 func BenchmarkRRsetCacheGetParallel(b *testing.B) {
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
@@ -40,18 +40,19 @@ func BenchmarkRRsetCacheGetParallel(b *testing.B) {
 	})
 }
 
-// BenchmarkMakeRRsetKey tests RRset key generation
+// BenchmarkMakeRRsetKey tests RRset key generation.
 func BenchmarkMakeRRsetKey(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = MakeRRsetKey("example.com.", dns.TypeA)
 	}
 }
 
-// TestRRsetCacheGetSet tests basic RRset cache operations
+// TestRRsetCacheGetSet tests basic RRset cache operations.
 func TestRRsetCacheGetSet(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	// Create an RRset
@@ -72,8 +73,9 @@ func TestRRsetCacheGetSet(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheExpiry tests RRset TTL expiration
+// TestRRsetCacheExpiry tests RRset TTL expiration.
 func TestRRsetCacheExpiry(t *testing.T) {
+	t.Parallel()
 	config := DefaultRRsetCacheConfig()
 	config.MinTTL = 10 * time.Millisecond
 	cache := NewRRsetCache(config)
@@ -97,8 +99,9 @@ func TestRRsetCacheExpiry(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheMiss tests cache miss behavior
+// TestRRsetCacheMiss tests cache miss behavior.
 func TestRRsetCacheMiss(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	cached := cache.Get("nonexistent.com.", dns.TypeA)
@@ -112,20 +115,21 @@ func TestRRsetCacheMiss(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheStats tests statistics tracking
+// TestRRsetCacheStats tests statistics tracking.
 func TestRRsetCacheStats(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	rr, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
 	cache.Set("example.com.", dns.TypeA, []dns.RR{rr}, 5*time.Minute)
 
 	// Generate hits
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		cache.Get("example.com.", dns.TypeA)
 	}
 
 	// Generate misses
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		cache.Get("nonexistent.com.", dns.TypeA)
 	}
 
@@ -140,8 +144,9 @@ func TestRRsetCacheStats(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheMultipleTypes tests caching different record types for same name
+// TestRRsetCacheMultipleTypes tests caching different record types for same name.
 func TestRRsetCacheMultipleTypes(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	// Cache A record
@@ -165,8 +170,9 @@ func TestRRsetCacheMultipleTypes(t *testing.T) {
 	}
 }
 
-// TestBuildResponse tests response construction from RRsets
+// TestBuildResponse tests response construction from RRsets.
 func TestBuildResponse(t *testing.T) {
+	t.Parallel()
 	query := new(dns.Msg)
 	query.SetQuestion("example.com.", dns.TypeA)
 
@@ -189,8 +195,9 @@ func TestBuildResponse(t *testing.T) {
 	}
 }
 
-// TestExtractRRsets tests extracting RRsets from DNS message
+// TestExtractRRsets tests extracting RRsets from DNS message.
 func TestExtractRRsets(t *testing.T) {
+	t.Parallel()
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 
@@ -223,8 +230,9 @@ func TestExtractRRsets(t *testing.T) {
 	}
 }
 
-// TestGetMinTTL tests minimum TTL extraction
+// TestGetMinTTL tests minimum TTL extraction.
 func TestGetMinTTL(t *testing.T) {
+	t.Parallel()
 	rr1, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
 	rr2, _ := dns.NewRR("example.com. 600 IN A 192.0.2.2")
 	rr3, _ := dns.NewRR("example.com. 150 IN A 192.0.2.3")
@@ -239,16 +247,18 @@ func TestGetMinTTL(t *testing.T) {
 	}
 }
 
-// TestGetMinTTL_Empty tests minimum TTL with empty RRset
+// TestGetMinTTL_Empty tests minimum TTL with empty RRset.
 func TestGetMinTTL_Empty(t *testing.T) {
+	t.Parallel()
 	minTTL := GetMinTTL([]dns.RR{})
 	if minTTL != 0 {
 		t.Errorf("Expected 0 for empty RRset, got %v", minTTL)
 	}
 }
 
-// TestRRsetCacheDelete tests cache deletion
+// TestRRsetCacheDelete tests cache deletion.
 func TestRRsetCacheDelete(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	rr, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
@@ -268,12 +278,13 @@ func TestRRsetCacheDelete(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheClear tests clearing entire cache
+// TestRRsetCacheClear tests clearing entire cache.
 func TestRRsetCacheClear(t *testing.T) {
+	t.Parallel()
 	cache := NewRRsetCache(DefaultRRsetCacheConfig())
 
 	// Add multiple entries
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		rr, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
 		cache.Set("example.com.", dns.TypeA, []dns.RR{rr}, 5*time.Minute)
 	}
@@ -288,8 +299,9 @@ func TestRRsetCacheClear(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheSharding tests that keys are distributed across shards
+// TestRRsetCacheSharding tests that keys are distributed across shards.
 func TestRRsetCacheSharding(t *testing.T) {
+	t.Parallel()
 	config := DefaultRRsetCacheConfig()
 	config.NumShards = 4
 	cache := NewRRsetCache(config)
@@ -315,8 +327,9 @@ func TestRRsetCacheSharding(t *testing.T) {
 	}
 }
 
-// TestRRsetCacheTTLBounds tests TTL enforcement
+// TestRRsetCacheTTLBounds tests TTL enforcement.
 func TestRRsetCacheTTLBounds(t *testing.T) {
+	t.Parallel()
 	config := DefaultRRsetCacheConfig()
 	config.MinTTL = 60 * time.Second
 	config.MaxTTL = 1 * time.Hour

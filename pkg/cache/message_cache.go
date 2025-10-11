@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// MessageCacheEntry represents a cached DNS message
+// MessageCacheEntry represents a cached DNS message.
 type MessageCacheEntry struct {
 	// ResponseBytes is the complete DNS response ready to send
 	// This enables zero-copy serving
@@ -25,19 +25,19 @@ type MessageCacheEntry struct {
 	LastHit atomic.Int64
 }
 
-// IsExpired checks if the cache entry has expired
+// IsExpired checks if the cache entry has expired.
 func (e *MessageCacheEntry) IsExpired() bool {
 	return time.Now().After(e.Expiry)
 }
 
-// IncrementHitCount atomically increments the hit counter
+// IncrementHitCount atomically increments the hit counter.
 func (e *MessageCacheEntry) IncrementHitCount() {
 	e.HitCount.Add(1)
 	e.LastHit.Store(time.Now().Unix())
 }
 
 // ShouldPrefetch determines if this entry should be prefetched
-// based on popularity and time until expiry
+// based on popularity and time until expiry.
 func (e *MessageCacheEntry) ShouldPrefetch(hitThreshold int64, ttlPercentThreshold float64) bool {
 	if e.HitCount.Load() < hitThreshold {
 		return false
@@ -60,14 +60,14 @@ func (e *MessageCacheEntry) ShouldPrefetch(hitThreshold int64, ttlPercentThresho
 	return ttlRemaining < ttlPercentThreshold
 }
 
-// MessageCacheShard is a single shard of the message cache
+// MessageCacheShard is a single shard of the message cache.
 type MessageCacheShard struct {
 	data sync.Map // Lock-free map for reads
 	size atomic.Int64
 }
 
 // MessageCache is a sharded cache for complete DNS responses
-// Sharding eliminates lock contention across cores
+// Sharding eliminates lock contention across cores.
 type MessageCache struct {
 	shards []*MessageCacheShard
 	config MessageCacheConfig
@@ -78,7 +78,7 @@ type MessageCache struct {
 	evicts atomic.Int64
 }
 
-// MessageCacheConfig holds configuration for the message cache
+// MessageCacheConfig holds configuration for the message cache.
 type MessageCacheConfig struct {
 	// NumShards is the number of shards (should be power of 2, typically NumCPU * 4)
 	NumShards int
@@ -96,21 +96,21 @@ type MessageCacheConfig struct {
 	MaxTTL time.Duration
 }
 
-// DefaultMessageCacheConfig returns a configuration with sensible defaults
+// DefaultMessageCacheConfig returns a configuration with sensible defaults.
 func DefaultMessageCacheConfig() MessageCacheConfig {
 	return MessageCacheConfig{
-		NumShards:    64,                    // Good for up to 16 cores
-		MaxSizeBytes: 128 * 1024 * 1024,     // 128 MB
+		NumShards:    64,                // Good for up to 16 cores
+		MaxSizeBytes: 128 * 1024 * 1024, // 128 MB
 		DefaultTTL:   5 * time.Minute,
 		MinTTL:       60 * time.Second,
 		MaxTTL:       24 * time.Hour,
 	}
 }
 
-// NewMessageCache creates a new sharded message cache
+// NewMessageCache creates a new sharded message cache.
 func NewMessageCache(config MessageCacheConfig) *MessageCache {
 	shards := make([]*MessageCacheShard, config.NumShards)
-	for i := 0; i < config.NumShards; i++ {
+	for i := range config.NumShards {
 		shards[i] = &MessageCacheShard{}
 	}
 
@@ -121,29 +121,32 @@ func NewMessageCache(config MessageCacheConfig) *MessageCache {
 }
 
 // hashKey generates a hash for the cache key
-// Uses FNV-1a hash which is fast and has good distribution
+// Uses FNV-1a hash which is fast and has good distribution.
 func (mc *MessageCache) hashKey(key string) uint64 {
 	h := fnv.New64a()
 	h.Write([]byte(key))
+
 	return h.Sum64()
 }
 
-// getShard returns the shard for a given key
+// getShard returns the shard for a given key.
 func (mc *MessageCache) getShard(key string) *MessageCacheShard {
 	hash := mc.hashKey(key)
 	// Use bitwise AND for modulo (works because NumShards is power of 2)
 	shardIdx := hash & uint64(len(mc.shards)-1)
+
 	return mc.shards[shardIdx]
 }
 
 // Get retrieves a cached response
-// This is the HOT PATH and must be allocation-free
+// This is the HOT PATH and must be allocation-free.
 func (mc *MessageCache) Get(key string) []byte {
 	shard := mc.getShard(key)
 
 	value, ok := shard.data.Load(key)
 	if !ok {
 		mc.misses.Add(1)
+
 		return nil
 	}
 
@@ -156,6 +159,7 @@ func (mc *MessageCache) Get(key string) []byte {
 		shard.size.Add(-int64(len(entry.ResponseBytes)))
 		mc.evicts.Add(1)
 		mc.misses.Add(1)
+
 		return nil
 	}
 
@@ -167,7 +171,7 @@ func (mc *MessageCache) Get(key string) []byte {
 }
 
 // GetEntryForPrefetch retrieves a cache entry for prefetch checking
-// Returns nil if not found
+// Returns nil if not found.
 func (mc *MessageCache) GetEntryForPrefetch(key string) *MessageCacheEntry {
 	shard := mc.getShard(key)
 
@@ -179,7 +183,7 @@ func (mc *MessageCache) GetEntryForPrefetch(key string) *MessageCacheEntry {
 	return value.(*MessageCacheEntry)
 }
 
-// Set stores a response in the cache
+// Set stores a response in the cache.
 func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 	// Enforce TTL bounds
 	if ttl < mc.config.MinTTL {
@@ -209,7 +213,7 @@ func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 	// This requires tracking total size across shards and LRU/LFU eviction
 }
 
-// Delete removes an entry from the cache
+// Delete removes an entry from the cache.
 func (mc *MessageCache) Delete(key string) {
 	shard := mc.getShard(key)
 
@@ -220,7 +224,7 @@ func (mc *MessageCache) Delete(key string) {
 	}
 }
 
-// Stats returns cache statistics
+// Stats returns cache statistics.
 type MessageCacheStats struct {
 	Hits    int64
 	Misses  int64
@@ -229,7 +233,7 @@ type MessageCacheStats struct {
 	Size    int64 // Approximate total size in bytes
 }
 
-// GetStats returns cache statistics
+// GetStats returns cache statistics.
 func (mc *MessageCache) GetStats() MessageCacheStats {
 	hits := mc.hits.Load()
 	misses := mc.misses.Load()
@@ -255,11 +259,12 @@ func (mc *MessageCache) GetStats() MessageCacheStats {
 	}
 }
 
-// Clear removes all entries from the cache
+// Clear removes all entries from the cache.
 func (mc *MessageCache) Clear() {
 	for _, shard := range mc.shards {
 		shard.data.Range(func(key, value interface{}) bool {
 			shard.data.Delete(key)
+
 			return true
 		})
 		shard.size.Store(0)
@@ -271,7 +276,7 @@ func (mc *MessageCache) Clear() {
 }
 
 // MakeKey generates a cache key from DNS query components
-// Format: "name:type:class"
+// Format: "name:type:class".
 func MakeKey(name string, qtype uint16, qclass uint16) string {
 	// Pre-allocate buffer to avoid allocations
 	// Most domain names are < 100 chars
@@ -281,10 +286,11 @@ func MakeKey(name string, qtype uint16, qclass uint16) string {
 	buf = appendUint16(buf, qtype)
 	buf = append(buf, ':')
 	buf = appendUint16(buf, qclass)
+
 	return string(buf)
 }
 
-// appendUint16 appends a uint16 as string to buffer
+// appendUint16 appends a uint16 as string to buffer.
 func appendUint16(buf []byte, n uint16) []byte {
 	// Fast path for common values
 	if n < 10 {
@@ -301,5 +307,6 @@ func appendUint16(buf []byte, n uint16) []byte {
 	}
 	i--
 	tmp[i] = byte('0' + n)
+
 	return append(buf, tmp[i:]...)
 }

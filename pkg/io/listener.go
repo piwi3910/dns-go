@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// ListenerConfig holds configuration for DNS listeners
+// ListenerConfig holds configuration for DNS listeners.
 type ListenerConfig struct {
 	// Address to listen on (e.g., ":53" or "0.0.0.0:53")
 	Address string
@@ -31,18 +31,18 @@ type ListenerConfig struct {
 	WriteBufferSize int
 }
 
-// DefaultListenerConfig returns a configuration with sensible defaults
+// DefaultListenerConfig returns a configuration with sensible defaults.
 func DefaultListenerConfig(address string) *ListenerConfig {
 	return &ListenerConfig{
 		Address:         address,
 		NumWorkers:      runtime.NumCPU(),
 		ReusePort:       true,
-		ReadBufferSize:  4 * 1024 * 1024,  // 4MB (handles traffic spikes)
-		WriteBufferSize: 4 * 1024 * 1024,  // 4MB
+		ReadBufferSize:  4 * 1024 * 1024, // 4MB (handles traffic spikes)
+		WriteBufferSize: 4 * 1024 * 1024, // 4MB
 	}
 }
 
-// UDPListener manages multiple UDP sockets with SO_REUSEPORT
+// UDPListener manages multiple UDP sockets with SO_REUSEPORT.
 type UDPListener struct {
 	config  *ListenerConfig
 	conns   []*net.UDPConn
@@ -53,12 +53,12 @@ type UDPListener struct {
 }
 
 // QueryHandler processes DNS queries
-// Returns response bytes and error
+// Returns response bytes and error.
 type QueryHandler interface {
 	HandleQuery(ctx context.Context, query []byte, addr net.Addr) ([]byte, error)
 }
 
-// NewUDPListener creates a new UDP listener with the given configuration
+// NewUDPListener creates a new UDP listener with the given configuration.
 func NewUDPListener(config *ListenerConfig, handler QueryHandler) (*UDPListener, error) {
 	if config == nil {
 		config = DefaultListenerConfig(":53")
@@ -78,7 +78,7 @@ func NewUDPListener(config *ListenerConfig, handler QueryHandler) (*UDPListener,
 }
 
 // Start begins listening and processing queries
-// Creates one UDP socket per worker with SO_REUSEPORT for load distribution
+// Creates one UDP socket per worker with SO_REUSEPORT for load distribution.
 func (ul *UDPListener) Start() error {
 	addr, err := net.ResolveUDPAddr("udp", ul.config.Address)
 	if err != nil {
@@ -86,11 +86,12 @@ func (ul *UDPListener) Start() error {
 	}
 
 	// Create one socket per worker for per-core load distribution
-	for i := 0; i < ul.config.NumWorkers; i++ {
+	for i := range ul.config.NumWorkers {
 		conn, err := ul.createUDPSocket(addr)
 		if err != nil {
 			// Clean up already created sockets
 			ul.Stop()
+
 			return fmt.Errorf("failed to create UDP socket %d: %w", i, err)
 		}
 
@@ -104,7 +105,7 @@ func (ul *UDPListener) Start() error {
 	return nil
 }
 
-// createUDPSocket creates a UDP socket with SO_REUSEPORT and tuned buffer sizes
+// createUDPSocket creates a UDP socket with SO_REUSEPORT and tuned buffer sizes.
 func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) {
 	// Create socket with control options
 	lc := net.ListenConfig{
@@ -116,6 +117,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 					// This is critical for scaling beyond single-core performance
 					if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
 						sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
+
 						return
 					}
 				}
@@ -123,12 +125,14 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 				// Set large receive buffer to handle traffic spikes
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, ul.config.ReadBufferSize); err != nil {
 					sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
+
 					return
 				}
 
 				// Set large send buffer
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, ul.config.WriteBufferSize); err != nil {
 					sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
+
 					return
 				}
 			})
@@ -136,6 +140,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 			if err != nil {
 				return err
 			}
+
 			return sockErr
 		},
 	}
@@ -149,7 +154,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 }
 
 // worker is the main processing loop for a single UDP socket
-// This runs in its own goroutine, pinned to an OS thread for optimal performance
+// This runs in its own goroutine, pinned to an OS thread for optimal performance.
 func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 	defer ul.wg.Done()
 
@@ -203,7 +208,7 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 	}
 }
 
-// Stop gracefully stops all listeners
+// Stop gracefully stops all listeners.
 func (ul *UDPListener) Stop() error {
 	ul.cancel()
 
@@ -220,16 +225,17 @@ func (ul *UDPListener) Stop() error {
 	return nil
 }
 
-// Addr returns the listener address
+// Addr returns the listener address.
 func (ul *UDPListener) Addr() net.Addr {
 	if len(ul.conns) > 0 && ul.conns[0] != nil {
 		return ul.conns[0].LocalAddr()
 	}
+
 	return nil
 }
 
 // TCPListener manages TCP connections for DNS queries
-// RFC 7766: DNS Transport over TCP
+// RFC 7766: DNS Transport over TCP.
 type TCPListener struct {
 	config   *ListenerConfig
 	listener net.Listener
@@ -244,7 +250,7 @@ type TCPListener struct {
 	connMutex      sync.Mutex
 }
 
-// NewTCPListener creates a new TCP listener with the given configuration
+// NewTCPListener creates a new TCP listener with the given configuration.
 func NewTCPListener(config *ListenerConfig, handler QueryHandler) (*TCPListener, error) {
 	if config == nil {
 		config = DefaultListenerConfig(":53")
@@ -264,7 +270,7 @@ func NewTCPListener(config *ListenerConfig, handler QueryHandler) (*TCPListener,
 	return listener, nil
 }
 
-// Start begins listening for TCP connections
+// Start begins listening for TCP connections.
 func (tl *TCPListener) Start() error {
 	addr, err := net.ResolveTCPAddr("tcp", tl.config.Address)
 	if err != nil {
@@ -280,6 +286,7 @@ func (tl *TCPListener) Start() error {
 					// Enable SO_REUSEPORT for load distribution
 					if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
 						sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
+
 						return
 					}
 				}
@@ -287,11 +294,13 @@ func (tl *TCPListener) Start() error {
 				// Set TCP buffer sizes
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, tl.config.ReadBufferSize); err != nil {
 					sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
+
 					return
 				}
 
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, tl.config.WriteBufferSize); err != nil {
 					sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
+
 					return
 				}
 			})
@@ -299,6 +308,7 @@ func (tl *TCPListener) Start() error {
 			if err != nil {
 				return err
 			}
+
 			return sockErr
 		},
 	}
@@ -317,7 +327,7 @@ func (tl *TCPListener) Start() error {
 	return nil
 }
 
-// acceptLoop accepts new TCP connections and spawns handlers
+// acceptLoop accepts new TCP connections and spawns handlers.
 func (tl *TCPListener) acceptLoop() {
 	defer tl.wg.Done()
 
@@ -343,6 +353,7 @@ func (tl *TCPListener) acceptLoop() {
 		if tl.activeConns >= tl.maxConnections {
 			tl.connMutex.Unlock()
 			conn.Close() // Reject connection
+
 			continue
 		}
 		tl.activeConns++
@@ -355,7 +366,7 @@ func (tl *TCPListener) acceptLoop() {
 }
 
 // handleConnection processes a single TCP connection
-// RFC 7766: DNS messages over TCP are prefixed with 2-byte length
+// RFC 7766: DNS messages over TCP are prefixed with 2-byte length.
 func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
 	defer conn.Close()
@@ -410,6 +421,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		_, err = io.ReadFull(conn, queryBuf[:messageLen])
 		if err != nil {
 			bufferPool.Put(queryBuf)
+
 			return
 		}
 
@@ -417,6 +429,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		response, err := tl.handler.HandleQuery(tl.ctx, queryBuf[:messageLen], conn.RemoteAddr())
 		if err != nil {
 			bufferPool.Put(queryBuf)
+
 			return
 		}
 
@@ -434,6 +447,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 			_, err = conn.Write(responseBuf)
 			if err != nil {
 				bufferPool.Put(queryBuf)
+
 				return
 			}
 		}
@@ -445,7 +459,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	}
 }
 
-// Stop gracefully stops the TCP listener
+// Stop gracefully stops the TCP listener.
 func (tl *TCPListener) Stop() error {
 	tl.cancel()
 
@@ -460,15 +474,16 @@ func (tl *TCPListener) Stop() error {
 	return nil
 }
 
-// Addr returns the listener address
+// Addr returns the listener address.
 func (tl *TCPListener) Addr() net.Addr {
 	if tl.listener != nil {
 		return tl.listener.Addr()
 	}
+
 	return nil
 }
 
-// SetMaxConnections sets the maximum number of concurrent TCP connections
+// SetMaxConnections sets the maximum number of concurrent TCP connections.
 func (tl *TCPListener) SetMaxConnections(max int) {
 	tl.connMutex.Lock()
 	defer tl.connMutex.Unlock()

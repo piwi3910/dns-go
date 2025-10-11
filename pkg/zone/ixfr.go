@@ -2,6 +2,7 @@ package zone
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
@@ -9,7 +10,7 @@ import (
 )
 
 // ZoneDelta represents changes between two zone versions
-// Used for IXFR (incremental zone transfer)
+// Used for IXFR (incremental zone transfer).
 type ZoneDelta struct {
 	// FromSerial is the starting serial number
 	FromSerial uint32
@@ -24,7 +25,7 @@ type ZoneDelta struct {
 	Added []dns.RR
 }
 
-// IXFRHandler handles IXFR (incremental zone transfer) requests per RFC 1995
+// IXFRHandler handles IXFR (incremental zone transfer) requests per RFC 1995.
 type IXFRHandler struct {
 	zone *Zone
 
@@ -33,7 +34,7 @@ type IXFRHandler struct {
 	deltaLog map[uint32]*ZoneDelta
 }
 
-// NewIXFRHandler creates a new IXFR handler for a zone
+// NewIXFRHandler creates a new IXFR handler for a zone.
 func NewIXFRHandler(zone *Zone) *IXFRHandler {
 	return &IXFRHandler{
 		zone:     zone,
@@ -42,16 +43,16 @@ func NewIXFRHandler(zone *Zone) *IXFRHandler {
 }
 
 // HandleIXFR handles an IXFR query
-// RFC 1995 Section 2: If incremental transfer is not available, fall back to AXFR
+// RFC 1995 Section 2: If incremental transfer is not available, fall back to AXFR.
 func (h *IXFRHandler) HandleIXFR(query *dns.Msg, clientIP string, clientSerial uint32) ([]*dns.Msg, bool, error) {
 	// Validate query
 	if len(query.Question) != 1 {
-		return nil, false, fmt.Errorf("IXFR query must have exactly one question")
+		return nil, false, errors.New("IXFR query must have exactly one question")
 	}
 
 	q := query.Question[0]
 	if q.Qtype != dns.TypeIXFR {
-		return nil, false, fmt.Errorf("not an IXFR query")
+		return nil, false, errors.New("not an IXFR query")
 	}
 
 	// Check ACL
@@ -82,10 +83,11 @@ func (h *IXFRHandler) HandleIXFR(query *dns.Msg, clientIP string, clientSerial u
 
 	// Build IXFR response messages
 	messages := h.buildIXFRMessages(query, deltas)
+
 	return messages, false, nil
 }
 
-// findDeltas finds the sequence of deltas from oldSerial to newSerial
+// findDeltas finds the sequence of deltas from oldSerial to newSerial.
 func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, bool) {
 	var deltas []*ZoneDelta
 
@@ -107,7 +109,7 @@ func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, boo
 }
 
 // buildIXFRMessages builds IXFR response messages from deltas
-// RFC 1995 Section 2: IXFR response format
+// RFC 1995 Section 2: IXFR response format.
 func (h *IXFRHandler) buildIXFRMessages(query *dns.Msg, deltas []*ZoneDelta) []*dns.Msg {
 	msg := &dns.Msg{}
 	msg.SetReply(query)
@@ -153,7 +155,7 @@ func (h *IXFRHandler) buildIXFRMessages(query *dns.Msg, deltas []*ZoneDelta) []*
 	return []*dns.Msg{msg}
 }
 
-// createSOAWithSerial creates a copy of the zone SOA with a specific serial
+// createSOAWithSerial creates a copy of the zone SOA with a specific serial.
 func (h *IXFRHandler) createSOAWithSerial(serial uint32) *dns.SOA {
 	if h.zone.SOA == nil {
 		return nil
@@ -161,11 +163,12 @@ func (h *IXFRHandler) createSOAWithSerial(serial uint32) *dns.SOA {
 
 	soa := dns.Copy(h.zone.SOA).(*dns.SOA)
 	soa.Serial = serial
+
 	return soa
 }
 
 // createUpToDateResponse creates a response when client is up-to-date
-// RFC 1995 Section 2: Send single SOA to indicate no changes
+// RFC 1995 Section 2: Send single SOA to indicate no changes.
 func (h *IXFRHandler) createUpToDateResponse(query *dns.Msg) []*dns.Msg {
 	msg := &dns.Msg{}
 	msg.SetReply(query)
@@ -179,7 +182,7 @@ func (h *IXFRHandler) createUpToDateResponse(query *dns.Msg) []*dns.Msg {
 }
 
 // RecordDelta records a zone delta for IXFR
-// Call this whenever the zone is updated
+// Call this whenever the zone is updated.
 func (h *IXFRHandler) RecordDelta(fromSerial, toSerial uint32, deleted, added []dns.RR) {
 	delta := &ZoneDelta{
 		FromSerial: fromSerial,
@@ -200,7 +203,7 @@ func (h *IXFRHandler) RecordDelta(fromSerial, toSerial uint32, deleted, added []
 }
 
 // PruneDeltaLog removes old deltas to limit memory usage
-// Keeps only the last N deltas
+// Keeps only the last N deltas.
 func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
 	if len(h.deltaLog) <= keepCount {
 		return
@@ -218,7 +221,7 @@ func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
 	}
 }
 
-// ServeIXFR serves an IXFR zone transfer over TCP
+// ServeIXFR serves an IXFR zone transfer over TCP.
 func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Conn, clientSerial uint32, axfrHandler *AXFRHandler) error {
 	// Extract client IP
 	clientAddr := conn.RemoteAddr().String()
@@ -231,6 +234,7 @@ func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Co
 		errorMsg := &dns.Msg{}
 		errorMsg.SetReply(query)
 		errorMsg.Rcode = dns.RcodeRefused
+
 		return h.writeMessage(conn, errorMsg)
 	}
 
@@ -238,6 +242,7 @@ func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Co
 		// Fall back to AXFR per RFC 1995
 		axfrQuery := query.Copy()
 		axfrQuery.Question[0].Qtype = dns.TypeAXFR
+
 		return axfrHandler.ServeAXFR(ctx, axfrQuery, conn)
 	}
 
@@ -256,14 +261,15 @@ func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Co
 	return nil
 }
 
-// writeMessage writes a DNS message to a TCP connection
+// writeMessage writes a DNS message to a TCP connection.
 func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 	dnsConn := &dns.Conn{Conn: conn}
+
 	return dnsConn.WriteMsg(msg)
 }
 
 // serialCompare compares two serial numbers using RFC 1982 serial number arithmetic
-// Returns: -1 if s1 < s2, 0 if s1 == s2, 1 if s1 > s2
+// Returns: -1 if s1 < s2, 0 if s1 == s2, 1 if s1 > s2.
 func serialCompare(s1, s2 uint32) int {
 	if s1 == s2 {
 		return 0
@@ -283,40 +289,41 @@ func serialCompare(s1, s2 uint32) int {
 	if diff < halfRange {
 		return -1 // s1 < s2
 	}
+
 	return 1 // s1 > s2
 }
 
-// ValidateIXFRQuery validates an IXFR query per RFC 1995
+// ValidateIXFRQuery validates an IXFR query per RFC 1995.
 func ValidateIXFRQuery(query *dns.Msg) error {
 	// Must be a query
 	if query.Response {
-		return fmt.Errorf("IXFR request must be a query, not a response")
+		return errors.New("IXFR request must be a query, not a response")
 	}
 
 	// Must have exactly one question
 	if len(query.Question) != 1 {
-		return fmt.Errorf("IXFR query must have exactly one question")
+		return errors.New("IXFR query must have exactly one question")
 	}
 
 	q := query.Question[0]
 
 	// Must be IXFR type
 	if q.Qtype != dns.TypeIXFR {
-		return fmt.Errorf("question type must be IXFR")
+		return errors.New("question type must be IXFR")
 	}
 
 	// Class must be IN (or ANY)
 	if q.Qclass != dns.ClassINET && q.Qclass != dns.ClassANY {
-		return fmt.Errorf("IXFR class must be IN or ANY")
+		return errors.New("IXFR class must be IN or ANY")
 	}
 
 	// IXFR query should have SOA in authority section with client's serial
 	// This is optional validation - the serial can be extracted if present
 	if len(query.Ns) > 0 {
 		if soa, ok := query.Ns[0].(*dns.SOA); !ok {
-			return fmt.Errorf("IXFR authority section should contain SOA")
+			return errors.New("IXFR authority section should contain SOA")
 		} else if soa.Header().Rrtype != dns.TypeSOA {
-			return fmt.Errorf("first record in authority section must be SOA")
+			return errors.New("first record in authority section must be SOA")
 		}
 	}
 
@@ -324,7 +331,7 @@ func ValidateIXFRQuery(query *dns.Msg) error {
 }
 
 // ExtractClientSerial extracts the client's serial number from an IXFR query
-// RFC 1995 Section 2: Client puts its current SOA in the authority section
+// RFC 1995 Section 2: Client puts its current SOA in the authority section.
 func ExtractClientSerial(query *dns.Msg) (uint32, bool) {
 	if len(query.Ns) == 0 {
 		return 0, false
