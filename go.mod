@@ -1,4 +1,4 @@
-module github.com/pascalwatteel/dns-go
+module github.com/piwi3910/dns-go
 
 go 1.25.2
 

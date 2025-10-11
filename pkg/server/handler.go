@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/pascalwatteel/dns-go/pkg/cache"
-	dnsio "github.com/pascalwatteel/dns-go/pkg/io"
-	"github.com/pascalwatteel/dns-go/pkg/resolver"
+	"github.com/piwi3910/dns-go/pkg/cache"
+	dnsio "github.com/piwi3910/dns-go/pkg/io"
+	"github.com/piwi3910/dns-go/pkg/resolver"
 )
 
 // Handler implements the DNS query handler with fast-path optimization

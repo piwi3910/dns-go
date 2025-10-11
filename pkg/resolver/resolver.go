@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/pascalwatteel/dns-go/pkg/cache"
+	"github.com/piwi3910/dns-go/pkg/cache"
 )
 
 // RecursionMode defines how the resolver operates
