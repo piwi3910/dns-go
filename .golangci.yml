@@ -124,6 +124,7 @@ linters:
   disable:
     # Only truly incompatible linters
     - ginkgolinter  # Not using Ginkgo
+    - depguard     # Disabled: DNS server requires miekg/dns and all internal packages
 
 linters-settings:
   # Minimal settings - don't hide any issues
