@@ -55,6 +55,7 @@ func TestRFC1035_BasicDNSFunctionality(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion(tt.domain, tt.qtype)
 			query, err := msg.Pack()
@@ -370,6 +371,7 @@ func TestRFC1035_ResponseCodeCompliance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion(tt.domain, dns.TypeA)
 			query, _ := msg.Pack()
@@ -520,6 +522,7 @@ func TestRFC_FastPathOptimization(t *testing.T) {
 
 	for _, tt := range commonQueries {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion(tt.name, tt.qtype)
 			query, _ := msg.Pack()
@@ -555,6 +558,7 @@ func TestRFC1035_QueryClasses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion(tt.domain, dns.TypeA)
 			msg.Question[0].Qclass = tt.qclass
@@ -703,6 +707,7 @@ func TestRFC6891_EDNSBufferSizes(t *testing.T) {
 
 	for _, size := range bufferSizes {
 		t.Run(string(rune(size)), func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion("google.com.", dns.TypeA)
 			msg.SetEdns0(size, false)
@@ -748,6 +753,7 @@ func TestRFC1035_InvalidQueries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			response, err := handler.HandleQuery(ctx, tt.query, nil)
 
 			if err != nil {

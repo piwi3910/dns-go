@@ -192,6 +192,7 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			zone := NewZone(ZoneConfig{
 				Origin:      "example.com",
 				TransferACL: tt.acl,

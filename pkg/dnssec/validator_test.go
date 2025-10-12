@@ -247,6 +247,7 @@ func TestIsKSK(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dnskey := &dns.DNSKEY{
 				Flags:     tt.flags,
 				Protocol:  3,
@@ -278,6 +279,7 @@ func TestIsZSK(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dnskey := &dns.DNSKEY{
 				Flags:     tt.flags,
 				Protocol:  3,

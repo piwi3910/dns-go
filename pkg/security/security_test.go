@@ -319,6 +319,7 @@ func TestValidateResponseSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateResponseSize(tt.size, tt.maxSize)
 			if (err != nil) != tt.shouldErr {
 				t.Errorf("ValidateResponseSize(%d, %d): expected error=%v, got error=%v",

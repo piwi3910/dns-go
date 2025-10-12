@@ -58,6 +58,7 @@ func TestCanUseFastPath_CommonQueries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion("example.com.", tt.qtype)
 			query, err := msg.Pack()
@@ -89,6 +90,7 @@ func TestCanUseFastPath_UncommonQueries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			msg := new(dns.Msg)
 			msg.SetQuestion("example.com.", tt.qtype)
 			query, err := msg.Pack()
@@ -190,6 +192,7 @@ func TestCanUseFastPath_InvalidQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := CanUseFastPath(tt.query)
 			if result != false {
 				t.Error("Invalid query should not use fast path")
