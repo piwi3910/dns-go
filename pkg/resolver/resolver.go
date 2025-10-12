@@ -238,18 +238,15 @@ func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns
 		// DNSSEC validation if enabled and CheckingDisabled is not set
 		if r.dnssecEnabled && r.dnssecValidator != nil && !query.CheckingDisabled {
 			validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+			// Handle validation error first
 			if err != nil {
-				// Validation error
 				if r.config.DNSSECConfig.RequireValidation {
 					return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
 				}
 				response.AuthenticatedData = false
-			} else if validationResult.Secure {
-				// Validation successful
-				response.AuthenticatedData = true
 			} else {
-				// Insecure or Bogus
-				response.AuthenticatedData = false
+				// Set AD bit based on validation result
+				response.AuthenticatedData = validationResult.Secure
 			}
 		}
 	}
@@ -273,19 +270,15 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 	// DNSSEC validation if enabled
 	if r.dnssecEnabled && r.dnssecValidator != nil {
 		validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+		// Handle validation error first
 		if err != nil {
-			// Validation error - log but don't fail if RequireValidation is false
 			if r.config.DNSSECConfig.RequireValidation {
 				return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
 			}
-			// Set AD (Authentic Data) bit to false
 			response.AuthenticatedData = false
-		} else if validationResult.Secure {
-			// Validation successful - set AD bit
-			response.AuthenticatedData = true
 		} else {
-			// Insecure or Bogus - clear AD bit
-			response.AuthenticatedData = false
+			// Set AD bit based on validation result
+			response.AuthenticatedData = validationResult.Secure
 		}
 	}
 

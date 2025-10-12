@@ -103,11 +103,13 @@ func TestRFC1035_BasicDNSFunctionality(t *testing.T) {
 				}
 			}
 
-			if respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) > 0 {
+			// Log result based on response code
+			switch {
+			case respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) > 0:
 				t.Logf("✓ %s query successful: %d answers", tt.qtypeName, len(respMsg.Answer))
-			} else if respMsg.Rcode == dns.RcodeNameError {
+			case respMsg.Rcode == dns.RcodeNameError:
 				t.Logf("✓ %s query returned NXDOMAIN (record doesn't exist)", tt.qtypeName)
-			} else {
+			default:
 				t.Logf("✓ %s query completed with rcode %s", tt.qtypeName, dns.RcodeToString[respMsg.Rcode])
 			}
 		})
@@ -286,11 +288,12 @@ func TestRFC8482_ANYQueryResponse(t *testing.T) {
 	}
 
 	// RFC 8482 recommends REFUSED or minimal response
-	if respMsg.Rcode == dns.RcodeRefused || respMsg.Rcode == dns.RcodeNotImplemented {
+	switch {
+	case respMsg.Rcode == dns.RcodeRefused || respMsg.Rcode == dns.RcodeNotImplemented:
 		t.Logf("✓ RFC 8482 ANY Query: Server returns %s (recommended)", dns.RcodeToString[respMsg.Rcode])
-	} else if len(respMsg.Answer) <= 5 {
+	case len(respMsg.Answer) <= 5:
 		t.Logf("✓ RFC 8482 ANY Query: Minimal response with %d records", len(respMsg.Answer))
-	} else {
+	default:
 		t.Logf("⚠ RFC 8482: ANY query returned %d records (recommend minimal response)", len(respMsg.Answer))
 	}
 }
@@ -687,11 +690,12 @@ func TestRFC1035_MultipleQuestions(t *testing.T) {
 	_ = respMsg.Unpack(response)
 
 	// Should either work or return FORMERR/NOTIMP
-	if respMsg.Rcode == dns.RcodeFormatError || respMsg.Rcode == dns.RcodeNotImplemented {
+	switch {
+	case respMsg.Rcode == dns.RcodeFormatError || respMsg.Rcode == dns.RcodeNotImplemented:
 		t.Logf("✓ Multiple questions returned %s (acceptable)", dns.RcodeToString[respMsg.Rcode])
-	} else if len(respMsg.Question) == 1 {
+	case len(respMsg.Question) == 1:
 		t.Logf("✓ Multiple questions normalized to single question (acceptable)")
-	} else {
+	default:
 		t.Logf("⚠ Multiple questions processed (unusual but valid)")
 	}
 }
