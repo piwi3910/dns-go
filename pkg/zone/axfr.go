@@ -87,7 +87,26 @@ func (h *AXFRHandler) splitIntoMessages(query *dns.Msg, records []dns.RR) []*dns
 
 // createAXFRMessage creates a base AXFR response message.
 func (h *AXFRHandler) createAXFRMessage(query *dns.Msg) *dns.Msg {
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetReply(query)
 	msg.Authoritative = true
 	msg.Compress = true // Enable compression for efficiency
@@ -106,7 +125,26 @@ func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Co
 	messages, err := h.HandleAXFR(query, clientIP)
 	if err != nil {
 		// Send error response
-		errorMsg := &dns.Msg{}
+		errorMsg := &dns.Msg{
+			MsgHdr: dns.MsgHdr{
+				Id:                 0,
+				Response:           false,
+				Opcode:             0,
+				Authoritative:      false,
+				Truncated:          false,
+				RecursionDesired:   false,
+				RecursionAvailable: false,
+				Zero:               false,
+				AuthenticatedData:  false,
+				CheckingDisabled:   false,
+				Rcode:              0,
+			},
+			Compress: false,
+			Question: nil,
+			Answer:   nil,
+			Ns:       nil,
+			Extra:    nil,
+		}
 		errorMsg.SetReply(query)
 		errorMsg.Rcode = dns.RcodeRefused
 

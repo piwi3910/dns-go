@@ -21,6 +21,7 @@ func createTestZone() *Zone {
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
+			Rdlength: 0,
 		},
 		Ns:      "ns1.example.com.",
 		Mbox:    "admin.example.com.",
@@ -39,6 +40,7 @@ func createTestZone() *Zone {
 			Rrtype: dns.TypeA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		A: []byte{192, 0, 2, 10},
 	}
@@ -51,6 +53,7 @@ func createTestZone() *Zone {
 			Rrtype: dns.TypeMX,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		Preference: 10,
 		Mx:         "mail.example.com.",
@@ -65,7 +68,26 @@ func createTestZone() *Zone {
 func TestValidateAXFRQuery(t *testing.T) {
 	t.Parallel()
 	// Valid AXFR query
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
 
 	err := ValidateAXFRQuery(query)
@@ -105,7 +127,26 @@ func TestAXFRHandler_HandleAXFR(t *testing.T) {
 	zone := createTestZone()
 	handler := NewAXFRHandler(zone)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
 
 	// Allowed client
@@ -141,7 +182,26 @@ func TestAXFRHandler_HandleAXFR_ACLDenied(t *testing.T) {
 	zone := createTestZone()
 	handler := NewAXFRHandler(zone)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
 
 	// Not allowed client
@@ -159,7 +219,26 @@ func TestAXFRHandler_HandleAXFR_EmptyZone(t *testing.T) {
 	})
 	handler := NewAXFRHandler(zone)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
 
 	_, err := handler.HandleAXFR(query, "192.0.2.1")
@@ -173,7 +252,26 @@ func TestAXFRHandler_HandleAXFR_EmptyZone(t *testing.T) {
 func TestValidateIXFRQuery(t *testing.T) {
 	t.Parallel()
 	// Valid IXFR query
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// Add client SOA in authority section
@@ -183,6 +281,7 @@ func TestValidateIXFRQuery(t *testing.T) {
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
+			Rdlength: 0,
 		},
 		Serial: 2024010100,
 	}
@@ -204,7 +303,26 @@ func TestValidateIXFRQuery(t *testing.T) {
 
 func TestExtractClientSerial(t *testing.T) {
 	t.Parallel()
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// No SOA in authority
@@ -220,6 +338,7 @@ func TestExtractClientSerial(t *testing.T) {
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
+			Rdlength: 0,
 		},
 		Serial: 2024010100,
 	}
@@ -240,7 +359,26 @@ func TestIXFRHandler_HandleIXFR_UpToDate(t *testing.T) {
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// Client has same serial
@@ -285,7 +423,26 @@ func TestIXFRHandler_HandleIXFR_NeedsDelta(t *testing.T) {
 	}
 	handler.RecordDelta(oldSerial, newSerial, deleted, added)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// Client has old serial
@@ -314,7 +471,26 @@ func TestIXFRHandler_HandleIXFR_FallbackToAXFR(t *testing.T) {
 	zone := createTestZone()
 	handler := NewIXFRHandler(zone)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeIXFR)
 
 	// Client has very old serial with no delta
@@ -449,6 +625,7 @@ func TestAXFRHandler_SplitIntoMessages(t *testing.T) {
 				Rrtype: dns.TypeA,
 				Class:  dns.ClassINET,
 				Ttl:    300,
+				Rdlength: 0,
 			},
 			A: []byte{192, 0, 2, byte(i % 256)},
 		}
@@ -456,7 +633,26 @@ func TestAXFRHandler_SplitIntoMessages(t *testing.T) {
 	}
 
 	handler := NewAXFRHandler(zone)
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeAXFR)
 
 	records := zone.GetAllRecordsOrdered()

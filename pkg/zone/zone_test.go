@@ -35,6 +35,7 @@ func TestZone_AddRecord(t *testing.T) {
 			Rrtype: dns.TypeA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		A: []byte{192, 0, 2, 1},
 	}
@@ -71,6 +72,7 @@ func TestZone_AddRecord_OutOfZone(t *testing.T) {
 			Rrtype: dns.TypeA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		A: []byte{192, 0, 2, 1},
 	}
@@ -91,6 +93,7 @@ func TestZone_AddSOA(t *testing.T) {
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
+			Rdlength: 0,
 		},
 		Ns:      "ns1.example.com.",
 		Mbox:    "admin.example.com.",
@@ -126,6 +129,7 @@ func TestZone_GetAllRecords(t *testing.T) {
 			Rrtype: dns.TypeA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		A: []byte{192, 0, 2, 1},
 	}
@@ -135,6 +139,7 @@ func TestZone_GetAllRecords(t *testing.T) {
 			Rrtype: dns.TypeAAAA,
 			Class:  dns.ClassINET,
 			Ttl:    300,
+			Rdlength: 0,
 		},
 		AAAA: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 	}
@@ -158,6 +163,7 @@ func TestZone_IncrementSerial(t *testing.T) {
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
+			Rdlength: 0,
 		},
 		Serial: 2024010101,
 	}

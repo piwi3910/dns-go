@@ -111,7 +111,26 @@ func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, boo
 // buildIXFRMessages builds IXFR response messages from deltas
 // RFC 1995 Section 2: IXFR response format.
 func (h *IXFRHandler) buildIXFRMessages(query *dns.Msg, deltas []*ZoneDelta) []*dns.Msg {
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetReply(query)
 	msg.Authoritative = true
 	msg.Compress = true
@@ -170,7 +189,26 @@ func (h *IXFRHandler) createSOAWithSerial(serial uint32) *dns.SOA {
 // createUpToDateResponse creates a response when client is up-to-date
 // RFC 1995 Section 2: Send single SOA to indicate no changes.
 func (h *IXFRHandler) createUpToDateResponse(query *dns.Msg) []*dns.Msg {
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetReply(query)
 	msg.Authoritative = true
 
@@ -231,7 +269,26 @@ func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Co
 	messages, needsAXFR, err := h.HandleIXFR(query, clientIP, clientSerial)
 	if err != nil {
 		// Send error response
-		errorMsg := &dns.Msg{}
+		errorMsg := &dns.Msg{
+			MsgHdr: dns.MsgHdr{
+				Id:                 0,
+				Response:           false,
+				Opcode:             0,
+				Authoritative:      false,
+				Truncated:          false,
+				RecursionDesired:   false,
+				RecursionAvailable: false,
+				Zero:               false,
+				AuthenticatedData:  false,
+				CheckingDisabled:   false,
+				Rcode:              0,
+			},
+			Compress: false,
+			Question: nil,
+			Answer:   nil,
+			Ns:       nil,
+			Extra:    nil,
+		}
 		errorMsg.SetReply(query)
 		errorMsg.Rcode = dns.RcodeRefused
 
