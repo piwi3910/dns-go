@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
