@@ -126,25 +126,6 @@ func NewMessageCache(config MessageCacheConfig) *MessageCache {
 	}
 }
 
-// hashKey generates a hash for the cache key
-// Uses FNV-1a hash which is fast and has good distribution.
-func (mc *MessageCache) hashKey(key string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
-
-	return h.Sum64()
-}
-
-// getShard returns the shard for a given key.
-func (mc *MessageCache) getShard(key string) *MessageCacheShard {
-	hash := mc.hashKey(key)
-	// Use bitwise AND for modulo (works because NumShards is power of 2)
-	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
-	shardIdx := hash & uint64(len(mc.shards)-1)
-
-	return mc.shards[shardIdx]
-}
-
 // Get retrieves a cached response
 // This is the HOT PATH and must be allocation-free.
 func (mc *MessageCache) Get(key string) []byte {
@@ -300,6 +281,25 @@ func (mc *MessageCache) Clear() {
 	mc.hits.Store(0)
 	mc.misses.Store(0)
 	mc.evicts.Store(0)
+}
+
+// hashKey generates a hash for the cache key
+// Uses FNV-1a hash which is fast and has good distribution.
+func (mc *MessageCache) hashKey(key string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
+
+	return h.Sum64()
+}
+
+// getShard returns the shard for a given key.
+func (mc *MessageCache) getShard(key string) *MessageCacheShard {
+	hash := mc.hashKey(key)
+	// Use bitwise AND for modulo (works because NumShards is power of 2)
+	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
+	shardIdx := hash & uint64(len(mc.shards)-1)
+
+	return mc.shards[shardIdx]
 }
 
 // MakeKey generates a cache key from DNS query components

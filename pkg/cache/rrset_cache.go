@@ -110,23 +110,6 @@ func NewRRsetCache(config RRsetCacheConfig) *RRsetCache {
 	}
 }
 
-// hashKey generates a hash for the cache key.
-func (rc *RRsetCache) hashKey(key string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
-
-	return h.Sum64()
-}
-
-// getShard returns the shard for a given key.
-func (rc *RRsetCache) getShard(key string) *RRsetCacheShard {
-	hash := rc.hashKey(key)
-	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
-	shardIdx := hash & uint64(len(rc.shards)-1)
-
-	return rc.shards[shardIdx]
-}
-
 // Get retrieves a cached RRset
 // Returns nil if not found or expired.
 func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
@@ -292,6 +275,23 @@ func (rc *RRsetCache) Clear() {
 	rc.hits.Store(0)
 	rc.misses.Store(0)
 	rc.evicts.Store(0)
+}
+
+// hashKey generates a hash for the cache key.
+func (rc *RRsetCache) hashKey(key string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
+
+	return h.Sum64()
+}
+
+// getShard returns the shard for a given key.
+func (rc *RRsetCache) getShard(key string) *RRsetCacheShard {
+	hash := rc.hashKey(key)
+	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
+	shardIdx := hash & uint64(len(rc.shards)-1)
+
+	return rc.shards[shardIdx]
 }
 
 // MakeRRsetKey generates a cache key for an RRset
