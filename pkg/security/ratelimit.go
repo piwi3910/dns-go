@@ -62,9 +62,11 @@ type TokenBucket struct {
 // NewRateLimiter creates a new rate limiter.
 func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	rl := &RateLimiter{
-		buckets: make(map[string]*TokenBucket),
-		config:  config,
-		stopCh:  make(chan struct{}),
+		buckets:  make(map[string]*TokenBucket),
+		mu:       sync.RWMutex{},
+		config:   config,
+		cleanupT: nil,
+		stopCh:   make(chan struct{}),
 	}
 
 	if config.Enabled {
@@ -121,6 +123,7 @@ func (rl *RateLimiter) getBucket(ip string) *TokenBucket {
 			refillRate:   float64(rl.config.QueriesPerSecond) / float64(time.Second),
 			lastRefill:   time.Now(),
 			lastActivity: time.Now(),
+			mu:           sync.Mutex{},
 		}
 		rl.buckets[ip] = bucket
 	}

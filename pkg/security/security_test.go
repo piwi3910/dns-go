@@ -17,12 +17,13 @@ func TestRateLimiter_Allow(t *testing.T) {
 		CleanupInterval:  1 * time.Minute,
 		BucketTTL:        5 * time.Minute,
 		Enabled:          true,
+		WhitelistedIPs:   nil,
 	}
 
 	rl := NewRateLimiter(config)
 	defer rl.Stop()
 
-	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.100"), Port: 53}
+	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.100"), Port: 53, Zone: ""}
 
 	// Should allow first 10 requests (burst)
 	for i := range 10 {
@@ -48,12 +49,13 @@ func TestRateLimiter_Refill(t *testing.T) {
 		CleanupInterval:  1 * time.Minute,
 		BucketTTL:        5 * time.Minute,
 		Enabled:          true,
+		WhitelistedIPs:   nil,
 	}
 
 	rl := NewRateLimiter(config)
 	defer rl.Stop()
 
-	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.101"), Port: 53}
+	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.101"), Port: 53, Zone: ""}
 
 	// Exhaust burst
 	for range 5 {
@@ -85,13 +87,14 @@ func TestRateLimiter_MultipleIPs(t *testing.T) {
 		CleanupInterval:  1 * time.Minute,
 		BucketTTL:        5 * time.Minute,
 		Enabled:          true,
+		WhitelistedIPs:   nil,
 	}
 
 	rl := NewRateLimiter(config)
 	defer rl.Stop()
 
-	addr1 := &net.UDPAddr{IP: net.ParseIP("192.168.1.102"), Port: 53}
-	addr2 := &net.UDPAddr{IP: net.ParseIP("192.168.1.103"), Port: 53}
+	addr1 := &net.UDPAddr{IP: net.ParseIP("192.168.1.102"), Port: 53, Zone: ""}
+	addr2 := &net.UDPAddr{IP: net.ParseIP("192.168.1.103"), Port: 53, Zone: ""}
 
 	// Exhaust burst for addr1
 	for range 5 {
@@ -117,12 +120,15 @@ func TestRateLimiter_Disabled(t *testing.T) {
 	config := RateLimitConfig{
 		QueriesPerSecond: 1,
 		BurstSize:        1,
+		CleanupInterval:  0,
+		BucketTTL:        0,
 		Enabled:          false, // Disabled
+		WhitelistedIPs:   nil,
 	}
 
 	rl := NewRateLimiter(config)
 
-	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.104"), Port: 53}
+	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.104"), Port: 53, Zone: ""}
 
 	// Should allow all requests when disabled
 	for range 100 {
@@ -367,12 +373,13 @@ func TestRateLimiterCleanup(t *testing.T) {
 		CleanupInterval:  100 * time.Millisecond,
 		BucketTTL:        200 * time.Millisecond,
 		Enabled:          true,
+		WhitelistedIPs:   nil,
 	}
 
 	rl := NewRateLimiter(config)
 	defer rl.Stop()
 
-	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.105"), Port: 53}
+	addr := &net.UDPAddr{IP: net.ParseIP("192.168.1.105"), Port: 53, Zone: ""}
 
 	// Create bucket
 	rl.Allow(addr)
