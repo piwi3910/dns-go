@@ -53,6 +53,7 @@ func createSocketControlFunc(config *ListenerConfig) func(network, address strin
 				// This is critical for scaling beyond single-core performance
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
 					sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
+
 					return
 				}
 			}
@@ -60,12 +61,14 @@ func createSocketControlFunc(config *ListenerConfig) func(network, address strin
 			// Set large receive buffer to handle traffic spikes
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, config.ReadBufferSize); err != nil {
 				sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
+
 				return
 			}
 
 			// Set large send buffer
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, config.WriteBufferSize); err != nil {
 				sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
+
 				return
 			}
 		})
