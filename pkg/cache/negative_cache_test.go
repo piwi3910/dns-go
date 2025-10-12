@@ -299,116 +299,87 @@ func TestExtractSOA(t *testing.T) {
 	}
 }
 
-func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
+func TestIsNegativeResponse_Negative(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:                 0,
-			Response:           false,
-			Opcode:             0,
-			Authoritative:      false,
-			Truncated:          false,
-			RecursionDesired:   false,
-			RecursionAvailable: false,
-			Zero:               false,
-			AuthenticatedData:  false,
-			CheckingDisabled:   false,
-			Rcode:              0,
+	tests := []struct {
+		name           string
+		rcode          int
+		expectedType   NegativeType
+		expectedIsNeg  bool
+		errorMsg       string
+	}{
+		{
+			name:          "NXDOMAIN",
+			rcode:         dns.RcodeNameError,
+			expectedType:  NegativeNXDOMAIN,
+			expectedIsNeg: true,
+			errorMsg:      "Expected NXDOMAIN to be negative response",
 		},
-		Compress: false,
-		Question: nil,
-		Answer:   nil,
-		Ns:       nil,
-		Extra:    nil,
-	}
-	msg.Response = true
-	msg.Rcode = dns.RcodeNameError
-
-	// Add SOA
-	soa := &dns.SOA{
-		Hdr: dns.RR_Header{
-			Name:     testExampleDomain,
-			Rrtype:   dns.TypeSOA,
-			Class:    dns.ClassINET,
-			Ttl:      3600,
-			Rdlength: 0,
+		{
+			name:          "NODATA",
+			rcode:         dns.RcodeSuccess,
+			expectedType:  NegativeNODATA,
+			expectedIsNeg: true,
+			errorMsg:      "Expected NODATA to be negative response",
 		},
-		Ns:      "",
-		Mbox:    "",
-		Serial:  0,
-		Refresh: 0,
-		Retry:   0,
-		Expire:  0,
-		Minttl:  0,
 	}
-	msg.Ns = append(msg.Ns, soa)
 
-	isNeg, negType, extractedSOA := IsNegativeResponse(msg)
-	if !isNeg {
-		t.Error("Expected NXDOMAIN to be negative response")
-	}
-	if negType != NegativeNXDOMAIN {
-		t.Errorf("Expected NXDOMAIN type, got %v", negType)
-	}
-	if extractedSOA == nil {
-		t.Error("Expected SOA to be extracted")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			msg := &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:                 0,
+					Response:           false,
+					Opcode:             0,
+					Authoritative:      false,
+					Truncated:          false,
+					RecursionDesired:   false,
+					RecursionAvailable: false,
+					Zero:               false,
+					AuthenticatedData:  false,
+					CheckingDisabled:   false,
+					Rcode:              0,
+				},
+				Compress: false,
+				Question: nil,
+				Answer:   nil,
+				Ns:       nil,
+				Extra:    nil,
+			}
+			msg.Response = true
+			msg.Rcode = tt.rcode
 
-func TestIsNegativeResponse_NODATA(t *testing.T) {
-	t.Parallel()
-	msg := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:                 0,
-			Response:           false,
-			Opcode:             0,
-			Authoritative:      false,
-			Truncated:          false,
-			RecursionDesired:   false,
-			RecursionAvailable: false,
-			Zero:               false,
-			AuthenticatedData:  false,
-			CheckingDisabled:   false,
-			Rcode:              0,
-		},
-		Compress: false,
-		Question: nil,
-		Answer:   nil,
-		Ns:       nil,
-		Extra:    nil,
-	}
-	msg.Response = true
-	msg.Rcode = dns.RcodeSuccess
-	// Empty answer section
+			// Add SOA
+			soa := &dns.SOA{
+				Hdr: dns.RR_Header{
+					Name:     testExampleDomain,
+					Rrtype:   dns.TypeSOA,
+					Class:    dns.ClassINET,
+					Ttl:      3600,
+					Rdlength: 0,
+				},
+				Ns:      "",
+				Mbox:    "",
+				Serial:  0,
+				Refresh: 0,
+				Retry:   0,
+				Expire:  0,
+				Minttl:  0,
+			}
+			msg.Ns = append(msg.Ns, soa)
 
-	// Add SOA to authority section
-	soa := &dns.SOA{
-		Hdr: dns.RR_Header{
-			Name:     testExampleDomain,
-			Rrtype:   dns.TypeSOA,
-			Class:    dns.ClassINET,
-			Ttl:      3600,
-			Rdlength: 0,
-		},
-		Ns:      "",
-		Mbox:    "",
-		Serial:  0,
-		Refresh: 0,
-		Retry:   0,
-		Expire:  0,
-		Minttl:  0,
-	}
-	msg.Ns = append(msg.Ns, soa)
-
-	isNeg, negType, extractedSOA := IsNegativeResponse(msg)
-	if !isNeg {
-		t.Error("Expected NODATA to be negative response")
-	}
-	if negType != NegativeNODATA {
-		t.Errorf("Expected NODATA type, got %v", negType)
-	}
-	if extractedSOA == nil {
-		t.Error("Expected SOA to be extracted")
+			isNeg, negType, extractedSOA := IsNegativeResponse(msg)
+			if isNeg != tt.expectedIsNeg {
+				t.Error(tt.errorMsg)
+			}
+			if negType != tt.expectedType {
+				t.Errorf("Expected %v type, got %v", tt.expectedType, negType)
+			}
+			if extractedSOA == nil {
+				t.Error("Expected SOA to be extracted")
+			}
+		})
 	}
 }
 

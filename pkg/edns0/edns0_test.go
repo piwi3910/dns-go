@@ -520,87 +520,66 @@ func TestShouldTruncate(t *testing.T) {
 
 func TestParseEDNS0_ClampUDPSize(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:                 0,
-			Response:           false,
-			Opcode:             0,
-			Authoritative:      false,
-			Truncated:          false,
-			RecursionDesired:   false,
-			RecursionAvailable: false,
-			Zero:               false,
-			AuthenticatedData:  false,
-			CheckingDisabled:   false,
-			Rcode:              0,
+	tests := []struct {
+		name         string
+		optClass     uint16
+		expectedSize uint16
+	}{
+		{
+			name:         "ClampToMinimum",
+			optClass:     256, // Too small
+			expectedSize: MinimumUDPSize,
 		},
-		Compress: false,
-		Question: nil,
-		Answer:   nil,
-		Ns:       nil,
-		Extra:    nil,
-	}
-	msg.SetQuestion("example.com.", dns.TypeA)
-
-	// OPT with size < 512 (should be clamped to 512)
-	opt := &dns.OPT{
-		Hdr: dns.RR_Header{
-			Name:   ".",
-			Rrtype: dns.TypeOPT,
-			Class:  256, // Too small
-			Ttl:      0,
-			Rdlength: 0,
+		{
+			name:         "ClampToMaximum",
+			optClass:     65000, // Too large
+			expectedSize: MaximumUDPSize,
 		},
-		Option: nil,
 	}
-	msg.Extra = append(msg.Extra, opt)
 
-	info := ParseEDNS0(msg)
-	if info.UDPSize != MinimumUDPSize {
-		t.Errorf("Expected UDP size to be clamped to %d, got %d", MinimumUDPSize, info.UDPSize)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			msg := &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:                 0,
+					Response:           false,
+					Opcode:             0,
+					Authoritative:      false,
+					Truncated:          false,
+					RecursionDesired:   false,
+					RecursionAvailable: false,
+					Zero:               false,
+					AuthenticatedData:  false,
+					CheckingDisabled:   false,
+					Rcode:              0,
+				},
+				Compress: false,
+				Question: nil,
+				Answer:   nil,
+				Ns:       nil,
+				Extra:    nil,
+			}
+			msg.SetQuestion("example.com.", dns.TypeA)
 
-func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
-	t.Parallel()
-	msg := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:                 0,
-			Response:           false,
-			Opcode:             0,
-			Authoritative:      false,
-			Truncated:          false,
-			RecursionDesired:   false,
-			RecursionAvailable: false,
-			Zero:               false,
-			AuthenticatedData:  false,
-			CheckingDisabled:   false,
-			Rcode:              0,
-		},
-		Compress: false,
-		Question: nil,
-		Answer:   nil,
-		Ns:       nil,
-		Extra:    nil,
-	}
-	msg.SetQuestion("example.com.", dns.TypeA)
+			// OPT with size that should be clamped
+			opt := &dns.OPT{
+				Hdr: dns.RR_Header{
+					Name:     ".",
+					Rrtype:   dns.TypeOPT,
+					Class:    tt.optClass,
+					Ttl:      0,
+					Rdlength: 0,
+				},
+				Option: nil,
+			}
+			msg.Extra = append(msg.Extra, opt)
 
-	// OPT with size > MaximumUDPSize (should be clamped)
-	opt := &dns.OPT{
-		Hdr: dns.RR_Header{
-			Name:   ".",
-			Rrtype: dns.TypeOPT,
-			Class:  65000, // Too large
-			Ttl:      0,
-			Rdlength: 0,
-		},
-		Option: nil,
-	}
-	msg.Extra = append(msg.Extra, opt)
-
-	info := ParseEDNS0(msg)
-	if info.UDPSize != MaximumUDPSize {
-		t.Errorf("Expected UDP size to be clamped to %d, got %d", MaximumUDPSize, info.UDPSize)
+			info := ParseEDNS0(msg)
+			if info.UDPSize != tt.expectedSize {
+				t.Errorf("Expected UDP size to be clamped to %d, got %d", tt.expectedSize, info.UDPSize)
+			}
+		})
 	}
 }
 
