@@ -406,7 +406,26 @@ func (h *Handler) buildErrorResponse(query []byte, rcode int) ([]byte, error) {
 	if err := msg.Unpack(query); err != nil {
 		// If we can't parse, build minimal error response
 		response := new(dns.Msg)
-		response.SetRcode(&dns.Msg{}, rcode)
+		response.SetRcode(&dns.Msg{
+			MsgHdr: dns.MsgHdr{
+				Id:                 0,
+				Response:           false,
+				Opcode:             0,
+				Authoritative:      false,
+				Truncated:          false,
+				RecursionDesired:   false,
+				RecursionAvailable: false,
+				Zero:               false,
+				AuthenticatedData:  false,
+				CheckingDisabled:   false,
+				Rcode:              0,
+			},
+			Compress: false,
+			Question: nil,
+			Answer:   nil,
+			Ns:       nil,
+			Extra:    nil,
+		}, rcode)
 
 		return response.Pack()
 	}

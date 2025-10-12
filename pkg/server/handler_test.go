@@ -31,7 +31,11 @@ func TestHandlerFastPathCacheHit(t *testing.T) {
 	handler.messageCache.Set(cacheKey, responseBytes, 5*time.Minute)
 
 	// Handle query
-	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{})
+	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 	if err != nil {
 		t.Fatalf("HandleQuery failed: %v", err)
 	}
@@ -66,7 +70,11 @@ func TestHandlerFastPathCacheMiss(t *testing.T) {
 	queryBytes, _ := query.Pack()
 
 	// Handle query (no cache) - will query upstream
-	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{})
+	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 	if err != nil {
 		t.Fatalf("HandleQuery failed: %v", err)
 	}
@@ -99,7 +107,11 @@ func TestHandlerRRsetCache(t *testing.T) {
 	queryBytes, _ := query.Pack()
 
 	// Handle query
-	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{})
+	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 	if err != nil {
 		t.Fatalf("HandleQuery failed: %v", err)
 	}
@@ -143,7 +155,11 @@ func TestHandlerSlowPath(t *testing.T) {
 	handler.messageCache.Set(cacheKey, responseBytes, 5*time.Minute)
 
 	// Handle query (should use slow path but still hit cache)
-	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{})
+	result, err := handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 	if err != nil {
 		t.Fatalf("HandleQuery failed: %v", err)
 	}
@@ -197,7 +213,11 @@ func TestHandlerGetStats(t *testing.T) {
 	queryBytes, _ := query.Pack()
 
 	// Cache miss
-	handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{})
+	handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 
 	stats := handler.GetStats()
 
@@ -238,7 +258,11 @@ func TestHandlerMalformedQuery(t *testing.T) {
 	// Malformed query
 	malformed := []byte{0, 1, 2, 3}
 
-	result, err := handler.HandleQuery(context.Background(), malformed, &net.UDPAddr{})
+	result, err := handler.HandleQuery(context.Background(), malformed, &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	})
 	if err != nil {
 		t.Fatalf("HandleQuery failed: %v", err)
 	}
@@ -275,7 +299,11 @@ func BenchmarkHandlerFastPathCacheHit(b *testing.B) {
 	handler.messageCache.Set(cacheKey, responseBytes, 5*time.Minute)
 
 	ctx := context.Background()
-	addr := &net.UDPAddr{}
+	addr := &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -304,7 +332,11 @@ func BenchmarkHandlerFastPathCacheHitParallel(b *testing.B) {
 	handler.messageCache.Set(cacheKey, responseBytes, 5*time.Minute)
 
 	ctx := context.Background()
-	addr := &net.UDPAddr{}
+	addr := &net.UDPAddr{
+		IP:   nil,
+		Port: 0,
+		Zone: "",
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()

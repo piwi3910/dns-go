@@ -33,7 +33,24 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	t.Logf("TCP listener on %s", addr)
 
 	// Connect to TCP server
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect to TCP server: %v", err)
@@ -111,7 +128,24 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect once
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -187,7 +221,24 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -261,7 +312,24 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -330,7 +398,24 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	// Open connections up to the limit
 	conns := make([]net.Conn, 0, 5)
 	for i := range 5 {
-		dialer := &net.Dialer{}
+		dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to connect %d: %v", i, err)
@@ -345,7 +430,24 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	}()
 
 	// Try to open one more connection (should be rejected)
-	dialer6 := &net.Dialer{}
+	dialer6 := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn6, err := dialer6.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Logf("✓ RFC 7766 Connection Limit: 6th connection rejected as expected")
