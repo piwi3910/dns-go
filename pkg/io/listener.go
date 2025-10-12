@@ -65,6 +65,13 @@ func createSocketControlFunc(config *ListenerConfig) func(network, address strin
 	return func(_, _ string, c syscall.RawConn) error {
 		var sockErr error
 		err := c.Control(func(fd uintptr) {
+			// Enable SO_REUSEADDR (required on macOS for SO_REUSEPORT to work)
+			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
+				sockErr = fmt.Errorf("failed to set SO_REUSEADDR: %w", err)
+
+				return
+			}
+
 			if config.ReusePort {
 				// Enable SO_REUSEPORT for per-core load distribution
 				// This is critical for scaling beyond single-core performance
@@ -133,7 +140,9 @@ func NewUDPListener(config *ListenerConfig, handler QueryHandler) (*UDPListener,
 // Start begins listening and processing queries
 // Creates one UDP socket per worker with SO_REUSEPORT for load distribution.
 func (ul *UDPListener) Start() error {
-	addr, err := net.ResolveUDPAddr("udp", ul.config.Address)
+	// Use udp4 for IPv4 to ensure proper binding on all platforms
+	// macOS has issues with IPv6 wildcard not handling IPv4 loopback
+	addr, err := net.ResolveUDPAddr("udp4", ul.config.Address)
 	if err != nil {
 		return fmt.Errorf("failed to resolve UDP address: %w", err)
 	}
@@ -186,19 +195,20 @@ func (ul *UDPListener) Addr() net.Addr {
 
 // createUDPSocket creates a UDP socket with SO_REUSEPORT and tuned buffer sizes.
 func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) {
-	// Create socket with control options
+	// Create socket with control options (SO_REUSEADDR + SO_REUSEPORT + buffer tuning)
 	lc := net.ListenConfig{
 		Control:   createSocketControlFunc(ul.config),
 		KeepAlive: 0,
 		KeepAliveConfig: net.KeepAliveConfig{
 			Enable:   false,
 			Idle:     0,
-			Interval: 0,
+			Interval:  0,
 			Count:    0,
 		},
 	}
 
-	packetConn, err := lc.ListenPacket(context.Background(), "udp", addr.String())
+	// Use udp4 network type since address is already resolved with udp4 in Start()
+	packetConn, err := lc.ListenPacket(context.Background(), "udp4", addr.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UDP packet connection: %w", err)
 	}
@@ -213,14 +223,10 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 }
 
 // worker is the main processing loop for a single UDP socket
-// This runs in its own goroutine, pinned to an OS thread for optimal performance.
+// This runs in its own goroutine.
 func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 	defer ul.wg.Done()
 	_ = id // Reserved for future logging/debugging
-
-	// Pin this goroutine to an OS thread for consistent performance
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 
 	// Each worker has its own buffer pool to avoid contention
 	bufferPool := NewBufferPool(DefaultBufferSize)
