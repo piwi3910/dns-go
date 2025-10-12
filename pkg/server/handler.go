@@ -384,7 +384,7 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 		if ttl == 0 {
 			ttl = h.config.DefaultTTL
 		}
-		h.CacheResponse(response, ttl)
+		_ = h.CacheResponse(response, ttl) // Ignore cache errors - response should still be returned to client
 	}
 
 	// Pack and return response

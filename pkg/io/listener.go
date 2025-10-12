@@ -126,7 +126,7 @@ func (ul *UDPListener) Start() error {
 		conn, err := ul.createUDPSocket(addr)
 		if err != nil {
 			// Clean up already created sockets
-			ul.Stop()
+			_ = ul.Stop() // Ignore cleanup errors during initialization failure
 
 			return fmt.Errorf("failed to create UDP socket %d: %w", i, err)
 		}
@@ -227,7 +227,7 @@ func (ul *UDPListener) Stop() error {
 	// Close all connections
 	for _, conn := range ul.conns {
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close() // Ignore errors during shutdown
 		}
 	}
 
@@ -341,7 +341,7 @@ func (tl *TCPListener) acceptLoop() {
 		tl.connMutex.Lock()
 		if tl.activeConns >= tl.maxConnections {
 			tl.connMutex.Unlock()
-			conn.Close() // Reject connection
+			_ = conn.Close() // Reject connection - ignore close error
 
 			continue
 		}
@@ -358,7 +358,7 @@ func (tl *TCPListener) acceptLoop() {
 // RFC 7766: DNS messages over TCP are prefixed with 2-byte length.
 func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }() // Ignore close error in defer
 	defer func() {
 		tl.connMutex.Lock()
 		tl.activeConns--
@@ -382,7 +382,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		}
 
 		// Set read deadline
-		conn.SetReadDeadline(time.Now().Add(readTimeout))
+		_ = conn.SetReadDeadline(time.Now().Add(readTimeout)) // Ignore deadline error
 
 		// Read 2-byte length prefix (RFC 7766)
 		lengthBuf := make([]byte, 2)
@@ -424,7 +424,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 		// Send response with 2-byte length prefix
 		if response != nil {
-			conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout)) // Ignore deadline error
 
 			// Build response with length prefix
 			responseLen := len(response)
@@ -454,7 +454,7 @@ func (tl *TCPListener) Stop() error {
 
 	// Close listener (stops accepting new connections)
 	if tl.listener != nil {
-		tl.listener.Close()
+		_ = tl.listener.Close() // Ignore errors during shutdown
 	}
 
 	// Wait for all connection handlers to finish
