@@ -369,6 +369,7 @@ func TestNSECCoversName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := coversName(tt.owner, tt.next, tt.testName)
 			if result != tt.expected {
 				t.Errorf("coversName(%s, %s, %s): expected %v, got %v",
@@ -519,6 +520,7 @@ func TestValidateNSEC3Params(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateNSEC3Params(tt.nsec3)
 			if (err != nil) != tt.shouldFail {
 				t.Errorf("ValidateNSEC3Params: expected error=%v, got error=%v",
@@ -868,6 +870,7 @@ func TestValidationResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if tt.result.Secure != tt.expected {
 				t.Errorf("Secure flag mismatch: expected %v, got %v", tt.expected, tt.result.Secure)
 			}
