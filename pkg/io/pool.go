@@ -110,12 +110,3 @@ func (mp *MessagePool) Put(msg *dns.Msg) {
 	msg.Extra = msg.Extra[:0]
 	mp.pool.Put(msg)
 }
-
-// Global pools for common use.
-var (
-	// DefaultBufferPool is the default buffer pool for DNS messages.
-	DefaultBufferPool = NewBufferPool(DefaultBufferSize)
-
-	// DefaultMessagePool is the default message pool.
-	DefaultMessagePool = NewMessagePool()
-)
