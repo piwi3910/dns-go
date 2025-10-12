@@ -328,7 +328,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Open connections up to the limit
-	var conns []net.Conn
+	conns := make([]net.Conn, 0, 5)
 	for i := range 5 {
 		dialer := &net.Dialer{}
 		conn, err := dialer.DialContext(context.Background(), "tcp", addr)

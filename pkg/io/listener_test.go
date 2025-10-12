@@ -555,7 +555,7 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create connections up to the limit
-	var conns []net.Conn
+	conns := make([]net.Conn, 0, 2)
 	for i := range 2 {
 		dialer := &net.Dialer{}
 		conn, err := dialer.DialContext(context.Background(), "tcp", addr)

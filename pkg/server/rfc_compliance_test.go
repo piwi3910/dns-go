@@ -597,7 +597,7 @@ func TestRFC1035_CaseSensitivity(t *testing.T) {
 		"gOoGlE.cOm.",
 	}
 
-	var responses []*dns.Msg
+	responses := make([]*dns.Msg, 0, len(queries))
 
 	for _, domain := range queries {
 		msg := new(dns.Msg)
