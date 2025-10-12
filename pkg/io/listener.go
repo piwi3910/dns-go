@@ -42,6 +42,42 @@ func DefaultListenerConfig(address string) *ListenerConfig {
 	}
 }
 
+// createSocketControlFunc creates a socket control function that configures SO_REUSEPORT and buffer sizes.
+// This helper reduces code duplication between UDP and TCP socket creation.
+func createSocketControlFunc(config *ListenerConfig) func(network, address string, c syscall.RawConn) error {
+	return func(network, address string, c syscall.RawConn) error {
+		var sockErr error
+		err := c.Control(func(fd uintptr) {
+			if config.ReusePort {
+				// Enable SO_REUSEPORT for per-core load distribution
+				// This is critical for scaling beyond single-core performance
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
+					sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
+					return
+				}
+			}
+
+			// Set large receive buffer to handle traffic spikes
+			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, config.ReadBufferSize); err != nil {
+				sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
+				return
+			}
+
+			// Set large send buffer
+			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, config.WriteBufferSize); err != nil {
+				sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
+				return
+			}
+		})
+
+		if err != nil {
+			return err
+		}
+
+		return sockErr
+	}
+}
+
 // UDPListener manages multiple UDP sockets with SO_REUSEPORT.
 type UDPListener struct {
 	config  *ListenerConfig
@@ -105,40 +141,7 @@ func (ul *UDPListener) Start() error {
 func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) {
 	// Create socket with control options
 	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			var sockErr error
-			err := c.Control(func(fd uintptr) {
-				if ul.config.ReusePort {
-					// Enable SO_REUSEPORT for per-core load distribution
-					// This is critical for scaling beyond single-core performance
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
-						sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
-
-						return
-					}
-				}
-
-				// Set large receive buffer to handle traffic spikes
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, ul.config.ReadBufferSize); err != nil {
-					sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
-
-					return
-				}
-
-				// Set large send buffer
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, ul.config.WriteBufferSize); err != nil {
-					sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
-
-					return
-				}
-			})
-
-			if err != nil {
-				return err
-			}
-
-			return sockErr
-		},
+		Control: createSocketControlFunc(ul.config),
 	}
 
 	packetConn, err := lc.ListenPacket(context.Background(), "udp", addr.String())
@@ -273,38 +276,7 @@ func (tl *TCPListener) Start() error {
 
 	// Create TCP listener with socket options
 	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			var sockErr error
-			err := c.Control(func(fd uintptr) {
-				if tl.config.ReusePort {
-					// Enable SO_REUSEPORT for load distribution
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
-						sockErr = fmt.Errorf("failed to set SO_REUSEPORT: %w", err)
-
-						return
-					}
-				}
-
-				// Set TCP buffer sizes
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, tl.config.ReadBufferSize); err != nil {
-					sockErr = fmt.Errorf("failed to set SO_RCVBUF: %w", err)
-
-					return
-				}
-
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, tl.config.WriteBufferSize); err != nil {
-					sockErr = fmt.Errorf("failed to set SO_SNDBUF: %w", err)
-
-					return
-				}
-			})
-
-			if err != nil {
-				return err
-			}
-
-			return sockErr
-		},
+		Control: createSocketControlFunc(tl.config),
 	}
 
 	listener, err := lc.Listen(context.Background(), "tcp", addr.String())
