@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,8 +13,11 @@ const testExampleDomain = "example.com."
 func TestNegativeCacheEntry_IsExpired(t *testing.T) {
 	t.Parallel()
 	entry := &NegativeCacheEntry{
-		Type:   NegativeNXDOMAIN,
-		Expiry: time.Now().Add(-1 * time.Second), // Expired 1 second ago
+		Type:     NegativeNXDOMAIN,
+		Expiry:   time.Now().Add(-1 * time.Second), // Expired 1 second ago
+		TTL:      0,
+		HitCount: atomic.Int64{},
+		SOA:      nil,
 	}
 
 	if !entry.IsExpired() {
@@ -29,7 +33,11 @@ func TestNegativeCacheEntry_IsExpired(t *testing.T) {
 func TestNegativeCacheEntry_IncrementHitCount(t *testing.T) {
 	t.Parallel()
 	entry := &NegativeCacheEntry{
-		Type: NegativeNXDOMAIN,
+		Type:     NegativeNXDOMAIN,
+		Expiry:   time.Time{},
+		TTL:      0,
+		HitCount: atomic.Int64{},
+		SOA:      nil,
 	}
 
 	entry.IncrementHitCount()
@@ -51,10 +59,11 @@ func TestNegativeCache_SetAndGet(t *testing.T) {
 	// Create SOA
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
 		Ns:      "ns1.example.com.",
 		Mbox:    "admin.example.com.",
@@ -160,9 +169,19 @@ func TestCalculateNegativeTTL_WithSOA(t *testing.T) {
 			t.Parallel()
 			soa := &dns.SOA{
 				Hdr: dns.RR_Header{
-					Ttl: tt.soaTTL,
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      tt.soaTTL,
+					Rdlength: 0,
 				},
-				Minttl: tt.soaMin,
+				Ns:      "",
+				Mbox:    "",
+				Serial:  0,
+				Refresh: 0,
+				Retry:   0,
+				Expire:  0,
+				Minttl:  tt.soaMin,
 			}
 
 			result := nc.calculateNegativeTTL(soa)
@@ -182,8 +201,20 @@ func TestCalculateNegativeTTL_Bounds(t *testing.T) {
 
 	// TTL below minimum
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Ttl: 60},
-		Minttl: 60,
+		Hdr: dns.RR_Header{
+			Name:     "",
+			Rrtype:   0,
+			Class:    0,
+			Ttl:      60,
+			Rdlength: 0,
+		},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  60,
 	}
 	ttl := nc.calculateNegativeTTL(soa)
 	if ttl != config.MinTTL {
@@ -213,7 +244,26 @@ func TestCalculateNegativeTTL_NoSOA(t *testing.T) {
 
 func TestExtractSOA(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 
 	// No SOA
 	soa := ExtractSOA(msg)
@@ -224,13 +274,19 @@ func TestExtractSOA(t *testing.T) {
 	// SOA in authority section
 	soaRecord := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
-		Ns:   "ns1.example.com.",
-		Mbox: "admin.example.com.",
+		Ns:      "ns1.example.com.",
+		Mbox:    "admin.example.com.",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	msg.Ns = append(msg.Ns, soaRecord)
 
@@ -245,18 +301,45 @@ func TestExtractSOA(t *testing.T) {
 
 func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.Response = true
 	msg.Rcode = dns.RcodeNameError
 
 	// Add SOA
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	msg.Ns = append(msg.Ns, soa)
 
@@ -274,7 +357,26 @@ func TestIsNegativeResponse_NXDOMAIN(t *testing.T) {
 
 func TestIsNegativeResponse_NODATA(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.Response = true
 	msg.Rcode = dns.RcodeSuccess
 	// Empty answer section
@@ -282,11 +384,19 @@ func TestIsNegativeResponse_NODATA(t *testing.T) {
 	// Add SOA to authority section
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	msg.Ns = append(msg.Ns, soa)
 
@@ -304,17 +414,37 @@ func TestIsNegativeResponse_NODATA(t *testing.T) {
 
 func TestIsNegativeResponse_NotNegative(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.Response = true
 	msg.Rcode = dns.RcodeSuccess
 
 	// Add answer
 	a := &dns.A{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeA,
-			Class:  dns.ClassINET,
-			Ttl:    300,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeA,
+			Class:    dns.ClassINET,
+			Ttl:      300,
+			Rdlength: 0,
 		},
 		A: []byte{192, 0, 2, 1},
 	}
@@ -328,7 +458,26 @@ func TestIsNegativeResponse_NotNegative(t *testing.T) {
 
 func TestIsNegativeResponse_NotResponse(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.Response = false
 	msg.Rcode = dns.RcodeNameError
 
@@ -340,18 +489,43 @@ func TestIsNegativeResponse_NotResponse(t *testing.T) {
 
 func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
 	t.Parallel()
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("nonexistent.example.com.", dns.TypeA)
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
-		Ns:   "ns1.example.com.",
-		Mbox: "admin.example.com.",
+		Ns:      "ns1.example.com.",
+		Mbox:    "admin.example.com.",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 
 	response := CreateNegativeResponse(query, NegativeNXDOMAIN, soa)
@@ -379,16 +553,43 @@ func TestCreateNegativeResponse_NXDOMAIN(t *testing.T) {
 
 func TestCreateNegativeResponse_NODATA(t *testing.T) {
 	t.Parallel()
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion(testExampleDomain, dns.TypeAAAA)
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
-			Name:   testExampleDomain,
-			Rrtype: dns.TypeSOA,
-			Class:  dns.ClassINET,
-			Ttl:    3600,
+			Name:     testExampleDomain,
+			Rrtype:   dns.TypeSOA,
+			Class:    dns.ClassINET,
+			Ttl:      3600,
+			Rdlength: 0,
 		},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  0,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 
 	response := CreateNegativeResponse(query, NegativeNODATA, soa)
