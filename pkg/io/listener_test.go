@@ -18,7 +18,10 @@ type MockQueryHandler struct {
 
 func NewMockQueryHandler() *MockQueryHandler {
 	return &MockQueryHandler{
+		mu:        sync.Mutex{},
+		callCount: 0,
 		responses: make(map[string][]byte),
+		err:       nil,
 	}
 }
 
@@ -404,7 +407,24 @@ func TestTCPListenerQuery(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect to TCP listener
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
@@ -478,7 +498,24 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect once
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
@@ -557,7 +594,24 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	// Create connections up to the limit
 	conns := make([]net.Conn, 0, 2)
 	for i := range 2 {
-		dialer := &net.Dialer{}
+		dialer := &net.Dialer{
+			Timeout:       0,
+			Deadline:      time.Time{},
+			LocalAddr:     nil,
+			DualStack:     false,
+			FallbackDelay: 0,
+			KeepAlive:     0,
+			KeepAliveConfig: net.KeepAliveConfig{
+				Enable:   false,
+				Idle:     0,
+				Interval: 0,
+				Count:    0,
+			},
+			Resolver:       nil,
+			Cancel:         nil,
+			Control:        nil,
+			ControlContext: nil,
+		}
 		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to dial connection %d: %v", i, err)
@@ -566,7 +620,24 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	}
 
 	// Try to create one more (should be rejected)
-	dialerWithTimeout := &net.Dialer{Timeout: 500 * time.Millisecond}
+	dialerWithTimeout := &net.Dialer{
+		Timeout:       500 * time.Millisecond,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	extraConn, err := dialerWithTimeout.DialContext(context.Background(), "tcp", addr)
 	if err == nil {
 		extraConn.Close()
@@ -608,7 +679,24 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
 
-	dialer := &net.Dialer{}
+	dialer := &net.Dialer{
+		Timeout:       0,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
+	}
 	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
@@ -642,9 +730,11 @@ func TestListenerAddr(t *testing.T) {
 
 	// Test UDP listener Addr before start
 	udpListener, _ := NewUDPListener(&ListenerConfig{
-		Address:    "127.0.0.1:0",
-		NumWorkers: 1,
-		ReusePort:  false,
+		Address:         "127.0.0.1:0",
+		NumWorkers:      1,
+		ReusePort:       false,
+		ReadBufferSize:  0,
+		WriteBufferSize: 0,
 	}, handler)
 
 	if udpListener.Addr() != nil {
@@ -653,9 +743,11 @@ func TestListenerAddr(t *testing.T) {
 
 	// Test TCP listener Addr before start
 	tcpListener, _ := NewTCPListener(&ListenerConfig{
-		Address:    "127.0.0.1:0",
-		NumWorkers: 1,
-		ReusePort:  false,
+		Address:         "127.0.0.1:0",
+		NumWorkers:      1,
+		ReusePort:       false,
+		ReadBufferSize:  0,
+		WriteBufferSize: 0,
 	}, handler)
 
 	if tcpListener.Addr() != nil {

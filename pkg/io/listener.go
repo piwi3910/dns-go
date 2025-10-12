@@ -106,6 +106,7 @@ func NewUDPListener(config *ListenerConfig, handler QueryHandler) (*UDPListener,
 		config:  config,
 		conns:   make([]*net.UDPConn, 0, config.NumWorkers),
 		handler: handler,
+		wg:      sync.WaitGroup{},
 		done:    make(chan struct{}),
 	}
 
@@ -144,7 +145,14 @@ func (ul *UDPListener) Start() error {
 func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) {
 	// Create socket with control options
 	lc := net.ListenConfig{
-		Control: createSocketControlFunc(ul.config),
+		Control:   createSocketControlFunc(ul.config),
+		KeepAlive: 0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
 	}
 
 	packetConn, err := lc.ListenPacket(context.Background(), "udp", addr.String())
@@ -261,10 +269,13 @@ func NewTCPListener(config *ListenerConfig, handler QueryHandler) (*TCPListener,
 
 	listener := &TCPListener{
 		config:         config,
+		listener:       nil,
 		handler:        handler,
+		wg:             sync.WaitGroup{},
 		done:           make(chan struct{}),
 		maxConnections: 1000, // RFC 7766 recommendation
 		activeConns:    0,
+		connMutex:      sync.Mutex{},
 	}
 
 	return listener, nil
@@ -279,7 +290,14 @@ func (tl *TCPListener) Start() error {
 
 	// Create TCP listener with socket options
 	lc := net.ListenConfig{
-		Control: createSocketControlFunc(tl.config),
+		Control:   createSocketControlFunc(tl.config),
+		KeepAlive: 0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
 	}
 
 	listener, err := lc.Listen(context.Background(), "tcp", addr.String())

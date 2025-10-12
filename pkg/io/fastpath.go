@@ -166,7 +166,26 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 		if labelLen >= 192 {
 			// Compression pointer - shouldn't happen in question section
 			// Fall back to full parse
-			msg := dns.Msg{}
+			msg := dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:                 0,
+					Response:           false,
+					Opcode:             0,
+					Authoritative:      false,
+					Truncated:          false,
+					RecursionDesired:   false,
+					RecursionAvailable: false,
+					Zero:               false,
+					AuthenticatedData:  false,
+					CheckingDisabled:   false,
+					Rcode:              0,
+				},
+				Compress: false,
+				Question: nil,
+				Answer:   nil,
+				Ns:       nil,
+				Extra:    nil,
+			}
 			if err := msg.Unpack(query); err != nil {
 				return nil, err
 			}
