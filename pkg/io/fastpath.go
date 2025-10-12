@@ -1,6 +1,8 @@
 package io
 
 import (
+	"fmt"
+
 	"github.com/miekg/dns"
 )
 
@@ -187,7 +189,7 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 				Extra:    nil,
 			}
 			if err := msg.Unpack(query); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to unpack DNS message: %w", err)
 			}
 			if len(msg.Question) == 0 {
 				return nil, dns.ErrId

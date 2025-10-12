@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -342,14 +343,24 @@ func (h *Handler) buildErrorResponse(query []byte, rcode int) ([]byte, error) {
 			Extra:    nil,
 		}, rcode)
 
-		return response.Pack()
+		respBytes, err := response.Pack()
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack minimal error response: %w", err)
+		}
+
+		return respBytes, nil
 	}
 
 	// Build error response maintaining question
 	response := new(dns.Msg)
 	response.SetRcode(msg, rcode)
 
-	return response.Pack()
+	respBytes, err := response.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack error response: %w", err)
+	}
+
+	return respBytes, nil
 }
 
 // CacheResponse stores a response in both caches
@@ -368,7 +379,7 @@ func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
 	// Store in message cache (L1)
 	responseBytes, err := msg.Pack()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to pack response for caching: %w", err)
 	}
 
 	cacheKey := cache.MakeKey(q.Name, q.Qtype, q.Qclass)
@@ -462,7 +473,12 @@ func (h *Handler) handleResponseSize(queryMsg *dns.Msg, responseBytes []byte) ([
 		// We don't remove sections - just signal truncation
 
 		// Pack response with TC bit
-		return msg.Pack()
+		truncBytes, err := msg.Pack()
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack truncated response: %w", err)
+		}
+
+		return truncBytes, nil
 	}
 
 	return responseBytes, nil
@@ -575,7 +591,7 @@ func (h *Handler) checkSlowPathCaches(msg *dns.Msg, query []byte, name string, q
 
 		responseBytes, err := response.Pack()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to pack RRset cache response: %w", err)
 		}
 
 		// Cache complete response

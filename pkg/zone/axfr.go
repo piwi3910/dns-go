@@ -155,7 +155,7 @@ func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Co
 	for _, msg := range messages {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("AXFR transfer cancelled: %w", ctx.Err())
 		default:
 			if err := h.writeMessage(conn, msg); err != nil {
 				return fmt.Errorf("failed to write AXFR message: %w", err)
@@ -177,7 +177,11 @@ func (h *AXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 		TsigProvider: nil,
 	}
 
-	return dnsConn.WriteMsg(msg)
+	if err := dnsConn.WriteMsg(msg); err != nil {
+		return fmt.Errorf("failed to write DNS message to connection: %w", err)
+	}
+
+	return nil
 }
 
 // ValidateAXFRQuery validates an AXFR query per RFC 5936.

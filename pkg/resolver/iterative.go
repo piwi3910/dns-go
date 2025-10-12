@@ -309,7 +309,7 @@ func (ir *IterativeResolver) resolveWithNS(
 			case <-ctx.Done():
 				cancel()
 
-				return nil, ctx.Err()
+				return nil, fmt.Errorf("iterative resolution cancelled: %w", ctx.Err())
 			}
 		}
 		cancel() // Clean up this NS's queries

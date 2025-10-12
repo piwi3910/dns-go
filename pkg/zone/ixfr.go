@@ -317,7 +317,7 @@ func (h *IXFRHandler) ServeIXFR(
 	for _, msg := range messages {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("IXFR transfer cancelled: %w", ctx.Err())
 		default:
 			if err := h.writeMessage(conn, msg); err != nil {
 				return fmt.Errorf("failed to write IXFR message: %w", err)
@@ -337,7 +337,11 @@ func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 		TsigProvider: nil,
 	}
 
-	return dnsConn.WriteMsg(msg)
+	if err := dnsConn.WriteMsg(msg); err != nil {
+		return fmt.Errorf("failed to write DNS message to connection: %w", err)
+	}
+
+	return nil
 }
 
 // serialCompare compares two serial numbers using RFC 1982 serial number arithmetic

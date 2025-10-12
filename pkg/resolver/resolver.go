@@ -157,7 +157,7 @@ func (r *Resolver) resolveWithCoalescing(ctx context.Context, query *dns.Msg, qu
 		case <-inflight.done:
 			return inflight.response, inflight.err
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("query resolution cancelled: %w", ctx.Err())
 		}
 	}
 

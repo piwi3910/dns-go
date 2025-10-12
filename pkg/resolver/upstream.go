@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"runtime"
 	"sync"
@@ -182,7 +183,7 @@ func (up *UpstreamPool) queryTCP(
 	if err != nil {
 		stats.RecordFailure()
 
-		return nil, err
+		return nil, fmt.Errorf("TCP query to upstream failed: %w", err)
 	}
 
 	stats.RecordSuccess(rtt)
@@ -344,18 +345,18 @@ func (up *UpstreamPool) exchangeWithConn(
 	}
 
 	if err := conn.SetDeadline(deadline); err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to set connection deadline: %w", err)
 	}
 
 	start := time.Now()
 	if err := conn.WriteMsg(msg); err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to write DNS message: %w", err)
 	}
 
 	response, err := conn.ReadMsg()
 	rtt := time.Since(start)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to read DNS response: %w", err)
 	}
 
 	return response, rtt, nil
@@ -432,7 +433,7 @@ func (p *udpConnPool) Get(ctx context.Context) (*dns.Conn, error) {
 	case conn := <-p.conns:
 		return conn, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("connection pool get cancelled: %w", ctx.Err())
 	}
 }
 
@@ -545,5 +546,10 @@ func (p *udpConnPool) dial(ctx context.Context) (*dns.Conn, error) {
 		SingleInflight: false,
 	}
 
-	return client.DialContext(ctx, p.addr)
+	conn, err := client.DialContext(ctx, p.addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial upstream %s: %w", p.addr, err)
+	}
+
+	return conn, nil
 }

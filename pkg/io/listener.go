@@ -74,7 +74,7 @@ func createSocketControlFunc(config *ListenerConfig) func(network, address strin
 		})
 
 		if err != nil {
-			return err
+			return fmt.Errorf("socket control failed: %w", err)
 		}
 
 		return sockErr
@@ -157,7 +157,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 
 	packetConn, err := lc.ListenPacket(context.Background(), "udp", addr.String())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create UDP packet connection: %w", err)
 	}
 
 	// Type assert to *net.UDPConn with safety check

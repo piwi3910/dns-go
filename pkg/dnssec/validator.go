@@ -566,7 +566,11 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	hashed := h.Sum(nil)
 
 	// Verify signature
-	return rsa.VerifyPKCS1v15(rsaPub, hashAlgo, hashed, signature)
+	if err := rsa.VerifyPKCS1v15(rsaPub, hashAlgo, hashed, signature); err != nil {
+		return fmt.Errorf("RSA signature verification failed: %w", err)
+	}
+
+	return nil
 }
 
 // verifyECDSA verifies an ECDSA signature.
