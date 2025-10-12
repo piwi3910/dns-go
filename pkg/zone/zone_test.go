@@ -145,8 +145,8 @@ func TestZone_GetAllRecords(t *testing.T) {
 		AAAA: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 	}
 
-	zone.AddRecord(a)
-	zone.AddRecord(aaaa)
+	_ = zone.AddRecord(a)
+	_ = zone.AddRecord(aaaa)
 
 	records := zone.GetAllRecords("www.example.com.")
 	if len(records) != 2 {
@@ -174,7 +174,7 @@ func TestZone_IncrementSerial(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	oldSerial := zone.GetSerial()
 	newSerial := zone.IncrementSerial()
@@ -244,8 +244,8 @@ func TestZone_RecordCount(t *testing.T) {
 		A:   []byte{192, 0, 2, 1},
 	}
 
-	zone.AddRecord(soa)
-	zone.AddRecord(a)
+	_ = zone.AddRecord(soa)
+	_ = zone.AddRecord(a)
 
 	if zone.RecordCount() != 2 {
 		t.Errorf("Expected 2 records, got %d", zone.RecordCount())
@@ -267,7 +267,7 @@ func TestZone_Clear(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	// Clear
 	zone.Clear()
@@ -304,14 +304,14 @@ func TestZone_Clone(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	// Add A record
 	a := &dns.A{
 		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		A:   []byte{192, 0, 2, 1},
 	}
-	zone.AddRecord(a)
+	_ = zone.AddRecord(a)
 
 	// Clone
 	cloned := zone.Clone()
@@ -351,7 +351,7 @@ func TestZone_GetAllRecordsOrdered(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	// Add other records
 	a := &dns.A{
@@ -363,8 +363,8 @@ func TestZone_GetAllRecordsOrdered(t *testing.T) {
 		Preference: 10,
 		Mx:         "mail.example.com.",
 	}
-	zone.AddRecord(a)
-	zone.AddRecord(mx)
+	_ = zone.AddRecord(a)
+	_ = zone.AddRecord(mx)
 
 	records := zone.GetAllRecordsOrdered()
 

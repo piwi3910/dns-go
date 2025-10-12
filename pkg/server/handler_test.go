@@ -213,7 +213,7 @@ func TestHandlerGetStats(t *testing.T) {
 	queryBytes, _ := query.Pack()
 
 	// Cache miss
-	handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
+	_, _ = handler.HandleQuery(context.Background(), queryBytes, &net.UDPAddr{
 		IP:   nil,
 		Port: 0,
 		Zone: "",
@@ -238,7 +238,7 @@ func TestHandlerClearCaches(t *testing.T) {
 	rr, _ := dns.NewRR("example.com. 300 IN A 192.0.2.1")
 	response.Answer = []dns.RR{rr}
 
-	handler.CacheResponse(response, 5*time.Minute)
+	_ = handler.CacheResponse(response, 5*time.Minute)
 
 	// Clear caches
 	handler.ClearCaches()

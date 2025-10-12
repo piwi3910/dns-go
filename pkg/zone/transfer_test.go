@@ -32,7 +32,7 @@ func createTestZone() *Zone {
 		Expire:  86400,
 		Minttl:  300,
 	}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	// Add A record
 	a := &dns.A{
@@ -45,7 +45,7 @@ func createTestZone() *Zone {
 		},
 		A: []byte{192, 0, 2, 10},
 	}
-	zone.AddRecord(a)
+	_ = zone.AddRecord(a)
 
 	// Add MX record
 	mx := &dns.MX{
@@ -59,7 +59,7 @@ func createTestZone() *Zone {
 		Preference: 10,
 		Mx:         "mail.example.com.",
 	}
-	zone.AddRecord(mx)
+	_ = zone.AddRecord(mx)
 
 	return zone
 }
@@ -636,7 +636,7 @@ func TestIXFRHandler_PruneDeltaLog(t *testing.T) {
 			Expire:  0,
 			Minttl:  0,
 		}
-	zone.AddRecord(soa)
+	_ = zone.AddRecord(soa)
 
 	handler := NewIXFRHandler(zone)
 
@@ -707,7 +707,7 @@ func TestAXFRHandler_SplitIntoMessages(t *testing.T) {
 			},
 			A: []byte{192, 0, 2, byte(i % 256)},
 		}
-		zone.AddRecord(a)
+		_ = zone.AddRecord(a)
 	}
 
 	handler := NewAXFRHandler(zone)

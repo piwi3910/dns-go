@@ -193,7 +193,7 @@ func TestUDPListenerQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().(*net.UDPAddr)
 
@@ -205,7 +205,7 @@ func TestUDPListenerQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial UDP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	testQuery := []byte("test query")
 	_, err = conn.Write(testQuery)
@@ -214,7 +214,7 @@ func TestUDPListenerQuery(t *testing.T) {
 	}
 
 	// Read response
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	respBuf := make([]byte, 1024)
 	n, err := conn.Read(respBuf)
 	if err != nil {
@@ -255,7 +255,7 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().(*net.UDPAddr)
 	time.Sleep(100 * time.Millisecond)
@@ -275,12 +275,12 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 
 				return
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			query := []byte("query")
-			conn.Write(query)
+			_, _ = conn.Write(query)
 
-			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 			buf := make([]byte, 1024)
 			_, err = conn.Read(buf)
 			if err != nil {
@@ -401,7 +401,7 @@ func TestTCPListenerQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
@@ -429,7 +429,7 @@ func TestTCPListenerQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send DNS query with 2-byte length prefix (RFC 7766)
 	testQuery := []byte("test query")
@@ -445,7 +445,7 @@ func TestTCPListenerQuery(t *testing.T) {
 	}
 
 	// Read response (2-byte length + message)
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	lengthBuf := make([]byte, 2)
 	_, err = conn.Read(lengthBuf)
 	if err != nil {
@@ -492,7 +492,7 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
@@ -520,7 +520,7 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send multiple queries on same connection
 	numQueries := 3
@@ -538,7 +538,7 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 		}
 
 		// Read response
-		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		lengthBuf := make([]byte, 2)
 		_, err = conn.Read(lengthBuf)
 		if err != nil {
@@ -586,7 +586,7 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
@@ -640,14 +640,14 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	}
 	extraConn, err := dialerWithTimeout.DialContext(context.Background(), "tcp", addr)
 	if err == nil {
-		extraConn.Close()
+		_ = extraConn.Close()
 		// Connection was accepted, but might be closed immediately
 		// This is acceptable behavior
 	}
 
 	// Clean up
 	for _, conn := range conns {
-		conn.Close()
+		_ = conn.Close()
 	}
 
 	t.Logf("✓ TCP connection limit enforced")
@@ -674,7 +674,7 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
 	}
-	defer listener.Stop()
+	defer func() { _ = listener.Stop() }()
 
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
@@ -701,7 +701,7 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send invalid length (0)
 	invalidMsg := []byte{0, 0}
@@ -714,7 +714,7 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Try to read (should fail as connection is closed)
-	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	buf := make([]byte, 10)
 	_, _ = conn.Read(buf)
 	// Expect error as connection should be closed - ignoring return value

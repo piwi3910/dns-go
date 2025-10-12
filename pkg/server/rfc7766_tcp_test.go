@@ -27,7 +27,7 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	if err := tcpListener.Start(); err != nil {
 		t.Fatalf("Failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Stop()
+	defer func() { _ = tcpListener.Stop() }()
 
 	addr := tcpListener.Addr().String()
 	t.Logf("TCP listener on %s", addr)
@@ -55,7 +55,7 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to TCP server: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Create DNS query
 	msg := new(dns.Msg)
@@ -123,7 +123,7 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 	if err := tcpListener.Start(); err != nil {
 		t.Fatalf("Failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Stop()
+	defer func() { _ = tcpListener.Stop() }()
 
 	addr := tcpListener.Addr().String()
 
@@ -150,7 +150,7 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send multiple queries on the same connection
 	domains := []string{"google.com.", "cloudflare.com.", "github.com."}
@@ -216,7 +216,7 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	if err := tcpListener.Start(); err != nil {
 		t.Fatalf("Failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Stop()
+	defer func() { _ = tcpListener.Stop() }()
 
 	addr := tcpListener.Addr().String()
 
@@ -243,7 +243,7 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send initial query
 	msg := new(dns.Msg)
@@ -251,15 +251,15 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	queryBytes, _ := msg.Pack()
 	lengthPrefix := make([]byte, 2)
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
-	conn.Write(lengthPrefix)
-	conn.Write(queryBytes)
+	_, _ = conn.Write(lengthPrefix)
+	_, _ = conn.Write(queryBytes)
 
 	// Read response
 	responseLengthBuf := make([]byte, 2)
-	io.ReadFull(conn, responseLengthBuf)
+	_, _ = io.ReadFull(conn, responseLengthBuf)
 	responseLength := binary.BigEndian.Uint16(responseLengthBuf)
 	responseBytes := make([]byte, responseLength)
-	io.ReadFull(conn, responseBytes)
+	_, _ = io.ReadFull(conn, responseBytes)
 
 	t.Logf("✓ Initial query succeeded")
 
@@ -307,7 +307,7 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	if err := tcpListener.Start(); err != nil {
 		t.Fatalf("Failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Stop()
+	defer func() { _ = tcpListener.Stop() }()
 
 	addr := tcpListener.Addr().String()
 
@@ -334,7 +334,7 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Query for TXT record (typically larger)
 	msg := new(dns.Msg)
@@ -343,8 +343,8 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 
 	lengthPrefix := make([]byte, 2)
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
-	conn.Write(lengthPrefix)
-	conn.Write(queryBytes)
+	_, _ = conn.Write(lengthPrefix)
+	_, _ = conn.Write(queryBytes)
 
 	// Read response
 	responseLengthBuf := make([]byte, 2)
@@ -391,7 +391,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	if err := tcpListener.Start(); err != nil {
 		t.Fatalf("Failed to start TCP listener: %v", err)
 	}
-	defer tcpListener.Stop()
+	defer func() { _ = tcpListener.Stop() }()
 
 	addr := tcpListener.Addr().String()
 
@@ -425,7 +425,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	}
 	defer func() {
 		for _, conn := range conns {
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -454,7 +454,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 
 		return
 	}
-	defer conn6.Close()
+	defer func() { _ = conn6.Close() }()
 
 	// If connection succeeded, server might be handling it anyway
 	// Send a query to see if it works
@@ -464,9 +464,9 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	lengthPrefix := make([]byte, 2)
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 
-	conn6.SetDeadline(time.Now().Add(1 * time.Second))
-	conn6.Write(lengthPrefix)
-	conn6.Write(queryBytes)
+	_ = conn6.SetDeadline(time.Now().Add(1 * time.Second))
+	_, _ = conn6.Write(lengthPrefix)
+	_, _ = conn6.Write(queryBytes)
 
 	// Try to read response
 	responseLengthBuf := make([]byte, 2)

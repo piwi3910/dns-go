@@ -232,7 +232,7 @@ func TestRFC8020_NXDOMAINHandling(t *testing.T) {
 	}
 
 	respMsg1 := new(dns.Msg)
-	respMsg1.Unpack(response1)
+	_ = respMsg1.Unpack(response1)
 
 	// Query subdomain of non-existent domain
 	msg2 := new(dns.Msg)
@@ -244,7 +244,7 @@ func TestRFC8020_NXDOMAINHandling(t *testing.T) {
 	}
 
 	respMsg2 := new(dns.Msg)
-	respMsg2.Unpack(response2)
+	_ = respMsg2.Unpack(response2)
 
 	// Both should return NXDOMAIN
 	if respMsg1.Rcode != dns.RcodeNameError {
@@ -382,7 +382,7 @@ func TestRFC1035_ResponseCodeCompliance(t *testing.T) {
 			}
 
 			respMsg := new(dns.Msg)
-			respMsg.Unpack(response)
+			_ = respMsg.Unpack(response)
 
 			if respMsg.Rcode != tt.expectedCode {
 				t.Errorf("Expected rcode %s (%d), got %s (%d)",
@@ -570,7 +570,7 @@ func TestRFC1035_QueryClasses(t *testing.T) {
 			}
 
 			respMsg := new(dns.Msg)
-			respMsg.Unpack(response)
+			_ = respMsg.Unpack(response)
 
 			// Should not return FORMERR for valid classes
 			if respMsg.Rcode == dns.RcodeFormatError {
@@ -610,7 +610,7 @@ func TestRFC1035_CaseSensitivity(t *testing.T) {
 		}
 
 		respMsg := new(dns.Msg)
-		respMsg.Unpack(response)
+		_ = respMsg.Unpack(response)
 		responses = append(responses, respMsg)
 	}
 
@@ -684,7 +684,7 @@ func TestRFC1035_MultipleQuestions(t *testing.T) {
 	}
 
 	respMsg := new(dns.Msg)
-	respMsg.Unpack(response)
+	_ = respMsg.Unpack(response)
 
 	// Should either work or return FORMERR/NOTIMP
 	if respMsg.Rcode == dns.RcodeFormatError || respMsg.Rcode == dns.RcodeNotImplemented {
@@ -719,7 +719,7 @@ func TestRFC6891_EDNSBufferSizes(t *testing.T) {
 			}
 
 			respMsg := new(dns.Msg)
-			respMsg.Unpack(response)
+			_ = respMsg.Unpack(response)
 
 			// Check response size doesn't exceed requested buffer
 			if len(response) > int(size) {
@@ -811,7 +811,7 @@ func TestRFC1035_LongDomainNames(t *testing.T) {
 	}
 
 	respMsg := new(dns.Msg)
-	respMsg.Unpack(response)
+	_ = respMsg.Unpack(response)
 
 	// Should work or return NXDOMAIN/FORMERR
 	switch respMsg.Rcode {
@@ -842,7 +842,7 @@ func TestRFC3597_UnknownRecordTypes(t *testing.T) {
 	}
 
 	respMsg := new(dns.Msg)
-	respMsg.Unpack(response)
+	_ = respMsg.Unpack(response)
 
 	// Should not crash, should return valid response
 	if !respMsg.Response {
