@@ -502,11 +502,11 @@ func TestShouldTruncate(t *testing.T) {
 		ednsInfo     *EDNS0Info
 		shouldTrunc  bool
 	}{
-		{400, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, false},                             // < 512, no EDNS
-		{600, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, true},                              // > 512, no EDNS
-		{600, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, false},                           // < EDNS limit
-		{1100, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, true},                           // > EDNS limit
-		{4000, &EDNS0Info{Present: true, UDPSize: 4096, DO: false, ExtendedRcode: 0, Version: 0}, false},                          // < large EDNS
+		{400, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, false},  // < 512, no EDNS
+		{600, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, true},   // > 512, no EDNS
+		{600, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, false},  // < EDNS limit
+		{1100, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, true},  // > EDNS limit
+		{4000, &EDNS0Info{Present: true, UDPSize: 4096, DO: false, ExtendedRcode: 0, Version: 0}, false}, // < large EDNS
 	}
 
 	for _, tt := range tests {

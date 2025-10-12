@@ -156,7 +156,12 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 }
 
 // queryTCP performs a query over TCP (for truncated responses).
-func (up *UpstreamPool) queryTCP(ctx context.Context, msg *dns.Msg, addr string, stats *cache.UpstreamStats) (*dns.Msg, error) {
+func (up *UpstreamPool) queryTCP(
+	ctx context.Context,
+	msg *dns.Msg,
+	addr string,
+	stats *cache.UpstreamStats,
+) (*dns.Msg, error) {
 	tcpClient := &dns.Client{
 		Net:            "tcp",
 		UDPSize:        0,
@@ -324,7 +329,11 @@ func (up *UpstreamPool) Close() error {
 }
 
 // exchangeWithConn performs a single query over an existing UDP connection.
-func (up *UpstreamPool) exchangeWithConn(ctx context.Context, conn *dns.Conn, msg *dns.Msg) (*dns.Msg, time.Duration, error) {
+func (up *UpstreamPool) exchangeWithConn(
+	ctx context.Context,
+	conn *dns.Conn,
+	msg *dns.Msg,
+) (*dns.Msg, time.Duration, error) {
 	if conn == nil {
 		return nil, 0, errors.New("nil UDP connection")
 	}

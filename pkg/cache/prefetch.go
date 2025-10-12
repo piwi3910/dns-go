@@ -66,7 +66,12 @@ func DefaultPrefetchConfig() PrefetchConfig {
 }
 
 // NewPrefetchEngine creates a new prefetch engine.
-func NewPrefetchEngine(config PrefetchConfig, messageCache *MessageCache, rrsetCache *RRsetCache, resolver PrefetchResolver) *PrefetchEngine {
+func NewPrefetchEngine(
+	config PrefetchConfig,
+	messageCache *MessageCache,
+	rrsetCache *RRsetCache,
+	resolver PrefetchResolver,
+) *PrefetchEngine {
 	return &PrefetchEngine{
 		messageCache:   messageCache,
 		rrsetCache:     rrsetCache,

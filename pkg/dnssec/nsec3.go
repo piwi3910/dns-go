@@ -111,7 +111,11 @@ func (n3v *NSEC3Validator) proveNameDoesNotExist(name string, nsec3Records []*dn
 }
 
 // findClosestEncloser finds the closest enclosing name that exists.
-func (n3v *NSEC3Validator) findClosestEncloser(qname string, nsec3Records []*dns.NSEC3, nsec3 *dns.NSEC3) (string, error) {
+func (n3v *NSEC3Validator) findClosestEncloser(
+	qname string,
+	nsec3Records []*dns.NSEC3,
+	nsec3 *dns.NSEC3,
+) (string, error) {
 	qname = dns.Fqdn(strings.ToLower(qname))
 
 	// Start from the query name and walk up the tree

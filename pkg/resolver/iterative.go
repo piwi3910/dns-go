@@ -62,7 +62,12 @@ func (ir *IterativeResolver) Resolve(ctx context.Context, qname string, qtype ui
 }
 
 // resolveIterative performs the iterative resolution process.
-func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string, qtype uint16, depth int) (*dns.Msg, error) {
+func (ir *IterativeResolver) resolveIterative(
+	ctx context.Context,
+	qname string,
+	qtype uint16,
+	depth int,
+) (*dns.Msg, error) {
 	// Check depth limit to prevent infinite loops
 	if depth > ir.maxDepth {
 		return nil, errors.New("maximum delegation depth exceeded")
@@ -186,7 +191,14 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 
 // resolveWithNS continues resolution with specific nameservers
 // Uses parallel queries for faster resolution.
-func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qtype uint16, nameservers []string, glue map[string][]string, depth int) (*dns.Msg, error) {
+func (ir *IterativeResolver) resolveWithNS(
+	ctx context.Context,
+	qname string,
+	qtype uint16,
+	nameservers []string,
+	glue map[string][]string,
+	depth int,
+) (*dns.Msg, error) {
 	query := new(dns.Msg)
 	query.SetQuestion(qname, qtype)
 	query.RecursionDesired = false

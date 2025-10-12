@@ -18,7 +18,12 @@ type ChainOfTrustValidator struct {
 }
 
 // NewChainOfTrustValidator creates a new chain of trust validator.
-func NewChainOfTrustValidator(validator *Validator, keyCache *DNSKEYCache, keyFetcher DNSKEYFetcher, maxChainLen int) *ChainOfTrustValidator {
+func NewChainOfTrustValidator(
+	validator *Validator,
+	keyCache *DNSKEYCache,
+	keyFetcher DNSKEYFetcher,
+	maxChainLen int,
+) *ChainOfTrustValidator {
 	return &ChainOfTrustValidator{
 		validator:   validator,
 		keyCache:    keyCache,
@@ -29,7 +34,12 @@ func NewChainOfTrustValidator(validator *Validator, keyCache *DNSKEYCache, keyFe
 
 // ValidateChain validates the chain of trust from a zone to a trust anchor
 // Returns the validated DNSKEY if successful, error otherwise.
-func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string, keyTag uint16, algorithm uint8) (*dns.DNSKEY, error) {
+func (ctv *ChainOfTrustValidator) ValidateChain(
+	ctx context.Context,
+	zone string,
+	keyTag uint16,
+	algorithm uint8,
+) (*dns.DNSKEY, error) {
 	// Check if we've already validated this key
 	if ctv.keyCache.IsValidated(zone, keyTag, algorithm) {
 		return ctv.keyCache.Get(zone, keyTag, algorithm), nil
@@ -63,7 +73,13 @@ func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string
 }
 
 // walkChain recursively walks the chain of trust upward.
-func (ctv *ChainOfTrustValidator) walkChain(ctx context.Context, zone string, keyTag uint16, algorithm uint8, depth int) (*dns.DNSKEY, error) {
+func (ctv *ChainOfTrustValidator) walkChain(
+	ctx context.Context,
+	zone string,
+	keyTag uint16,
+	algorithm uint8,
+	depth int,
+) (*dns.DNSKEY, error) {
 	// Prevent infinite recursion
 	if depth > ctv.maxChainLen {
 		return nil, fmt.Errorf("chain of trust too long (depth > %d)", ctv.maxChainLen)

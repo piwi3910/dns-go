@@ -264,7 +264,13 @@ func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
 }
 
 // ServeIXFR serves an IXFR zone transfer over TCP.
-func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Conn, clientSerial uint32, axfrHandler *AXFRHandler) error {
+func (h *IXFRHandler) ServeIXFR(
+	ctx context.Context,
+	query *dns.Msg,
+	conn net.Conn,
+	clientSerial uint32,
+	axfrHandler *AXFRHandler,
+) error {
 	// Extract client IP
 	clientAddr := conn.RemoteAddr().String()
 	clientIP, _, _ := net.SplitHostPort(clientAddr)
