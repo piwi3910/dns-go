@@ -12,6 +12,7 @@ func createTestZone() *Zone {
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1", "192.0.2.2"},
+		UpdateACL:   nil,
 	})
 
 	// Add SOA
@@ -103,7 +104,26 @@ func TestValidateAXFRQuery(t *testing.T) {
 	}
 
 	// Wrong type
-	query = &dns.Msg{}
+	query = &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 	err = ValidateAXFRQuery(query)
 	if err == nil {
@@ -111,7 +131,26 @@ func TestValidateAXFRQuery(t *testing.T) {
 	}
 
 	// Multiple questions
-	query = &dns.Msg{}
+	query = &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.Question = []dns.Question{
 		{Name: "example.com.", Qtype: dns.TypeAXFR, Qclass: dns.ClassINET},
 		{Name: "example.com.", Qtype: dns.TypeAXFR, Qclass: dns.ClassINET},
@@ -216,6 +255,7 @@ func TestAXFRHandler_HandleAXFR_EmptyZone(t *testing.T) {
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"any"},
+		UpdateACL:   nil,
 	})
 	handler := NewAXFRHandler(zone)
 
@@ -276,15 +316,21 @@ func TestValidateIXFRQuery(t *testing.T) {
 
 	// Add client SOA in authority section
 	soa := &dns.SOA{
-		Hdr: dns.RR_Header{
+			Hdr:     dns.RR_Header{
 			Name:   "example.com.",
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
 			Rdlength: 0,
 		},
-		Serial: 2024010100,
-	}
+			Ns:      "",
+			Mbox:    "",
+			Serial:  2024010100,
+			Refresh: 0,
+			Retry:   0,
+			Expire:  0,
+			Minttl:  0,
+		}
 	query.Ns = append(query.Ns, soa)
 
 	err := ValidateIXFRQuery(query)
@@ -293,7 +339,26 @@ func TestValidateIXFRQuery(t *testing.T) {
 	}
 
 	// Wrong type
-	query = &dns.Msg{}
+	query = &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 	err = ValidateIXFRQuery(query)
 	if err == nil {
@@ -333,15 +398,21 @@ func TestExtractClientSerial(t *testing.T) {
 
 	// Add SOA
 	soa := &dns.SOA{
-		Hdr: dns.RR_Header{
+			Hdr:     dns.RR_Header{
 			Name:   "example.com.",
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
 			Rdlength: 0,
 		},
-		Serial: 2024010100,
-	}
+			Ns:      "",
+			Mbox:    "",
+			Serial:  2024010100,
+			Refresh: 0,
+			Retry:   0,
+			Expire:  0,
+			Minttl:  0,
+		}
 	query.Ns = append(query.Ns, soa)
 
 	serial, ok := ExtractClientSerial(query)
@@ -417,7 +488,7 @@ func TestIXFRHandler_HandleIXFR_NeedsDelta(t *testing.T) {
 	deleted := []dns.RR{}
 	added := []dns.RR{
 		&dns.A{
-			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 			A:   []byte{192, 0, 2, 20},
 		},
 	}
@@ -514,14 +585,14 @@ func TestIXFRHandler_RecordDelta(t *testing.T) {
 
 	deleted := []dns.RR{
 		&dns.A{
-			Hdr: dns.RR_Header{Name: "old.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			Hdr: dns.RR_Header{Name: "old.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 			A:   []byte{192, 0, 2, 99},
 		},
 	}
 
 	added := []dns.RR{
 		&dns.A{
-			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 			A:   []byte{192, 0, 2, 100},
 		},
 	}
@@ -552,12 +623,19 @@ func TestIXFRHandler_PruneDeltaLog(t *testing.T) {
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"any"},
+		UpdateACL:   nil,
 	})
 
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600},
-		Serial: 100,
-	}
+			Hdr:     dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600, Rdlength: 0},
+			Ns:      "",
+			Mbox:    "",
+			Serial:  100,
+			Refresh: 0,
+			Retry:   0,
+			Expire:  0,
+			Minttl:  0,
+		}
 	zone.AddRecord(soa)
 
 	handler := NewIXFRHandler(zone)

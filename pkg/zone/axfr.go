@@ -170,7 +170,12 @@ func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Co
 // RFC 5936 Section 2.2.1: TCP messages are prefixed with 2-byte length.
 func (h *AXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 	// Write with length prefix using dns.Conn
-	dnsConn := &dns.Conn{Conn: conn}
+	dnsConn := &dns.Conn{
+		Conn:         conn,
+		UDPSize:      0,
+		TsigSecret:   nil,
+		TsigProvider: nil,
+	}
 
 	return dnsConn.WriteMsg(msg)
 }

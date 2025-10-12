@@ -11,6 +11,7 @@ func TestNewZone(t *testing.T) {
 	config := ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
+		UpdateACL:   nil,
 	}
 
 	zone := NewZone(config)
@@ -26,7 +27,7 @@ func TestNewZone(t *testing.T) {
 
 func TestZone_AddRecord(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add A record
 	a := &dns.A{
@@ -63,7 +64,7 @@ func TestZone_AddRecord(t *testing.T) {
 
 func TestZone_AddRecord_OutOfZone(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Try to add record outside zone
 	a := &dns.A{
@@ -85,7 +86,7 @@ func TestZone_AddRecord_OutOfZone(t *testing.T) {
 
 func TestZone_AddSOA(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
@@ -120,7 +121,7 @@ func TestZone_AddSOA(t *testing.T) {
 
 func TestZone_GetAllRecords(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add multiple records for same owner
 	a := &dns.A{
@@ -155,17 +156,23 @@ func TestZone_GetAllRecords(t *testing.T) {
 
 func TestZone_IncrementSerial(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	soa := &dns.SOA{
-		Hdr: dns.RR_Header{
+		Hdr:     dns.RR_Header{
 			Name:   "example.com.",
 			Rrtype: dns.TypeSOA,
 			Class:  dns.ClassINET,
 			Ttl:    3600,
 			Rdlength: 0,
 		},
-		Serial: 2024010101,
+		Ns:      "",
+		Mbox:    "",
+		Serial:  2024010101,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	zone.AddRecord(soa)
 
@@ -202,6 +209,7 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 			zone := NewZone(ZoneConfig{
 				Origin:      "example.com",
 				TransferACL: tt.acl,
+				UpdateACL:   nil,
 			})
 
 			result := zone.IsTransferAllowed(tt.clientIP)
@@ -214,7 +222,7 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 
 func TestZone_RecordCount(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	if zone.RecordCount() != 0 {
 		t.Error("Expected empty zone to have 0 records")
@@ -222,11 +230,17 @@ func TestZone_RecordCount(t *testing.T) {
 
 	// Add records
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600},
-		Serial: 1,
+		Hdr:     dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600, Rdlength: 0},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  1,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	a := &dns.A{
-		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		A:   []byte{192, 0, 2, 1},
 	}
 
@@ -240,12 +254,18 @@ func TestZone_RecordCount(t *testing.T) {
 
 func TestZone_Clear(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add records
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600},
-		Serial: 2024010101,
+		Hdr:     dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600, Rdlength: 0},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  2024010101,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	zone.AddRecord(soa)
 
@@ -270,18 +290,25 @@ func TestZone_Clone(t *testing.T) {
 	zone := NewZone(ZoneConfig{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
+		UpdateACL:   nil,
 	})
 
 	// Add SOA
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600},
-		Serial: 2024010101,
+		Hdr:     dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600, Rdlength: 0},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  2024010101,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	zone.AddRecord(soa)
 
 	// Add A record
 	a := &dns.A{
-		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		A:   []byte{192, 0, 2, 1},
 	}
 	zone.AddRecord(a)
@@ -311,22 +338,28 @@ func TestZone_Clone(t *testing.T) {
 
 func TestZone_GetAllRecordsOrdered(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com"})
+	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add SOA
 	soa := &dns.SOA{
-		Hdr:    dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600},
-		Serial: 2024010101,
+		Hdr:     dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 3600, Rdlength: 0},
+		Ns:      "",
+		Mbox:    "",
+		Serial:  2024010101,
+		Refresh: 0,
+		Retry:   0,
+		Expire:  0,
+		Minttl:  0,
 	}
 	zone.AddRecord(soa)
 
 	// Add other records
 	a := &dns.A{
-		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		A:   []byte{192, 0, 2, 1},
 	}
 	mx := &dns.MX{
-		Hdr:        dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 300},
+		Hdr:        dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		Preference: 10,
 		Mx:         "mail.example.com.",
 	}

@@ -48,8 +48,11 @@ type ZoneConfig struct {
 func NewZone(config ZoneConfig) *Zone {
 	return &Zone{
 		Origin:       dns.Fqdn(config.Origin),
+		SOA:          nil,
 		Records:      make(map[string]map[uint16][]dns.RR),
+		Serial:       atomic.Uint32{},
 		LastModified: time.Now(),
+		mu:           sync.RWMutex{},
 		TransferACL:  config.TransferACL,
 		UpdateACL:    config.UpdateACL,
 	}
@@ -244,8 +247,11 @@ func (z *Zone) Clone() *Zone {
 
 	newZone := &Zone{
 		Origin:       z.Origin,
+		SOA:          nil,
 		Records:      make(map[string]map[uint16][]dns.RR),
+		Serial:       atomic.Uint32{},
 		LastModified: z.LastModified,
+		mu:           sync.RWMutex{},
 		TransferACL:  make([]string, len(z.TransferACL)),
 		UpdateACL:    make([]string, len(z.UpdateACL)),
 	}

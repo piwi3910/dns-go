@@ -320,7 +320,12 @@ func (h *IXFRHandler) ServeIXFR(ctx context.Context, query *dns.Msg, conn net.Co
 
 // writeMessage writes a DNS message to a TCP connection.
 func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
-	dnsConn := &dns.Conn{Conn: conn}
+	dnsConn := &dns.Conn{
+		Conn:         conn,
+		UDPSize:      0,
+		TsigSecret:   nil,
+		TsigProvider: nil,
+	}
 
 	return dnsConn.WriteMsg(msg)
 }
