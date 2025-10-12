@@ -141,6 +141,32 @@ func (ul *UDPListener) Start() error {
 	return nil
 }
 
+// Stop gracefully stops all listeners.
+func (ul *UDPListener) Stop() error {
+	close(ul.done)
+
+	// Close all connections
+	for _, conn := range ul.conns {
+		if conn != nil {
+			_ = conn.Close() // Ignore errors during shutdown
+		}
+	}
+
+	// Wait for all workers to finish
+	ul.wg.Wait()
+
+	return nil
+}
+
+// Addr returns the listener address.
+func (ul *UDPListener) Addr() net.Addr {
+	if len(ul.conns) > 0 && ul.conns[0] != nil {
+		return ul.conns[0].LocalAddr()
+	}
+
+	return nil
+}
+
 // createUDPSocket creates a UDP socket with SO_REUSEPORT and tuned buffer sizes.
 func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) {
 	// Create socket with control options
@@ -225,32 +251,6 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 	}
 }
 
-// Stop gracefully stops all listeners.
-func (ul *UDPListener) Stop() error {
-	close(ul.done)
-
-	// Close all connections
-	for _, conn := range ul.conns {
-		if conn != nil {
-			_ = conn.Close() // Ignore errors during shutdown
-		}
-	}
-
-	// Wait for all workers to finish
-	ul.wg.Wait()
-
-	return nil
-}
-
-// Addr returns the listener address.
-func (ul *UDPListener) Addr() net.Addr {
-	if len(ul.conns) > 0 && ul.conns[0] != nil {
-		return ul.conns[0].LocalAddr()
-	}
-
-	return nil
-}
-
 // TCPListener manages TCP connections for DNS queries
 // RFC 7766: DNS Transport over TCP.
 type TCPListener struct {
@@ -317,6 +317,37 @@ func (tl *TCPListener) Start() error {
 	go tl.acceptLoop()
 
 	return nil
+}
+
+// Stop gracefully stops the TCP listener.
+func (tl *TCPListener) Stop() error {
+	close(tl.done)
+
+	// Close listener (stops accepting new connections)
+	if tl.listener != nil {
+		_ = tl.listener.Close() // Ignore errors during shutdown
+	}
+
+	// Wait for all connection handlers to finish
+	tl.wg.Wait()
+
+	return nil
+}
+
+// Addr returns the listener address.
+func (tl *TCPListener) Addr() net.Addr {
+	if tl.listener != nil {
+		return tl.listener.Addr()
+	}
+
+	return nil
+}
+
+// SetMaxConnections sets the maximum number of concurrent TCP connections.
+func (tl *TCPListener) SetMaxConnections(maxConns int) {
+	tl.connMutex.Lock()
+	defer tl.connMutex.Unlock()
+	tl.maxConnections = maxConns
 }
 
 // acceptLoop accepts new TCP connections and spawns handlers.
@@ -451,35 +482,4 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		// RFC 7766: TCP connections should be persistent
 		// Continue reading more queries on same connection
 	}
-}
-
-// Stop gracefully stops the TCP listener.
-func (tl *TCPListener) Stop() error {
-	close(tl.done)
-
-	// Close listener (stops accepting new connections)
-	if tl.listener != nil {
-		_ = tl.listener.Close() // Ignore errors during shutdown
-	}
-
-	// Wait for all connection handlers to finish
-	tl.wg.Wait()
-
-	return nil
-}
-
-// Addr returns the listener address.
-func (tl *TCPListener) Addr() net.Addr {
-	if tl.listener != nil {
-		return tl.listener.Addr()
-	}
-
-	return nil
-}
-
-// SetMaxConnections sets the maximum number of concurrent TCP connections.
-func (tl *TCPListener) SetMaxConnections(maxConns int) {
-	tl.connMutex.Lock()
-	defer tl.connMutex.Unlock()
-	tl.maxConnections = maxConns
 }

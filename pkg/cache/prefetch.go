@@ -140,6 +140,43 @@ func (pe *PrefetchEngine) RecordAccess(key string, name string, qtype uint16, qc
 	}
 }
 
+// PrefetchStats represents statistical metrics for the prefetch engine.
+type PrefetchStats struct {
+	Enabled     bool
+	Candidates  int
+	QueueSize   int
+	Prefetching int
+}
+
+// GetStats returns current prefetch statistics.
+func (pe *PrefetchEngine) GetStats() PrefetchStats {
+	if !pe.enabled {
+		return PrefetchStats{
+			Enabled:     false,
+			Candidates:  0,
+			QueueSize:   0,
+			Prefetching: 0,
+		}
+	}
+
+	pe.mu.RLock()
+	defer pe.mu.RUnlock()
+
+	prefetching := 0
+	for _, candidate := range pe.candidates {
+		if candidate.prefetching {
+			prefetching++
+		}
+	}
+
+	return PrefetchStats{
+		Enabled:     true,
+		Candidates:  len(pe.candidates),
+		QueueSize:   len(pe.prefetchQueue),
+		Prefetching: prefetching,
+	}
+}
+
 // scanner periodically scans cache entries to find prefetch candidates.
 func (pe *PrefetchEngine) scanner(interval time.Duration) {
 	defer pe.wg.Done()
@@ -263,41 +300,4 @@ func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 		}
 	}
 	pe.mu.Unlock()
-}
-
-// PrefetchStats represents statistical metrics for the prefetch engine.
-type PrefetchStats struct {
-	Enabled     bool
-	Candidates  int
-	QueueSize   int
-	Prefetching int
-}
-
-// GetStats returns current prefetch statistics.
-func (pe *PrefetchEngine) GetStats() PrefetchStats {
-	if !pe.enabled {
-		return PrefetchStats{
-			Enabled:     false,
-			Candidates:  0,
-			QueueSize:   0,
-			Prefetching: 0,
-		}
-	}
-
-	pe.mu.RLock()
-	defer pe.mu.RUnlock()
-
-	prefetching := 0
-	for _, candidate := range pe.candidates {
-		if candidate.prefetching {
-			prefetching++
-		}
-	}
-
-	return PrefetchStats{
-		Enabled:     true,
-		Candidates:  len(pe.candidates),
-		QueueSize:   len(pe.prefetchQueue),
-		Prefetching: prefetching,
-	}
 }

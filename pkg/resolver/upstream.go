@@ -156,40 +156,18 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	return response, nil
 }
 
-// queryTCP performs a query over TCP (for truncated responses).
-func (up *UpstreamPool) queryTCP(
-	ctx context.Context,
-	msg *dns.Msg,
-	addr string,
-	stats *cache.UpstreamStats,
-) (*dns.Msg, error) {
-	tcpClient := &dns.Client{
-		Net:            "tcp",
-		UDPSize:        0,
-		TLSConfig:      nil,
-		Dialer:         nil,
-		Timeout:        up.timeout,
-		DialTimeout:    0,
-		ReadTimeout:    0,
-		WriteTimeout:   0,
-		TsigSecret:     nil,
-		TsigProvider:   nil,
-		SingleInflight: false,
+// Close closes the upstream pool
+// dns.Client doesn't need explicit closing.
+func (up *UpstreamPool) Close() error {
+	up.poolMu.Lock()
+	defer up.poolMu.Unlock()
+
+	for addr, pool := range up.udpPools {
+		pool.Close()
+		delete(up.udpPools, addr)
 	}
 
-	start := time.Now()
-	response, rtt, err := tcpClient.ExchangeContext(ctx, msg, addr)
-
-	if err != nil {
-		stats.RecordFailure()
-
-		return nil, fmt.Errorf("TCP query to upstream failed: %w", err)
-	}
-
-	stats.RecordSuccess(rtt)
-	_ = start // For future logging
-
-	return response, nil
+	return nil
 }
 
 // QueryWithFallback queries upstream with automatic fallback to other servers on failure.
@@ -315,18 +293,40 @@ func (up *UpstreamPool) GetStats() []cache.UpstreamSnapshot {
 	return up.infraCache.GetAllStats()
 }
 
-// Close closes the upstream pool
-// dns.Client doesn't need explicit closing.
-func (up *UpstreamPool) Close() error {
-	up.poolMu.Lock()
-	defer up.poolMu.Unlock()
-
-	for addr, pool := range up.udpPools {
-		pool.Close()
-		delete(up.udpPools, addr)
+// queryTCP performs a query over TCP (for truncated responses).
+func (up *UpstreamPool) queryTCP(
+	ctx context.Context,
+	msg *dns.Msg,
+	addr string,
+	stats *cache.UpstreamStats,
+) (*dns.Msg, error) {
+	tcpClient := &dns.Client{
+		Net:            "tcp",
+		UDPSize:        0,
+		TLSConfig:      nil,
+		Dialer:         nil,
+		Timeout:        up.timeout,
+		DialTimeout:    0,
+		ReadTimeout:    0,
+		WriteTimeout:   0,
+		TsigSecret:     nil,
+		TsigProvider:   nil,
+		SingleInflight: false,
 	}
 
-	return nil
+	start := time.Now()
+	response, rtt, err := tcpClient.ExchangeContext(ctx, msg, addr)
+
+	if err != nil {
+		stats.RecordFailure()
+
+		return nil, fmt.Errorf("TCP query to upstream failed: %w", err)
+	}
+
+	stats.RecordSuccess(rtt)
+	_ = start // For future logging
+
+	return response, nil
 }
 
 // exchangeWithConn performs a single query over an existing UDP connection.

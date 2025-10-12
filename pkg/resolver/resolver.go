@@ -139,6 +139,18 @@ func (r *Resolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error
 	return r.doResolve(ctx, query)
 }
 
+// GetStats returns current resolver statistics.
+func (r *Resolver) GetStats() ResolverStats {
+	r.mu.Lock()
+	inFlight := len(r.inFlight)
+	r.mu.Unlock()
+
+	return ResolverStats{
+		InFlightQueries: inFlight,
+		Upstreams:       r.upstream.GetStats(),
+	}
+}
+
 // resolveWithCoalescing resolves a query with request coalescing
 // If an identical query is in-flight, wait for its result instead of querying again.
 func (r *Resolver) resolveWithCoalescing(ctx context.Context, query *dns.Msg, queryKey string) (*dns.Msg, error) {
@@ -296,26 +308,14 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 	return response, nil
 }
 
-// makeQueryKey creates a unique key for a query
-// Used for request coalescing.
-func makeQueryKey(name string, qtype uint16, qclass uint16) string {
-	return cache.MakeKey(name, qtype, qclass)
-}
-
 // ResolverStats represents statistical metrics for DNS resolution operations.
 type ResolverStats struct {
 	InFlightQueries int
 	Upstreams       []cache.UpstreamSnapshot
 }
 
-// GetStats returns current resolver statistics.
-func (r *Resolver) GetStats() ResolverStats {
-	r.mu.Lock()
-	inFlight := len(r.inFlight)
-	r.mu.Unlock()
-
-	return ResolverStats{
-		InFlightQueries: inFlight,
-		Upstreams:       r.upstream.GetStats(),
-	}
+// makeQueryKey creates a unique key for a query
+// Used for request coalescing.
+func makeQueryKey(name string, qtype uint16, qclass uint16) string {
+	return cache.MakeKey(name, qtype, qclass)
 }

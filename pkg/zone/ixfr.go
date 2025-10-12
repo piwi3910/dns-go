@@ -87,6 +87,128 @@ func (h *IXFRHandler) HandleIXFR(query *dns.Msg, clientIP string, clientSerial u
 	return messages, false, nil
 }
 
+// RecordDelta records a zone delta for IXFR
+// Call this whenever the zone is updated.
+func (h *IXFRHandler) RecordDelta(fromSerial, toSerial uint32, deleted, added []dns.RR) {
+	delta := &ZoneDelta{
+		FromSerial: fromSerial,
+		ToSerial:   toSerial,
+		Deleted:    make([]dns.RR, len(deleted)),
+		Added:      make([]dns.RR, len(added)),
+	}
+
+	// Deep copy records
+	for i, rr := range deleted {
+		delta.Deleted[i] = dns.Copy(rr)
+	}
+	for i, rr := range added {
+		delta.Added[i] = dns.Copy(rr)
+	}
+
+	h.deltaLog[toSerial] = delta
+}
+
+// PruneDeltaLog removes old deltas to limit memory usage
+// Keeps only the last N deltas.
+func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
+	if len(h.deltaLog) <= keepCount {
+		return
+	}
+
+	// Find serials to keep (most recent N)
+	currentSerial := h.zone.GetSerial()
+	//nolint:gosec // G115: keepCount is expected to be small positive value (10-100), safe for uint32 serial arithmetic
+	minSerial := currentSerial - uint32(keepCount) + 1
+
+	// Remove old deltas
+	for serial := range h.deltaLog {
+		if serialCompare(serial, minSerial) < 0 {
+			delete(h.deltaLog, serial)
+		}
+	}
+}
+
+// ServeIXFR serves an IXFR zone transfer over TCP.
+func (h *IXFRHandler) ServeIXFR(
+	ctx context.Context,
+	query *dns.Msg,
+	conn net.Conn,
+	clientSerial uint32,
+	axfrHandler *AXFRHandler,
+) error {
+	// Extract client IP
+	clientAddr := conn.RemoteAddr().String()
+	clientIP, _, _ := net.SplitHostPort(clientAddr)
+
+	// Try IXFR
+	messages, needsAXFR, err := h.HandleIXFR(query, clientIP, clientSerial)
+	if err != nil {
+		// Send error response
+		errorMsg := &dns.Msg{
+			MsgHdr: dns.MsgHdr{
+				Id:                 0,
+				Response:           false,
+				Opcode:             0,
+				Authoritative:      false,
+				Truncated:          false,
+				RecursionDesired:   false,
+				RecursionAvailable: false,
+				Zero:               false,
+				AuthenticatedData:  false,
+				CheckingDisabled:   false,
+				Rcode:              0,
+			},
+			Compress: false,
+			Question: nil,
+			Answer:   nil,
+			Ns:       nil,
+			Extra:    nil,
+		}
+		errorMsg.SetReply(query)
+		errorMsg.Rcode = dns.RcodeRefused
+
+		return h.writeMessage(conn, errorMsg)
+	}
+
+	if needsAXFR {
+		// Fall back to AXFR per RFC 1995
+		axfrQuery := query.Copy()
+		axfrQuery.Question[0].Qtype = dns.TypeAXFR
+
+		return axfrHandler.ServeAXFR(ctx, axfrQuery, conn)
+	}
+
+	// Send IXFR response
+	for _, msg := range messages {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("IXFR transfer cancelled: %w", ctx.Err())
+		default:
+			if err := h.writeMessage(conn, msg); err != nil {
+				return fmt.Errorf("failed to write IXFR message: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// writeMessage writes a DNS message to a TCP connection.
+func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
+	dnsConn := &dns.Conn{
+		Conn:         conn,
+		UDPSize:      0,
+		TsigSecret:   nil,
+		TsigProvider: nil,
+	}
+
+	if err := dnsConn.WriteMsg(msg); err != nil {
+		return fmt.Errorf("failed to write DNS message to connection: %w", err)
+	}
+
+	return nil
+}
+
 // findDeltas finds the sequence of deltas from oldSerial to newSerial.
 func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, bool) {
 	var deltas []*ZoneDelta
@@ -221,128 +343,6 @@ func (h *IXFRHandler) createUpToDateResponse(query *dns.Msg) []*dns.Msg {
 	}
 
 	return []*dns.Msg{msg}
-}
-
-// RecordDelta records a zone delta for IXFR
-// Call this whenever the zone is updated.
-func (h *IXFRHandler) RecordDelta(fromSerial, toSerial uint32, deleted, added []dns.RR) {
-	delta := &ZoneDelta{
-		FromSerial: fromSerial,
-		ToSerial:   toSerial,
-		Deleted:    make([]dns.RR, len(deleted)),
-		Added:      make([]dns.RR, len(added)),
-	}
-
-	// Deep copy records
-	for i, rr := range deleted {
-		delta.Deleted[i] = dns.Copy(rr)
-	}
-	for i, rr := range added {
-		delta.Added[i] = dns.Copy(rr)
-	}
-
-	h.deltaLog[toSerial] = delta
-}
-
-// PruneDeltaLog removes old deltas to limit memory usage
-// Keeps only the last N deltas.
-func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
-	if len(h.deltaLog) <= keepCount {
-		return
-	}
-
-	// Find serials to keep (most recent N)
-	currentSerial := h.zone.GetSerial()
-	//nolint:gosec // G115: keepCount is expected to be small positive value (10-100), safe for uint32 serial arithmetic
-	minSerial := currentSerial - uint32(keepCount) + 1
-
-	// Remove old deltas
-	for serial := range h.deltaLog {
-		if serialCompare(serial, minSerial) < 0 {
-			delete(h.deltaLog, serial)
-		}
-	}
-}
-
-// ServeIXFR serves an IXFR zone transfer over TCP.
-func (h *IXFRHandler) ServeIXFR(
-	ctx context.Context,
-	query *dns.Msg,
-	conn net.Conn,
-	clientSerial uint32,
-	axfrHandler *AXFRHandler,
-) error {
-	// Extract client IP
-	clientAddr := conn.RemoteAddr().String()
-	clientIP, _, _ := net.SplitHostPort(clientAddr)
-
-	// Try IXFR
-	messages, needsAXFR, err := h.HandleIXFR(query, clientIP, clientSerial)
-	if err != nil {
-		// Send error response
-		errorMsg := &dns.Msg{
-			MsgHdr: dns.MsgHdr{
-				Id:                 0,
-				Response:           false,
-				Opcode:             0,
-				Authoritative:      false,
-				Truncated:          false,
-				RecursionDesired:   false,
-				RecursionAvailable: false,
-				Zero:               false,
-				AuthenticatedData:  false,
-				CheckingDisabled:   false,
-				Rcode:              0,
-			},
-			Compress: false,
-			Question: nil,
-			Answer:   nil,
-			Ns:       nil,
-			Extra:    nil,
-		}
-		errorMsg.SetReply(query)
-		errorMsg.Rcode = dns.RcodeRefused
-
-		return h.writeMessage(conn, errorMsg)
-	}
-
-	if needsAXFR {
-		// Fall back to AXFR per RFC 1995
-		axfrQuery := query.Copy()
-		axfrQuery.Question[0].Qtype = dns.TypeAXFR
-
-		return axfrHandler.ServeAXFR(ctx, axfrQuery, conn)
-	}
-
-	// Send IXFR response
-	for _, msg := range messages {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("IXFR transfer cancelled: %w", ctx.Err())
-		default:
-			if err := h.writeMessage(conn, msg); err != nil {
-				return fmt.Errorf("failed to write IXFR message: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// writeMessage writes a DNS message to a TCP connection.
-func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
-	dnsConn := &dns.Conn{
-		Conn:         conn,
-		UDPSize:      0,
-		TsigSecret:   nil,
-		TsigProvider: nil,
-	}
-
-	if err := dnsConn.WriteMsg(msg); err != nil {
-		return fmt.Errorf("failed to write DNS message to connection: %w", err)
-	}
-
-	return nil
 }
 
 // serialCompare compares two serial numbers using RFC 1982 serial number arithmetic

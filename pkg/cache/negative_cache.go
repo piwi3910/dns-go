@@ -170,6 +170,37 @@ func (nc *NegativeCache) Set(key string, negType NegativeType, soa *dns.SOA) {
 	shard.data.Store(key, entry)
 }
 
+// Delete removes an entry from the negative cache.
+func (nc *NegativeCache) Delete(key string) {
+	shard := nc.getShard(key)
+	shard.data.Delete(key)
+}
+
+// NegativeCacheStats represents statistical metrics for negative response caching.
+type NegativeCacheStats struct {
+	Hits    int64
+	Misses  int64
+	HitRate float64
+}
+
+// GetStats returns cache statistics.
+func (nc *NegativeCache) GetStats() NegativeCacheStats {
+	hits := nc.hits.Load()
+	misses := nc.misses.Load()
+	total := hits + misses
+
+	hitRate := 0.0
+	if total > 0 {
+		hitRate = float64(hits) / float64(total)
+	}
+
+	return NegativeCacheStats{
+		Hits:    hits,
+		Misses:  misses,
+		HitRate: hitRate,
+	}
+}
+
 // calculateNegativeTTL calculates the TTL for a negative response per RFC 2308
 // Uses the minimum of SOA TTL and SOA MINIMUM field.
 func (nc *NegativeCache) calculateNegativeTTL(soa *dns.SOA) time.Duration {
@@ -208,37 +239,6 @@ func (nc *NegativeCache) getShard(key string) *NegativeCacheShard {
 	shardIdx := hash & uint64(len(nc.shards)-1)
 
 	return nc.shards[shardIdx]
-}
-
-// Delete removes an entry from the negative cache.
-func (nc *NegativeCache) Delete(key string) {
-	shard := nc.getShard(key)
-	shard.data.Delete(key)
-}
-
-// NegativeCacheStats represents statistical metrics for negative response caching.
-type NegativeCacheStats struct {
-	Hits    int64
-	Misses  int64
-	HitRate float64
-}
-
-// GetStats returns cache statistics.
-func (nc *NegativeCache) GetStats() NegativeCacheStats {
-	hits := nc.hits.Load()
-	misses := nc.misses.Load()
-	total := hits + misses
-
-	hitRate := 0.0
-	if total > 0 {
-		hitRate = float64(hits) / float64(total)
-	}
-
-	return NegativeCacheStats{
-		Hits:    hits,
-		Misses:  misses,
-		HitRate: hitRate,
-	}
 }
 
 // ExtractSOA extracts the SOA record from a DNS message's authority section

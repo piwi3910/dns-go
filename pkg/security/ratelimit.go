@@ -103,6 +103,25 @@ func (rl *RateLimiter) Allow(addr net.Addr) bool {
 	return bucket.consume()
 }
 
+// Stop stops the rate limiter cleanup goroutine.
+func (rl *RateLimiter) Stop() {
+	if rl.cleanupT != nil {
+		rl.cleanupT.Stop()
+	}
+	close(rl.stopCh)
+}
+
+// GetStats returns current rate limiting statistics.
+func (rl *RateLimiter) GetStats() RateLimitStats {
+	rl.mu.RLock()
+	defer rl.mu.RUnlock()
+
+	return RateLimitStats{
+		ActiveBuckets: len(rl.buckets),
+		TotalIPs:      len(rl.buckets),
+	}
+}
+
 // getBucket gets or creates a token bucket for an IP.
 func (rl *RateLimiter) getBucket(ip string) *TokenBucket {
 	rl.mu.RLock()
@@ -191,14 +210,6 @@ func (rl *RateLimiter) doCleanup() {
 	}
 }
 
-// Stop stops the rate limiter cleanup goroutine.
-func (rl *RateLimiter) Stop() {
-	if rl.cleanupT != nil {
-		rl.cleanupT.Stop()
-	}
-	close(rl.stopCh)
-}
-
 // isWhitelisted checks if an IP is whitelisted.
 func (rl *RateLimiter) isWhitelisted(ip string) bool {
 	for _, whitelistedIP := range rl.config.WhitelistedIPs {
@@ -237,15 +248,4 @@ func extractIP(addr net.Addr) string {
 type RateLimitStats struct {
 	ActiveBuckets int
 	TotalIPs      int
-}
-
-// GetStats returns current rate limiting statistics.
-func (rl *RateLimiter) GetStats() RateLimitStats {
-	rl.mu.RLock()
-	defer rl.mu.RUnlock()
-
-	return RateLimitStats{
-		ActiveBuckets: len(rl.buckets),
-		TotalIPs:      len(rl.buckets),
-	}
 }

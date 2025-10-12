@@ -158,6 +158,40 @@ func (v *Validator) ValidateResponse(_ context.Context, msg *dns.Msg) (*Validati
 	}, nil
 }
 
+// VerifyRRSIG verifies an RRSIG signature against a DNSKEY.
+func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DNSKEY) error {
+	// Calculate signature data
+	sigData := v.calculateSignatureData(rrsig, rrset)
+
+	// Decode the signature
+	signature, err := base64.StdEncoding.DecodeString(rrsig.Signature)
+	if err != nil {
+		return fmt.Errorf("failed to decode signature: %w", err)
+	}
+
+	// Decode the public key
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(dnskey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to decode public key: %w", err)
+	}
+
+	// Verify based on algorithm
+	switch rrsig.Algorithm {
+	case dns.RSASHA1, dns.RSASHA1NSEC3SHA1:
+		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA1)
+	case dns.RSASHA256:
+		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA256)
+	case dns.RSASHA512:
+		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA512)
+	case dns.ECDSAP256SHA256:
+		return v.verifyECDSA(sigData, signature, pubKeyBytes, crypto.SHA256)
+	case dns.ECDSAP384SHA384:
+		return v.verifyECDSA(sigData, signature, pubKeyBytes, crypto.SHA512)
+	default:
+		return fmt.Errorf("unsupported algorithm: %d", rrsig.Algorithm)
+	}
+}
+
 // validateRRSIGs validates all RRSIG records in a message.
 func (v *Validator) validateRRSIGs(msg *dns.Msg) error {
 	// Collect RRSIGs and their corresponding RRsets
@@ -249,40 +283,6 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 
 	// Note: DNSKEY lookup from resolver not yet implemented. See issue #2
 	return nil
-}
-
-// VerifyRRSIG verifies an RRSIG signature against a DNSKEY.
-func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DNSKEY) error {
-	// Calculate signature data
-	sigData := v.calculateSignatureData(rrsig, rrset)
-
-	// Decode the signature
-	signature, err := base64.StdEncoding.DecodeString(rrsig.Signature)
-	if err != nil {
-		return fmt.Errorf("failed to decode signature: %w", err)
-	}
-
-	// Decode the public key
-	pubKeyBytes, err := base64.StdEncoding.DecodeString(dnskey.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to decode public key: %w", err)
-	}
-
-	// Verify based on algorithm
-	switch rrsig.Algorithm {
-	case dns.RSASHA1, dns.RSASHA1NSEC3SHA1:
-		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA1)
-	case dns.RSASHA256:
-		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA256)
-	case dns.RSASHA512:
-		return v.verifyRSA(sigData, signature, pubKeyBytes, crypto.SHA512)
-	case dns.ECDSAP256SHA256:
-		return v.verifyECDSA(sigData, signature, pubKeyBytes, crypto.SHA256)
-	case dns.ECDSAP384SHA384:
-		return v.verifyECDSA(sigData, signature, pubKeyBytes, crypto.SHA512)
-	default:
-		return fmt.Errorf("unsupported algorithm: %d", rrsig.Algorithm)
-	}
 }
 
 // calculateSignatureData computes the data that was signed

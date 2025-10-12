@@ -54,6 +54,58 @@ func (h *AXFRHandler) HandleAXFR(query *dns.Msg, clientIP string) ([]*dns.Msg, e
 	return messages, nil
 }
 
+// ServeAXFR serves an AXFR zone transfer over TCP
+// RFC 5936 Section 2.2: AXFR must use TCP.
+func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Conn) error {
+	// Extract client IP
+	clientAddr := conn.RemoteAddr().String()
+	clientIP, _, _ := net.SplitHostPort(clientAddr)
+
+	// Generate zone transfer messages
+	messages, err := h.HandleAXFR(query, clientIP)
+	if err != nil {
+		// Send error response
+		errorMsg := &dns.Msg{
+			MsgHdr: dns.MsgHdr{
+				Id:                 0,
+				Response:           false,
+				Opcode:             0,
+				Authoritative:      false,
+				Truncated:          false,
+				RecursionDesired:   false,
+				RecursionAvailable: false,
+				Zero:               false,
+				AuthenticatedData:  false,
+				CheckingDisabled:   false,
+				Rcode:              0,
+			},
+			Compress: false,
+			Question: nil,
+			Answer:   nil,
+			Ns:       nil,
+			Extra:    nil,
+		}
+		errorMsg.SetReply(query)
+		errorMsg.Rcode = dns.RcodeRefused
+
+		return h.writeMessage(conn, errorMsg)
+	}
+
+	// Send all messages in sequence
+	for _, msg := range messages {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("AXFR transfer cancelled: %w", ctx.Err())
+		default:
+			if err := h.writeMessage(conn, msg); err != nil {
+				return fmt.Errorf("failed to write AXFR message: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // splitIntoMessages splits zone records into multiple DNS messages
 // RFC 5936 Section 2.2: Split large zones across multiple messages.
 func (h *AXFRHandler) splitIntoMessages(query *dns.Msg, records []dns.RR) []*dns.Msg {
@@ -113,58 +165,6 @@ func (h *AXFRHandler) createAXFRMessage(query *dns.Msg) *dns.Msg {
 	msg.Compress = true // Enable compression for efficiency
 
 	return msg
-}
-
-// ServeAXFR serves an AXFR zone transfer over TCP
-// RFC 5936 Section 2.2: AXFR must use TCP.
-func (h *AXFRHandler) ServeAXFR(ctx context.Context, query *dns.Msg, conn net.Conn) error {
-	// Extract client IP
-	clientAddr := conn.RemoteAddr().String()
-	clientIP, _, _ := net.SplitHostPort(clientAddr)
-
-	// Generate zone transfer messages
-	messages, err := h.HandleAXFR(query, clientIP)
-	if err != nil {
-		// Send error response
-		errorMsg := &dns.Msg{
-			MsgHdr: dns.MsgHdr{
-				Id:                 0,
-				Response:           false,
-				Opcode:             0,
-				Authoritative:      false,
-				Truncated:          false,
-				RecursionDesired:   false,
-				RecursionAvailable: false,
-				Zero:               false,
-				AuthenticatedData:  false,
-				CheckingDisabled:   false,
-				Rcode:              0,
-			},
-			Compress: false,
-			Question: nil,
-			Answer:   nil,
-			Ns:       nil,
-			Extra:    nil,
-		}
-		errorMsg.SetReply(query)
-		errorMsg.Rcode = dns.RcodeRefused
-
-		return h.writeMessage(conn, errorMsg)
-	}
-
-	// Send all messages in sequence
-	for _, msg := range messages {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("AXFR transfer cancelled: %w", ctx.Err())
-		default:
-			if err := h.writeMessage(conn, msg); err != nil {
-				return fmt.Errorf("failed to write AXFR message: %w", err)
-			}
-		}
-	}
-
-	return nil
 }
 
 // writeMessage writes a DNS message to a TCP connection with length prefix

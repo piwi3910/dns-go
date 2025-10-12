@@ -166,6 +166,66 @@ func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) 
 	return h.handleSlowPath(ctx, query, addr)
 }
 
+// CacheResponse stores a response in both caches
+// This is called after successful resolution.
+func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
+	if !h.config.EnableCache {
+		return nil
+	}
+
+	if len(msg.Question) == 0 {
+		return nil
+	}
+
+	q := msg.Question[0]
+
+	// Store in message cache (L1)
+	responseBytes, err := msg.Pack()
+	if err != nil {
+		return fmt.Errorf("failed to pack response for caching: %w", err)
+	}
+
+	cacheKey := cache.MakeKey(q.Name, q.Qtype, q.Qclass)
+	h.messageCache.Set(cacheKey, responseBytes, ttl)
+
+	// Extract and store RRsets in RRset cache (L2)
+	rrsets := cache.ExtractRRsets(msg)
+	for rrsetKey, rrs := range rrsets {
+		// Get TTL from RRs
+		rrTTL := cache.GetMinTTL(rrs)
+		if rrTTL == 0 {
+			rrTTL = ttl
+		}
+
+		// Parse key to get name and type
+		// Key format: "name:type"
+		// We need to extract these for the Set call
+		// For now, just use the question's info for primary RRset
+		if len(rrs) > 0 {
+			hdr := rrs[0].Header()
+			h.rrsetCache.Set(hdr.Name, hdr.Rrtype, rrs, rrTTL)
+		}
+		_ = rrsetKey // Silence unused warning
+	}
+
+	return nil
+}
+
+// GetStats returns statistics from the handler.
+func (h *Handler) GetStats() Stats {
+	return Stats{
+		MessageCache: h.messageCache.GetStats(),
+		RRsetCache:   h.rrsetCache.GetStats(),
+	}
+}
+
+// ClearCaches clears all caches.
+func (h *Handler) ClearCaches() {
+	h.messageCache.Clear()
+	h.rrsetCache.Clear()
+	h.infraCache.Clear()
+}
+
 // handleFastPath processes queries that can use the optimized fast path
 // This is the HOT PATH - must be extremely fast and allocation-free.
 func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
@@ -364,70 +424,10 @@ func (h *Handler) buildErrorResponse(query []byte, rcode int) ([]byte, error) {
 	return respBytes, nil
 }
 
-// CacheResponse stores a response in both caches
-// This is called after successful resolution.
-func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
-	if !h.config.EnableCache {
-		return nil
-	}
-
-	if len(msg.Question) == 0 {
-		return nil
-	}
-
-	q := msg.Question[0]
-
-	// Store in message cache (L1)
-	responseBytes, err := msg.Pack()
-	if err != nil {
-		return fmt.Errorf("failed to pack response for caching: %w", err)
-	}
-
-	cacheKey := cache.MakeKey(q.Name, q.Qtype, q.Qclass)
-	h.messageCache.Set(cacheKey, responseBytes, ttl)
-
-	// Extract and store RRsets in RRset cache (L2)
-	rrsets := cache.ExtractRRsets(msg)
-	for rrsetKey, rrs := range rrsets {
-		// Get TTL from RRs
-		rrTTL := cache.GetMinTTL(rrs)
-		if rrTTL == 0 {
-			rrTTL = ttl
-		}
-
-		// Parse key to get name and type
-		// Key format: "name:type"
-		// We need to extract these for the Set call
-		// For now, just use the question's info for primary RRset
-		if len(rrs) > 0 {
-			hdr := rrs[0].Header()
-			h.rrsetCache.Set(hdr.Name, hdr.Rrtype, rrs, rrTTL)
-		}
-		_ = rrsetKey // Silence unused warning
-	}
-
-	return nil
-}
-
 // Stats represents combined statistical metrics from all DNS caches.
 type Stats struct {
 	MessageCache cache.MessageCacheStats
 	RRsetCache   cache.RRsetCacheStats
-}
-
-// GetStats returns statistics from the handler.
-func (h *Handler) GetStats() Stats {
-	return Stats{
-		MessageCache: h.messageCache.GetStats(),
-		RRsetCache:   h.rrsetCache.GetStats(),
-	}
-}
-
-// ClearCaches clears all caches.
-func (h *Handler) ClearCaches() {
-	h.messageCache.Clear()
-	h.rrsetCache.Clear()
-	h.infraCache.Clear()
 }
 
 // applyEDNS0 adds EDNS0 OPT record to response if query had EDNS0
