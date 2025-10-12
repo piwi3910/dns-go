@@ -279,18 +279,26 @@ func isSubdomainOf(name, parent string) bool {
 }
 
 // RandomizeQueryID generates a random query ID for DNS messages.
+// Panics if random number generation fails (crypto failure).
 func RandomizeQueryID() uint16 {
 	var id [2]byte
-	rand.Read(id[:])
+	if _, err := rand.Read(id[:]); err != nil {
+		// Crypto RNG failure is a critical security issue
+		panic(fmt.Sprintf("crypto/rand.Read failed: %v", err))
+	}
 
 	return uint16(id[0])<<8 | uint16(id[1])
 }
 
 // RandomizeSourcePort generates a random source port (RFC 5452)
 // Returns a port in the range 1024-65535.
+// Panics if random number generation fails (crypto failure).
 func RandomizeSourcePort() int {
 	var port [2]byte
-	rand.Read(port[:])
+	if _, err := rand.Read(port[:]); err != nil {
+		// Crypto RNG failure is a critical security issue
+		panic(fmt.Sprintf("crypto/rand.Read failed: %v", err))
+	}
 	p := int(port[0])<<8 | int(port[1])
 
 	// Ensure port is in ephemeral range (1024-65535)
