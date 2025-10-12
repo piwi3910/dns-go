@@ -195,7 +195,7 @@ func TestGetExtendedRcode_WithEDNS(t *testing.T) {
 	msg.Rcode = 0 // Lower 4 bits
 
 	rcode := GetExtendedRcode(msg)
-	expected := (1 << 4) | 0 // Extended: 1, Base: 0 = 16
+	expected := 1 << 4 // Extended: 1, Base: 0 = 16
 	if rcode != expected {
 		t.Errorf("Expected extended RCODE %d, got %d", expected, rcode)
 	}

@@ -66,7 +66,7 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	}
 
 	responseLength := binary.BigEndian.Uint16(responseLengthBuf)
-	if responseLength == 0 || responseLength > 65535 {
+	if responseLength == 0 {
 		t.Fatalf("Invalid response length: %d", responseLength)
 	}
 
