@@ -41,10 +41,11 @@ func (ctv *ChainOfTrustValidator) ValidateChain(ctx context.Context, zone string
 		// This is a trust anchor - automatically trusted
 		dnskey := &dns.DNSKEY{
 			Hdr: dns.RR_Header{
-				Name:   ta.Name,
-				Rrtype: dns.TypeDNSKEY,
-				Class:  dns.ClassINET,
-				Ttl:    0,
+				Name:     ta.Name,
+				Rrtype:   dns.TypeDNSKEY,
+				Class:    dns.ClassINET,
+				Ttl:      0,
+				Rdlength: 0,
 			},
 			Flags:     257, // KSK
 			Protocol:  3,

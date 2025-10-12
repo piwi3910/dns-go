@@ -93,6 +93,7 @@ func (v *Validator) LoadRootTrustAnchors() {
 		Algorithm: dns.RSASHA256, // Algorithm 8
 		KeyTag:    20326,
 		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=",
+		DS:        nil,
 	}
 
 	v.AddTrustAnchor(rootKSK)
@@ -115,30 +116,42 @@ func (v *Validator) GetTrustAnchor(name string, keyTag uint16) *TrustAnchor {
 func (v *Validator) ValidateResponse(ctx context.Context, msg *dns.Msg) (*ValidationResult, error) {
 	if !v.config.EnableValidation {
 		return &ValidationResult{
-			Insecure: true,
-			Message:  "DNSSEC validation disabled",
+			Secure:      false,
+			Bogus:       false,
+			Insecure:    true,
+			Message:     "DNSSEC validation disabled",
+			ChainLength: 0,
 		}, nil
 	}
 
 	// Check if response has DNSSEC records
 	if !hasRRSIG(msg) {
 		return &ValidationResult{
-			Insecure: true,
-			Message:  "No RRSIG records in response",
+			Secure:      false,
+			Bogus:       false,
+			Insecure:    true,
+			Message:     "No RRSIG records in response",
+			ChainLength: 0,
 		}, nil
 	}
 
 	// Validate RRSIG signatures
 	if err := v.validateRRSIGs(msg); err != nil {
 		return &ValidationResult{
-			Bogus:   true,
-			Message: fmt.Sprintf("RRSIG validation failed: %v", err),
+			Secure:      false,
+			Bogus:       true,
+			Insecure:    false,
+			Message:     fmt.Sprintf("RRSIG validation failed: %v", err),
+			ChainLength: 0,
 		}, err
 	}
 
 	return &ValidationResult{
-		Secure:  true,
-		Message: "DNSSEC validation successful",
+		Secure:      true,
+		Bogus:       false,
+		Insecure:    false,
+		Message:     "DNSSEC validation successful",
+		ChainLength: 0,
 	}, nil
 }
 
@@ -215,10 +228,11 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 		// Convert trust anchor to DNSKEY
 		dnskey := &dns.DNSKEY{
 			Hdr: dns.RR_Header{
-				Name:   ta.Name,
-				Rrtype: dns.TypeDNSKEY,
-				Class:  dns.ClassINET,
-				Ttl:    0,
+				Name:     ta.Name,
+				Rrtype:   dns.TypeDNSKEY,
+				Class:    dns.ClassINET,
+				Ttl:      0,
+				Rdlength: 0,
 			},
 			Flags:     257, // KSK flag (trust anchors are typically KSKs)
 			Protocol:  3,

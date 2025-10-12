@@ -111,6 +111,7 @@ func TestCalculateKeyTag(t *testing.T) {
 	// Create a test DNSKEY
 	dnskey := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   ".",
 			Rrtype: dns.TypeDNSKEY,
 			Class:  dns.ClassINET,
@@ -144,6 +145,7 @@ func TestAddTrustAnchor(t *testing.T) {
 		Algorithm: dns.RSASHA256,
 		KeyTag:    12345,
 		PublicKey: "test-public-key",
+		DS:        nil,
 	}
 
 	validator.AddTrustAnchor(customTA)
@@ -200,6 +202,7 @@ func TestDNSKEYCache(t *testing.T) {
 	// Create a test DNSKEY
 	dnskey := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "example.com.",
 			Rrtype: dns.TypeDNSKEY,
 			Class:  dns.ClassINET,
@@ -249,9 +252,17 @@ func TestIsKSK(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dnskey := &dns.DNSKEY{
+				Hdr: dns.RR_Header{
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      0,
+					Rdlength: 0,
+				},
 				Flags:     tt.flags,
 				Protocol:  3,
 				Algorithm: dns.RSASHA256,
+				PublicKey: "",
 			}
 
 			result := IsKSK(dnskey)
@@ -281,9 +292,17 @@ func TestIsZSK(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dnskey := &dns.DNSKEY{
+				Hdr: dns.RR_Header{
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      0,
+					Rdlength: 0,
+				},
 				Flags:     tt.flags,
 				Protocol:  3,
 				Algorithm: dns.RSASHA256,
+				PublicKey: "",
 			}
 
 			result := IsZSK(dnskey)
@@ -434,10 +453,21 @@ func TestNSEC3HashName(t *testing.T) {
 	t.Parallel()
 	// Test with known values from RFC 5155 examples
 	nsec3 := &dns.NSEC3{
+		Hdr: dns.RR_Header{
+			Name:     "",
+			Rrtype:   0,
+			Class:    0,
+			Ttl:      0,
+			Rdlength: 0,
+		},
 		Hash:       dns.SHA1,
 		Flags:      0,
 		Iterations: 12,
+		SaltLength: 0,
 		Salt:       "AABBCCDD",
+		HashLength: 0,
+		NextDomain: "",
+		TypeBitMap: nil,
 	}
 
 	// Hash a test name
@@ -469,7 +499,21 @@ func TestNSEC3OptOut(t *testing.T) {
 
 	for _, tt := range tests {
 		nsec3 := &dns.NSEC3{
-			Flags: tt.flags,
+			Hdr: dns.RR_Header{
+				Name:     "",
+				Rrtype:   0,
+				Class:    0,
+				Ttl:      0,
+				Rdlength: 0,
+			},
+			Hash:       0,
+			Flags:      tt.flags,
+			Iterations: 0,
+			SaltLength: 0,
+			Salt:       "",
+			HashLength: 0,
+			NextDomain: "",
+			TypeBitMap: nil,
 		}
 
 		result := IsOptOut(nsec3)
@@ -492,27 +536,63 @@ func TestValidateNSEC3Params(t *testing.T) {
 		{
 			"Valid parameters",
 			&dns.NSEC3{
+				Hdr: dns.RR_Header{
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      0,
+					Rdlength: 0,
+				},
 				Hash:       dns.SHA1,
+				Flags:      0,
 				Iterations: 10,
+				SaltLength: 0,
 				Salt:       "AABBCCDD",
+				HashLength: 0,
+				NextDomain: "",
+				TypeBitMap: nil,
 			},
 			false,
 		},
 		{
 			"Too many iterations",
 			&dns.NSEC3{
+				Hdr: dns.RR_Header{
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      0,
+					Rdlength: 0,
+				},
 				Hash:       dns.SHA1,
+				Flags:      0,
 				Iterations: 200,
+				SaltLength: 0,
 				Salt:       "AABBCCDD",
+				HashLength: 0,
+				NextDomain: "",
+				TypeBitMap: nil,
 			},
 			true,
 		},
 		{
 			"Unsupported hash",
 			&dns.NSEC3{
+				Hdr: dns.RR_Header{
+					Name:     "",
+					Rrtype:   0,
+					Class:    0,
+					Ttl:      0,
+					Rdlength: 0,
+				},
 				Hash:       255,
+				Flags:      0,
 				Iterations: 10,
+				SaltLength: 0,
 				Salt:       "AABBCCDD",
+				HashLength: 0,
+				NextDomain: "",
+				TypeBitMap: nil,
 			},
 			true,
 		},
@@ -561,6 +641,7 @@ func TestExtractNSEC3Records(t *testing.T) {
 	// Create NSEC3 records
 	nsec3_1 := &dns.NSEC3{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "ABC123.example.com.",
 			Rrtype: dns.TypeNSEC3,
 			Class:  dns.ClassINET,
@@ -569,7 +650,9 @@ func TestExtractNSEC3Records(t *testing.T) {
 		Hash:       dns.SHA1,
 		Flags:      0,
 		Iterations: 10,
+		SaltLength: 0,
 		Salt:       "AABBCCDD",
+		HashLength: 0,
 		NextDomain: "DEF456",
 		TypeBitMap: []uint16{dns.TypeA, dns.TypeRRSIG},
 	}
@@ -631,6 +714,7 @@ func TestNSEC3Validator_ValidateNXDOMAIN(t *testing.T) {
 	// Create minimal NSEC3 record
 	nsec3 := &dns.NSEC3{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "ABC123.example.com.",
 			Rrtype: dns.TypeNSEC3,
 			Class:  dns.ClassINET,
@@ -639,7 +723,9 @@ func TestNSEC3Validator_ValidateNXDOMAIN(t *testing.T) {
 		Hash:       dns.SHA1,
 		Flags:      0,
 		Iterations: 10,
+		SaltLength: 0,
 		Salt:       "AABBCCDD",
+		HashLength: 0,
 		NextDomain: "DEF456",
 		TypeBitMap: []uint16{dns.TypeA, dns.TypeRRSIG},
 	}
@@ -663,6 +749,7 @@ func TestNSEC3Validator_ValidateNODATA(t *testing.T) {
 
 	nsec3 := &dns.NSEC3{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "ABC123.example.com.",
 			Rrtype: dns.TypeNSEC3,
 			Class:  dns.ClassINET,
@@ -671,7 +758,9 @@ func TestNSEC3Validator_ValidateNODATA(t *testing.T) {
 		Hash:       dns.SHA1,
 		Flags:      0,
 		Iterations: 10,
+		SaltLength: 0,
 		Salt:       "AABBCCDD",
+		HashLength: 0,
 		NextDomain: "DEF456",
 		TypeBitMap: []uint16{dns.TypeA, dns.TypeRRSIG}, // No AAAA
 	}
@@ -691,6 +780,7 @@ func TestValidateDelegation(t *testing.T) {
 	// Create child DNSKEY (KSK)
 	childKey := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "child.example.com.",
 			Rrtype: dns.TypeDNSKEY,
 			Class:  dns.ClassINET,
@@ -705,6 +795,7 @@ func TestValidateDelegation(t *testing.T) {
 	// Create matching DS record
 	ds := &dns.DS{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "child.example.com.",
 			Rrtype: dns.TypeDS,
 			Class:  dns.ClassINET,
@@ -736,6 +827,7 @@ func TestGetActiveKSKs(t *testing.T) {
 	keys := []*dns.DNSKEY{
 		{
 			Hdr: dns.RR_Header{
+			Rdlength: 0,
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
@@ -748,6 +840,7 @@ func TestGetActiveKSKs(t *testing.T) {
 		},
 		{
 			Hdr: dns.RR_Header{
+			Rdlength: 0,
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
@@ -778,6 +871,7 @@ func TestGetActiveZSKs(t *testing.T) {
 	keys := []*dns.DNSKEY{
 		{
 			Hdr: dns.RR_Header{
+			Rdlength: 0,
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
@@ -790,6 +884,7 @@ func TestGetActiveZSKs(t *testing.T) {
 		},
 		{
 			Hdr: dns.RR_Header{
+			Rdlength: 0,
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
@@ -853,17 +948,35 @@ func TestValidationResult(t *testing.T) {
 	}{
 		{
 			"Secure result",
-			&ValidationResult{Secure: true, Insecure: false, Bogus: false},
+			&ValidationResult{
+				Secure:      true,
+				Insecure:    false,
+				Bogus:       false,
+				Message:     "",
+				ChainLength: 0,
+			},
 			true,
 		},
 		{
 			"Insecure result",
-			&ValidationResult{Secure: false, Insecure: true, Bogus: false},
+			&ValidationResult{
+				Secure:      false,
+				Insecure:    true,
+				Bogus:       false,
+				Message:     "",
+				ChainLength: 0,
+			},
 			false,
 		},
 		{
 			"Bogus result",
-			&ValidationResult{Secure: false, Insecure: false, Bogus: true},
+			&ValidationResult{
+				Secure:      false,
+				Insecure:    false,
+				Bogus:       true,
+				Message:     "",
+				ChainLength: 0,
+			},
 			false,
 		},
 	}
@@ -886,6 +999,8 @@ func TestDNSKEYCacheEviction(t *testing.T) {
 	config := DNSKEYCacheConfig{
 		MaxSize:    2, // Small cache for testing
 		DefaultTTL: time.Hour,
+		MinTTL:     0,
+		MaxTTL:     0,
 	}
 	cache := NewDNSKEYCache(config)
 
@@ -893,6 +1008,7 @@ func TestDNSKEYCacheEviction(t *testing.T) {
 	for i := range 5 {
 		key := &dns.DNSKEY{
 			Hdr: dns.RR_Header{
+			Rdlength: 0,
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
@@ -917,6 +1033,7 @@ func TestDNSKEYCacheOperations(t *testing.T) {
 
 	key := &dns.DNSKEY{
 		Hdr: dns.RR_Header{
+			Rdlength: 0,
 			Name:   "example.com.",
 			Rrtype: dns.TypeDNSKEY,
 			Class:  dns.ClassINET,

@@ -57,6 +57,7 @@ type CachedDNSKEY struct {
 func NewDNSKEYCache(config DNSKEYCacheConfig) *DNSKEYCache {
 	return &DNSKEYCache{
 		keys:   make(map[string]*CachedDNSKEY),
+		mu:     sync.RWMutex{},
 		config: config,
 	}
 }
