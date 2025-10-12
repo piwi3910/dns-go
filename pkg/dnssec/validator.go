@@ -6,7 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -548,7 +548,7 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	var h hash.Hash
 	switch hashAlgo {
 	case crypto.SHA1:
-		h = sha1.New()
+		h = sha1.New() //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
 	case crypto.SHA256:
 		h = sha256.New()
 	case crypto.SHA512:

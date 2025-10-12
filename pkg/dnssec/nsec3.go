@@ -1,7 +1,7 @@
 package dnssec
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // SHA1 required for NSEC3 per RFC 5155
 	"encoding/base32"
 	"errors"
 	"fmt"
@@ -231,7 +231,7 @@ func nsec3Hash(data, salt []byte, iterations uint16) []byte {
 	// IH(salt, x, 0) = H(x || salt)
 	// IH(salt, x, k) = H(IH(salt, x, k-1) || salt), k > 0
 
-	h := sha1.New()
+	h := sha1.New() //nolint:gosec // SHA1 required for NSEC3 per RFC 5155
 	h.Write(data)
 	h.Write(salt)
 	digest := h.Sum(nil)

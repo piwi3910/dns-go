@@ -2,7 +2,7 @@ package dnssec
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
 	"crypto/sha256"
 	"crypto/sha512"
 	"errors"
@@ -209,7 +209,7 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	var h hash.Hash
 	switch digestType {
 	case dns.SHA1: // Digest type 1
-		h = sha1.New()
+		h = sha1.New() //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
 	case dns.SHA256: // Digest type 2
 		h = sha256.New()
 	case dns.SHA384: // Digest type 4

@@ -113,7 +113,7 @@ func NewRRsetCache(config RRsetCacheConfig) *RRsetCache {
 // hashKey generates a hash for the cache key.
 func (rc *RRsetCache) hashKey(key string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(key))
+	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
 
 	return h.Sum64()
 }

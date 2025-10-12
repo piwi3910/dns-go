@@ -130,7 +130,7 @@ func NewMessageCache(config MessageCacheConfig) *MessageCache {
 // Uses FNV-1a hash which is fast and has good distribution.
 func (mc *MessageCache) hashKey(key string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(key))
+	_, _ = h.Write([]byte(key)) // hash.Hash.Write never returns an error
 
 	return h.Sum64()
 }
