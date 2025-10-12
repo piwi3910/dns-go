@@ -236,10 +236,7 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 // VerifyRRSIG verifies an RRSIG signature against a DNSKEY.
 func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DNSKEY) error {
 	// Calculate signature data
-	sigData, err := v.calculateSignatureData(rrsig, rrset)
-	if err != nil {
-		return fmt.Errorf("failed to calculate signature data: %w", err)
-	}
+	sigData := v.calculateSignatureData(rrsig, rrset)
 
 	// Decode the signature
 	signature, err := base64.StdEncoding.DecodeString(rrsig.Signature)
@@ -272,7 +269,7 @@ func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DN
 
 // calculateSignatureData computes the data that was signed
 // Implements RFC 4034 Section 6: Canonical RR Ordering.
-func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) ([]byte, error) {
+func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) []byte {
 	buf := make([]byte, 0, 4096)
 
 	// Add RRSIG RDATA (without signature) - RFC 4034 §3.1.8.1
@@ -330,7 +327,7 @@ func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) ([]
 		buf = append(buf, rrWire...)
 	}
 
-	return buf, nil
+	return buf
 }
 
 // canonicalName converts a domain name to canonical wire format (RFC 4034 §6.2).

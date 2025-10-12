@@ -17,7 +17,7 @@ import (
 func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	t.Parallel()
 	// Start test server with TCP support
-	handler := setupTestHandler(resolver.ForwardingMode)
+	handler := setupTestHandler()
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 // TestRFC7766_PersistentConnections tests persistent TCP connections.
 func TestRFC7766_PersistentConnections(t *testing.T) {
 	t.Parallel()
-	handler := setupTestHandler(resolver.ForwardingMode)
+	handler := setupTestHandler()
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
 	if err != nil {
@@ -172,7 +172,7 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 // TestRFC7766_TCPIdleTimeout tests 10-second idle timeout.
 func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	t.Parallel()
-	handler := setupTestHandler(resolver.ForwardingMode)
+	handler := setupTestHandler()
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 // TestRFC7766_LargeResponse tests large responses over TCP.
 func TestRFC7766_LargeResponse(t *testing.T) {
 	t.Parallel()
-	handler := setupTestHandler(resolver.ForwardingMode)
+	handler := setupTestHandler()
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
 	if err != nil {
@@ -310,7 +310,7 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 // TestRFC7766_ConnectionLimit tests max connection limit.
 func TestRFC7766_ConnectionLimit(t *testing.T) {
 	t.Parallel()
-	handler := setupTestHandler(resolver.ForwardingMode)
+	handler := setupTestHandler()
 	tcpConfig := dnsio.DefaultListenerConfig("127.0.0.1:0")
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
 	if err != nil {
@@ -378,9 +378,9 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 }
 
 // Helper function to setup test handler.
-func setupTestHandler(mode resolver.RecursionMode) *Handler {
+func setupTestHandler() *Handler {
 	config := DefaultHandlerConfig()
-	config.ResolverMode = mode
+	config.ResolverMode = resolver.ForwardingMode
 
 	return NewHandler(config)
 }
