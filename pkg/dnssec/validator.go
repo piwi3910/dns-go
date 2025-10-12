@@ -536,8 +536,14 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 		h = sha256.New()
 	case crypto.SHA512:
 		h = sha512.New()
+	case crypto.MD4, crypto.MD5, crypto.SHA224, crypto.SHA384, crypto.MD5SHA1,
+		crypto.RIPEMD160, crypto.SHA3_224, crypto.SHA3_256, crypto.SHA3_384,
+		crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256, crypto.BLAKE2s_256,
+		crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
+		// Explicitly unsupported hash algorithms for DNSSEC RSA verification
+		return fmt.Errorf("unsupported RSA hash algorithm: %v", hashAlgo)
 	default:
-		return errors.New("unsupported hash algorithm")
+		return fmt.Errorf("unknown hash algorithm: %v", hashAlgo)
 	}
 	h.Write(data)
 	hashed := h.Sum(nil)
@@ -568,8 +574,14 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 		// P-384 curve
 		curve.Curve = elliptic.P384()
 		expectedKeySize = 96 // 48 bytes X + 48 bytes Y
+	case crypto.MD4, crypto.MD5, crypto.SHA1, crypto.SHA224, crypto.SHA384,
+		crypto.MD5SHA1, crypto.RIPEMD160, crypto.SHA3_224, crypto.SHA3_256,
+		crypto.SHA3_384, crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256,
+		crypto.BLAKE2s_256, crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
+		// Explicitly unsupported hash algorithms for DNSSEC ECDSA verification
+		return fmt.Errorf("unsupported ECDSA hash algorithm: %v", hashAlgo)
 	default:
-		return errors.New("unsupported ECDSA hash algorithm")
+		return fmt.Errorf("unknown ECDSA hash algorithm: %v", hashAlgo)
 	}
 
 	// Uncompressed point format: 0x04 || X || Y
@@ -601,8 +613,14 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 		h = sha256.New()
 	case crypto.SHA512:
 		h = sha512.New()
+	case crypto.MD4, crypto.MD5, crypto.SHA1, crypto.SHA224, crypto.SHA384,
+		crypto.MD5SHA1, crypto.RIPEMD160, crypto.SHA3_224, crypto.SHA3_256,
+		crypto.SHA3_384, crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256,
+		crypto.BLAKE2s_256, crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
+		// Explicitly unsupported hash algorithms for DNSSEC ECDSA signature hashing
+		return fmt.Errorf("unsupported ECDSA signature hash algorithm: %v", hashAlgo)
 	default:
-		return errors.New("unsupported hash algorithm")
+		return fmt.Errorf("unknown hash algorithm: %v", hashAlgo)
 	}
 	h.Write(data)
 	hashed := h.Sum(nil)
