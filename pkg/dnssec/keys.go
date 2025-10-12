@@ -203,7 +203,7 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	}
 
 	// Construct buffer: owner name + RDATA
-	buf := append(ownerWire, wireBuf[rdataStart:off]...)
+	ownerWire = append(ownerWire, wireBuf[rdataStart:off]...)
 
 	// Hash based on digest type
 	var h hash.Hash
@@ -218,7 +218,7 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 		return "", fmt.Errorf("unsupported digest type: %d", digestType)
 	}
 
-	h.Write(buf)
+	h.Write(ownerWire)
 	digest := h.Sum(nil)
 
 	// Convert to hex string (uppercase)

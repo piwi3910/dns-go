@@ -54,7 +54,7 @@ func NewIterativeResolver() *IterativeResolver {
 func (ir *IterativeResolver) Resolve(ctx context.Context, qname string, qtype uint16) (*dns.Msg, error) {
 	// Normalize query name
 	if !strings.HasSuffix(qname, ".") {
-		qname = qname + "."
+		qname += "."
 	}
 
 	// Start from root servers
@@ -111,7 +111,7 @@ func (ir *IterativeResolver) resolveIterative(ctx context.Context, qname string,
 		for _, addr := range nsAddrs {
 			// Ensure address has port
 			if !strings.Contains(addr, ":") {
-				addr = addr + ":53"
+				addr += ":53"
 			}
 
 			start := time.Now()
@@ -228,7 +228,7 @@ func (ir *IterativeResolver) resolveWithNS(ctx context.Context, qname string, qt
 		for _, addr := range nsAddrs {
 			go func(address string) {
 				if !strings.Contains(address, ":") {
-					address = address + ":53"
+					address += ":53"
 				}
 
 				response, _, err := ir.client.ExchangeContext(queryCtx, query, address)
