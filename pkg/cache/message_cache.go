@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+// Default cache configuration constants.
+const (
+	defaultMessageCacheShards    = 64   // Good for up to 16 cores
+	defaultMessageCacheSizeMB    = 128  // 128 MB
+	defaultMessageCacheTTLMin    = 5    // 5 minutes
+	defaultMessageCacheMinTTLSec = 60   // 60 seconds
+	defaultMessageCacheMaxTTLHr  = 24   // 24 hours
+	messageCacheKeyBufferSize    = 128  // Buffer size for cache key generation
+	messageCacheHitThreshold     = 10   // Hit count threshold for prefetch
+	bytesPerMegabyte             = 1024 * 1024
+	decimalBase                  = 10   // Decimal number base for string conversion
+)
+
 // MessageCacheEntry represents a cached DNS message.
 type MessageCacheEntry struct {
 	// ResponseBytes is the complete DNS response ready to send
@@ -99,11 +112,11 @@ type MessageCacheConfig struct {
 // DefaultMessageCacheConfig returns a configuration with sensible defaults.
 func DefaultMessageCacheConfig() MessageCacheConfig {
 	return MessageCacheConfig{
-		NumShards:    64,                // Good for up to 16 cores
-		MaxSizeBytes: 128 * 1024 * 1024, // 128 MB
-		DefaultTTL:   5 * time.Minute,
-		MinTTL:       60 * time.Second,
-		MaxTTL:       24 * time.Hour,
+		NumShards:    defaultMessageCacheShards,
+		MaxSizeBytes: defaultMessageCacheSizeMB * bytesPerMegabyte,
+		DefaultTTL:   defaultMessageCacheTTLMin * time.Minute,
+		MinTTL:       defaultMessageCacheMinTTLSec * time.Second,
+		MaxTTL:       defaultMessageCacheMaxTTLHr * time.Hour,
 	}
 }
 
@@ -307,7 +320,7 @@ func (mc *MessageCache) getShard(key string) *MessageCacheShard {
 func MakeKey(name string, qtype uint16, qclass uint16) string {
 	// Pre-allocate buffer to avoid allocations
 	// Most domain names are < 100 chars
-	buf := make([]byte, 0, 128)
+	buf := make([]byte, 0, messageCacheKeyBufferSize)
 	buf = append(buf, name...)
 	buf = append(buf, ':')
 	buf = appendUint16(buf, qtype)
@@ -320,17 +333,17 @@ func MakeKey(name string, qtype uint16, qclass uint16) string {
 // appendUint16 appends a uint16 as string to buffer.
 func appendUint16(buf []byte, n uint16) []byte {
 	// Fast path for common values
-	if n < 10 {
+	if n < decimalBase {
 		return append(buf, byte('0'+n))
 	}
 
 	// General case
 	var tmp [5]byte
 	i := len(tmp)
-	for n >= 10 {
+	for n >= decimalBase {
 		i--
-		tmp[i] = byte('0' + n%10)
-		n /= 10
+		tmp[i] = byte('0' + n%decimalBase)
+		n /= decimalBase
 	}
 	i--
 	tmp[i] = byte('0' + n)

@@ -14,6 +14,28 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Package-level errors.
+var (
+	ErrAlgorithmMismatch = errors.New("algorithm mismatch")
+	ErrKeyTagMismatch    = errors.New("key tag mismatch")
+	ErrDigestMismatch    = errors.New("digest mismatch")
+	ErrInvalidDNSKEYWire = errors.New("invalid DNSKEY wire format")
+	ErrUnsupportedDigest = errors.New("unsupported digest type")
+)
+
+// DNSKEY cache configuration constants.
+const (
+	defaultDNSKEYCacheMaxSize  = 1000 // Maximum number of cached keys
+	defaultDNSKEYCacheMinTTLMin = 5    // Minimum TTL in minutes
+	defaultDNSKEYCacheMaxTTLHr  = 24   // Maximum TTL in hours
+
+	// DNS wire format constants (RFC 1035).
+	dnsWireBufferSize        = 512 // Default DNS message size
+	dnsRDataHeaderSize       = 10  // Size of RR header before RDATA (type + class + ttl + rdlength)
+	dnsCompressionPointerMask = 0xC0 // DNS name compression pointer mask
+	dnsCompressionPointerSize = 2    // Size of compression pointer in bytes
+)
+
 // DNSKEYCache caches DNSKEY records for DNSSEC validation.
 type DNSKEYCache struct {
 	keys   map[string]*CachedDNSKEY
@@ -39,10 +61,10 @@ type DNSKEYCacheConfig struct {
 // DefaultDNSKEYCacheConfig returns default configuration.
 func DefaultDNSKEYCacheConfig() DNSKEYCacheConfig {
 	return DNSKEYCacheConfig{
-		MaxSize:    1000,
+		MaxSize:    defaultDNSKEYCacheMaxSize,
 		DefaultTTL: 1 * time.Hour,
-		MinTTL:     5 * time.Minute,
-		MaxTTL:     24 * time.Hour,
+		MinTTL:     defaultDNSKEYCacheMinTTLMin * time.Minute,
+		MaxTTL:     defaultDNSKEYCacheMaxTTLHr * time.Hour,
 	}
 }
 
@@ -143,13 +165,13 @@ func ValidateDNSKEYWithDS(dnskey *dns.DNSKEY, ds *dns.DS) error {
 	// RFC 4034 §5.1.4: DS RR Wire Format
 	// Verify algorithm match
 	if dnskey.Algorithm != ds.Algorithm {
-		return fmt.Errorf("algorithm mismatch: DNSKEY=%d, DS=%d", dnskey.Algorithm, ds.Algorithm)
+		return fmt.Errorf("%w: DNSKEY=%d, DS=%d", ErrAlgorithmMismatch, dnskey.Algorithm, ds.Algorithm)
 	}
 
 	// Verify key tag match
 	keyTag := dnskey.KeyTag()
 	if keyTag != ds.KeyTag {
-		return fmt.Errorf("key tag mismatch: DNSKEY=%d, DS=%d", keyTag, ds.KeyTag)
+		return fmt.Errorf("%w: DNSKEY=%d, DS=%d", ErrKeyTagMismatch, keyTag, ds.KeyTag)
 	}
 
 	// Calculate digest of DNSKEY
@@ -160,7 +182,7 @@ func ValidateDNSKEYWithDS(dnskey *dns.DNSKEY, ds *dns.DS) error {
 
 	// Compare digests
 	if digest != ds.Digest {
-		return errors.New("digest mismatch: DNSKEY hash does not match DS record")
+		return ErrDigestMismatch
 	}
 
 	return nil
@@ -171,51 +193,75 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 	// Construct owner name in wire format
 	ownerWire := canonicalName(dnskey.Hdr.Name)
 
-	// Use the library's packing function to get DNSKEY RDATA
-	wireBuf := make([]byte, 512)
-	off, err := dns.PackRR(dnskey, wireBuf, 0, nil, false)
+	// Pack DNSKEY to wire format
+	wireBuf, off, err := packDNSKEY(dnskey)
 	if err != nil {
-		return "", fmt.Errorf("failed to pack DNSKEY: %w", err)
+		return "", err
 	}
 
 	// Extract RDATA portion
-	// Find end of name
-	nameEnd := 0
-	for i := 0; i < len(wireBuf) && wireBuf[i] != 0; {
-		if wireBuf[i]&0xC0 == 0xC0 {
-			nameEnd = i + 2
-
-			break
-		}
-		labelLen := int(wireBuf[i])
-		i += labelLen + 1
-		if i < len(wireBuf) && wireBuf[i] == 0 {
-			nameEnd = i + 1
-
-			break
-		}
-	}
-
-	// RDATA starts at nameEnd + 10 (type + class + ttl + rdlength)
-	rdataStart := nameEnd + 10
-	if rdataStart >= off {
-		return "", errors.New("invalid DNSKEY wire format")
+	rdata, err := extractRDATA(wireBuf, off)
+	if err != nil {
+		return "", err
 	}
 
 	// Construct buffer: owner name + RDATA
-	ownerWire = append(ownerWire, wireBuf[rdataStart:off]...)
+	ownerWire = append(ownerWire, rdata...)
 
-	// Hash based on digest type
-	var h hash.Hash
-	switch digestType {
-	case dns.SHA1: // Digest type 1
-		h = sha1.New() //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
-	case dns.SHA256: // Digest type 2
-		h = sha256.New()
-	case dns.SHA384: // Digest type 4
-		h = sha512.New384()
-	default:
-		return "", fmt.Errorf("unsupported digest type: %d", digestType)
+	// Hash and return
+	return hashOwnerWithRDATA(ownerWire, digestType)
+}
+
+// packDNSKEY packs a DNSKEY record into wire format.
+func packDNSKEY(dnskey *dns.DNSKEY) ([]byte, int, error) {
+	wireBuf := make([]byte, dnsWireBufferSize)
+	off, err := dns.PackRR(dnskey, wireBuf, 0, nil, false)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to pack DNSKEY: %w", err)
+	}
+
+	return wireBuf, off, nil
+}
+
+// extractRDATA extracts the RDATA portion from a packed DNS record.
+func extractRDATA(wireBuf []byte, off int) ([]byte, error) {
+	nameEnd := findNameEnd(wireBuf)
+
+	// RDATA starts at nameEnd + dnsRDataHeaderSize (type + class + ttl + rdlength)
+	rdataStart := nameEnd + dnsRDataHeaderSize
+	if rdataStart >= off {
+		return nil, ErrInvalidDNSKEYWire
+	}
+
+	return wireBuf[rdataStart:off], nil
+}
+
+// findNameEnd finds the end position of a DNS name in wire format.
+func findNameEnd(wireBuf []byte) int {
+	for i := 0; i < len(wireBuf) && wireBuf[i] != 0; {
+		// Check for compression pointer
+		if wireBuf[i]&dnsCompressionPointerMask == dnsCompressionPointerMask {
+			return i + dnsCompressionPointerSize
+		}
+
+		// Move to next label
+		labelLen := int(wireBuf[i])
+		i += labelLen + 1
+
+		// Check for name terminator
+		if i < len(wireBuf) && wireBuf[i] == 0 {
+			return i + 1
+		}
+	}
+
+	return 0
+}
+
+// hashOwnerWithRDATA hashes owner name and RDATA using specified digest type.
+func hashOwnerWithRDATA(ownerWire []byte, digestType uint8) (string, error) {
+	h, err := getHasher(digestType)
+	if err != nil {
+		return "", err
 	}
 
 	h.Write(ownerWire)
@@ -223,6 +269,20 @@ func calculateDNSKEYDigest(dnskey *dns.DNSKEY, digestType uint8) (string, error)
 
 	// Convert to hex string (uppercase)
 	return fmt.Sprintf("%X", digest), nil
+}
+
+// getHasher returns the appropriate hasher for the digest type.
+func getHasher(digestType uint8) (hash.Hash, error) {
+	switch digestType {
+	case dns.SHA1: // Digest type 1
+		return sha1.New(), nil //nolint:gosec // SHA1 required for DNSSEC per RFC 4034
+	case dns.SHA256: // Digest type 2
+		return sha256.New(), nil
+	case dns.SHA384: // Digest type 4
+		return sha512.New384(), nil
+	default:
+		return nil, fmt.Errorf("%w: %d", ErrUnsupportedDigest, digestType)
+	}
 }
 
 // DNSKEYFetcher is an interface for fetching DNSKEYs from DNS.

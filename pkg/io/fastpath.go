@@ -7,6 +7,23 @@ import (
 	"github.com/miekg/dns"
 )
 
+// DNS wire format constants (RFC 1035).
+const (
+	dnsHeaderSize            = 12  // DNS header size in bytes
+	dnsMessageIDSize         = 2   // DNS message ID size in bytes
+	dnsCompressionMask       = 192 // 0xC0 - DNS name compression pointer mask
+	dnsCompressionPtrSize    = 2   // Size of compression pointer in bytes
+	dnsQTypeClassSize        = 4   // QTYPE (2 bytes) + QCLASS (2 bytes)
+	dnsRRHeaderSize          = 10  // TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2)
+	dnsByteShift8            = 8   // Bit shift for network byte order (big endian)
+	dnsNameBufferSize        = 128 // Default buffer size for domain name parsing
+	dnsOPTType               = 41  // OPT pseudo-RR type (RFC 6891)
+	dnsDOBitMask             = 0x80 // DNSSEC OK bit mask in EDNS0 flags
+	dnsTTLSize               = 4   // TTL field size in bytes
+	dnsTypeClassTTLSize      = 8   // TYPE (2) + CLASS (2) + TTL (4)
+	dnsTTLFlagsHighOffset    = 2   // Offset to flags high byte within TTL field
+)
+
 // FastPathQuery represents a query that can use the fast path
 // Fast path criteria:
 // - Common query types (A, AAAA, PTR, MX, TXT, CNAME, NS)
@@ -24,14 +41,32 @@ type FastPathQuery struct {
 // This function MUST be allocation-free and extremely fast (<50ns)
 // It's called inline for every query before any other processing.
 func CanUseFastPath(query []byte) bool {
-	// Minimum DNS header is 12 bytes
-	if len(query) < 12 {
+	// Validate DNS header
+	if !validateDNSHeaderForFastPath(query) {
+		return false
+	}
+
+	// Skip QNAME and get offset to QTYPE/QCLASS
+	offset, ok := skipQNAMEForFastPath(query, dnsHeaderSize)
+	if !ok {
+		return false
+	}
+
+	// Validate query type and class
+	return validateQueryTypeAndClass(query, offset)
+}
+
+// validateDNSHeaderForFastPath validates DNS header for fast path eligibility.
+// Must be inlineable for zero overhead.
+func validateDNSHeaderForFastPath(query []byte) bool {
+	// Minimum DNS header size
+	if len(query) < dnsHeaderSize {
 		return false
 	}
 
 	// Parse DNS header (no allocations)
 	// Byte 2-3: Flags
-	flags := uint16(query[2])<<8 | uint16(query[3])
+	flags := uint16(query[2])<<dnsByteShift8 | uint16(query[3])
 
 	// Check QR bit (bit 15): must be 0 (query, not response)
 	if flags&0x8000 != 0 {
@@ -44,7 +79,7 @@ func CanUseFastPath(query []byte) bool {
 	}
 
 	// Check QDCOUNT (question count): must be 1
-	qdcount := uint16(query[4])<<8 | uint16(query[5])
+	qdcount := uint16(query[4])<<dnsByteShift8 | uint16(query[5])
 	if qdcount != 1 {
 		return false
 	}
@@ -52,7 +87,7 @@ func CanUseFastPath(query []byte) bool {
 	// Check if EDNS0 with DO (DNSSEC OK) bit is set
 	// If DO bit is set, this requires DNSSEC validation (slow path)
 	// ARCOUNT (additional records count)
-	arcount := uint16(query[10])<<8 | uint16(query[11])
+	arcount := uint16(query[10])<<dnsByteShift8 | uint16(query[11])
 	if arcount > 0 {
 		// Additional records present - check if it's EDNS0 with DO bit
 		// We need to parse the OPT record to check the DO bit
@@ -63,39 +98,43 @@ func CanUseFastPath(query []byte) bool {
 		}
 	}
 
-	// Parse question section to check query type
-	// Skip to question section (after 12-byte header)
-	offset := 12
+	return true
+}
 
+// skipQNAMEForFastPath skips the QNAME field and returns offset to QTYPE/QCLASS.
+// Must be inlineable for zero overhead.
+func skipQNAMEForFastPath(query []byte, offset int) (int, bool) {
 	// Skip QNAME (variable length domain name)
 	for offset < len(query) {
 		labelLen := int(query[offset])
 		if labelLen == 0 {
 			// End of QNAME
-			offset++
-
-			break
+			return offset + 1, true
 		}
-		if labelLen >= 192 {
+		if labelLen >= dnsCompressionMask {
 			// Compression pointer (2 bytes)
-			offset += 2
-
-			break
+			return offset + dnsCompressionPtrSize, true
 		}
 		// Regular label
 		offset += 1 + labelLen
 		if offset >= len(query) {
-			return false
+			return 0, false
 		}
 	}
 
+	return 0, false
+}
+
+// validateQueryTypeAndClass validates QTYPE and QCLASS for fast path.
+// Must be inlineable for zero overhead.
+func validateQueryTypeAndClass(query []byte, offset int) bool {
 	// Check if we have enough bytes for QTYPE and QCLASS
-	if offset+4 > len(query) {
+	if offset+dnsQTypeClassSize > len(query) {
 		return false
 	}
 
 	// Parse QTYPE (2 bytes)
-	qtype := uint16(query[offset])<<8 | uint16(query[offset+1])
+	qtype := uint16(query[offset])<<dnsByteShift8 | uint16(query[offset+1])
 
 	// Check if query type is common (fast path eligible)
 	if !isCommonQueryType(qtype) {
@@ -103,14 +142,10 @@ func CanUseFastPath(query []byte) bool {
 	}
 
 	// Parse QCLASS (2 bytes)
-	qclass := uint16(query[offset+2])<<8 | uint16(query[offset+3])
+	qclass := uint16(query[offset+2])<<dnsByteShift8 | uint16(query[offset+3])
 
 	// Must be IN (Internet) class
-	if qclass != dns.ClassINET {
-		return false
-	}
-
-	return true
+	return qclass == dns.ClassINET
 }
 
 // isCommonQueryType checks if the query type is common and cache-friendly
@@ -141,19 +176,29 @@ func isCommonQueryType(qtype uint16) bool {
 // ParseFastPathQuery extracts query information with minimal allocations
 // Only call this after CanUseFastPath returns true.
 func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
-	// We already validated the query in CanUseFastPath
-	// Parse directly from wire format to avoid dns.Msg.Unpack() allocations
-
-	if len(query) < 12 {
+	if len(query) < dnsHeaderSize {
 		return nil, dns.ErrShortRead
 	}
 
-	// Skip DNS header (12 bytes) to question section
-	offset := 12
+	// Parse QNAME starting after header (offset 12)
+	nameBytes, offset, err := parseQNAME(query, dnsHeaderSize)
+	if err != nil {
+		return nil, err
+	}
 
-	// Parse QNAME (domain name)
-	// Most domain names are < 100 chars, pre-allocate buffer
-	nameBytes := make([]byte, 0, 128)
+	// Handle compression pointer fallback
+	if offset < 0 {
+		return parseQueryWithFullUnpack(query)
+	}
+
+	// Parse QTYPE and QCLASS
+	return parseQueryTypeAndClass(query, offset, nameBytes)
+}
+
+// parseQNAME parses a domain name from wire format.
+// Returns (nameBytes, newOffset, error). If newOffset < 0, caller should use full unpack.
+func parseQNAME(query []byte, offset int) ([]byte, int, error) {
+	nameBytes := make([]byte, 0, dnsNameBufferSize)
 
 	for offset < len(query) {
 		labelLen := int(query[offset])
@@ -162,70 +207,57 @@ func ParseFastPathQuery(query []byte) (*FastPathQuery, error) {
 			if len(nameBytes) == 0 || nameBytes[len(nameBytes)-1] != '.' {
 				nameBytes = append(nameBytes, '.')
 			}
-			offset++
 
-			break
+			return nameBytes, offset + 1, nil
 		}
-		if labelLen >= 192 {
-			// Compression pointer - shouldn't happen in question section
-			// Fall back to full parse
-			msg := dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:                 0,
-					Response:           false,
-					Opcode:             0,
-					Authoritative:      false,
-					Truncated:          false,
-					RecursionDesired:   false,
-					RecursionAvailable: false,
-					Zero:               false,
-					AuthenticatedData:  false,
-					CheckingDisabled:   false,
-					Rcode:              0,
-				},
-				Compress: false,
-				Question: nil,
-				Answer:   nil,
-				Ns:       nil,
-				Extra:    nil,
-			}
-			if err := msg.Unpack(query); err != nil {
-				return nil, fmt.Errorf("failed to unpack DNS message: %w", err)
-			}
-			if len(msg.Question) == 0 {
-				return nil, dns.ErrId
-			}
-			q := msg.Question[0]
 
-			return &FastPathQuery{
-				Name:  q.Name,
-				Type:  q.Qtype,
-				Class: q.Qclass,
-			}, nil
+		if labelLen >= dnsCompressionMask {
+			// Compression pointer - signal to use full unpack
+			return nil, -1, nil
 		}
 
 		// Regular label
 		offset++
 		if offset+labelLen > len(query) {
-			return nil, dns.ErrShortRead
+			return nil, 0, dns.ErrShortRead
 		}
 
-		// Append label
 		nameBytes = append(nameBytes, query[offset:offset+labelLen]...)
 		nameBytes = append(nameBytes, '.')
 		offset += labelLen
 	}
 
-	// Check if we have enough bytes for QTYPE and QCLASS
-	if offset+4 > len(query) {
+	return nameBytes, offset, nil
+}
+
+// parseQueryWithFullUnpack falls back to full DNS message unpacking.
+func parseQueryWithFullUnpack(query []byte) (*FastPathQuery, error) {
+	msg := new(dns.Msg)
+	if err := msg.Unpack(query); err != nil {
+		return nil, fmt.Errorf("failed to unpack DNS message: %w", err)
+	}
+
+	if len(msg.Question) == 0 {
+		return nil, dns.ErrId
+	}
+
+	q := msg.Question[0]
+
+	return &FastPathQuery{
+		Name:  q.Name,
+		Type:  q.Qtype,
+		Class: q.Qclass,
+	}, nil
+}
+
+// parseQueryTypeAndClass extracts QTYPE and QCLASS from the query.
+func parseQueryTypeAndClass(query []byte, offset int, nameBytes []byte) (*FastPathQuery, error) {
+	if offset+dnsQTypeClassSize > len(query) {
 		return nil, dns.ErrShortRead
 	}
 
-	// Parse QTYPE (2 bytes)
-	qtype := uint16(query[offset])<<8 | uint16(query[offset+1])
-
-	// Parse QCLASS (2 bytes)
-	qclass := uint16(query[offset+2])<<8 | uint16(query[offset+3])
+	qtype := uint16(query[offset])<<dnsByteShift8 | uint16(query[offset+1])
+	qclass := uint16(query[offset+2])<<dnsByteShift8 | uint16(query[offset+3])
 
 	return &FastPathQuery{
 		Name:  string(nameBytes),
@@ -242,102 +274,120 @@ func canUseFastPathWithEDNS0(query []byte, arcount uint16) bool {
 		return false
 	}
 
-	// Find the OPT record by skipping to the additional section
-	// We need to skip: header (12) + question section + answer section + authority section
-
-	offset := 12 // Start after header
-
-	// Skip question section (QDCOUNT questions)
-	qdcount := uint16(query[4])<<8 | uint16(query[5])
-	for range qdcount {
-		// Skip QNAME
-		for offset < len(query) {
-			labelLen := int(query[offset])
-			if labelLen == 0 {
-				offset++
-
-				break
-			}
-			if labelLen >= 192 {
-				offset += 2
-
-				break
-			}
-			offset += 1 + labelLen
-			if offset >= len(query) {
-				return false
-			}
-		}
-		// Skip QTYPE (2) + QCLASS (2)
-		offset += 4
-		if offset > len(query) {
-			return false
-		}
-	}
-
-	// Skip answer section (ANCOUNT records)
-	ancount := uint16(query[6])<<8 | uint16(query[7])
-	for range ancount {
-		offset = skipRR(query, offset)
-		if offset < 0 || offset > len(query) {
-			return false
-		}
-	}
-
-	// Skip authority section (NSCOUNT records)
-	nscount := uint16(query[8])<<8 | uint16(query[9])
-	for range nscount {
-		offset = skipRR(query, offset)
-		if offset < 0 || offset > len(query) {
-			return false
-		}
-	}
-
-	// Now we're at the additional section
-	// Parse the OPT record
-	if offset >= len(query) {
+	// Skip to the additional section
+	offset, ok := skipToAdditionalSection(query)
+	if !ok {
 		return false
 	}
 
+	// Parse OPT record and check DO bit
+	return parseOPTRecordForFastPath(query, offset)
+}
+
+// skipToAdditionalSection skips header, question, answer, and authority sections.
+func skipToAdditionalSection(query []byte) (int, bool) {
+	offset := dnsHeaderSize // Start after header
+
+	// Skip question section
+	qdcount := uint16(query[4])<<dnsByteShift8 | uint16(query[5])
+	offset = skipQuestionSection(query, offset, qdcount)
+	if offset < 0 {
+		return 0, false
+	}
+
+	// Skip answer and authority sections
+	ancount := uint16(query[6])<<dnsByteShift8 | uint16(query[7])
+	nscount := uint16(query[8])<<dnsByteShift8 | uint16(query[9])
+	offset = skipRRSections(query, offset, ancount+nscount)
+	if offset < 0 {
+		return 0, false
+	}
+
+	return offset, offset < len(query)
+}
+
+// skipQuestionSection skips the question section of a DNS message.
+func skipQuestionSection(query []byte, offset int, qdcount uint16) int {
+	for range qdcount {
+		// Skip QNAME
+		offset = skipDNSName(query, offset)
+		if offset < 0 {
+			return -1
+		}
+
+		// Skip QTYPE (2) + QCLASS (2)
+		offset += dnsQTypeClassSize
+		if offset > len(query) {
+			return -1
+		}
+	}
+
+	return offset
+}
+
+// skipDNSName skips a DNS name in wire format.
+func skipDNSName(query []byte, offset int) int {
+	for offset < len(query) {
+		labelLen := int(query[offset])
+		if labelLen == 0 {
+			return offset + 1
+		}
+		if labelLen >= dnsCompressionMask {
+			// Compression pointer
+			return offset + dnsCompressionPtrSize
+		}
+		offset += 1 + labelLen
+		if offset >= len(query) {
+			return -1
+		}
+	}
+
+	return -1
+}
+
+// skipRRSections skips multiple resource record sections.
+func skipRRSections(query []byte, offset int, count uint16) int {
+	for range count {
+		offset = skipRR(query, offset)
+		if offset < 0 || offset > len(query) {
+			return -1
+		}
+	}
+
+	return offset
+}
+
+// parseOPTRecordForFastPath checks if the OPT record allows fast path (DO bit not set).
+func parseOPTRecordForFastPath(query []byte, offset int) bool {
 	// OPT record has NAME = "." (root) = 0x00
-	if query[offset] != 0 {
-		return false // Not an OPT record
+	if offset >= len(query) || query[offset] != 0 {
+		return false
 	}
 	offset++
 
 	// Check we have enough bytes for TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2)
-	if offset+10 > len(query) {
+	if offset+dnsRRHeaderSize > len(query) {
 		return false
 	}
 
 	// Check TYPE = OPT (41)
-	rrtype := uint16(query[offset])<<8 | uint16(query[offset+1])
-	if rrtype != 41 { // dns.TypeOPT
+	rrtype := uint16(query[offset])<<dnsByteShift8 | uint16(query[offset+1])
+	if rrtype != dnsOPTType {
 		return false
 	}
-	offset += 2
-
-	// Skip CLASS (UDP payload size) - 2 bytes
-	offset += 2
+	offset += dnsQTypeClassSize // Skip TYPE (2) + CLASS (2)
 
 	// Parse TTL field which contains extended RCODE and flags
-	// TTL is 4 bytes: [extended RCODE (1)] [version (1)] [flags high (1)] [flags low (1)]
-	// DO bit is bit 15 of the 16-bit flags field, which is bit 7 of the flags high byte
-	// That's offset+2 (after extended RCODE and version)
-	if offset+4 > len(query) {
+	// DO bit is bit 7 of the flags high byte (offset+2)
+	if offset+dnsTTLSize > len(query) {
 		return false
 	}
 
-	flagsHigh := query[offset+2] // Flags high byte
-	doBit := (flagsHigh & 0x80) != 0
-
-	// If DO bit is set, require DNSSEC validation (slow path)
-	if doBit {
-		return false
-	}
+	flagsHigh := query[offset+dnsTTLFlagsHighOffset] // Flags high byte
+	doBit := (flagsHigh & dnsDOBitMask) != 0
 
 	// EDNS0 without DO bit can use fast path
-	return true
+	return !doBit
 }
 
 // skipRR skips over a resource record in the wire format
@@ -351,9 +401,9 @@ func skipRR(query []byte, offset int) int {
 
 			break
 		}
-		if labelLen >= 192 {
+		if labelLen >= dnsCompressionMask {
 			// Compression pointer
-			offset += 2
+			offset += dnsCompressionPtrSize
 
 			break
 		}
@@ -364,15 +414,15 @@ func skipRR(query []byte, offset int) int {
 	}
 
 	// Check we have: TYPE (2) + CLASS (2) + TTL (4) + RDLENGTH (2) = 10 bytes
-	if offset+10 > len(query) {
+	if offset+dnsRRHeaderSize > len(query) {
 		return -1
 	}
 
 	// Skip TYPE (2) + CLASS (2) + TTL (4)
-	offset += 8
+	offset += dnsTypeClassTTLSize
 
 	// Read RDLENGTH
-	rdlength := uint16(query[offset])<<8 | uint16(query[offset+1])
+	rdlength := uint16(query[offset])<<dnsByteShift8 | uint16(query[offset+1])
 	offset += 2
 
 	// Skip RDATA
@@ -387,19 +437,19 @@ func skipRR(query []byte, offset int) int {
 // GetMessageID extracts the message ID from a DNS message
 // DNS message ID is at bytes 0-1 in network byte order (big endian).
 func GetMessageID(msg []byte) uint16 {
-	if len(msg) < 2 {
+	if len(msg) < dnsMessageIDSize {
 		return 0
 	}
 
-	return uint16(msg[0])<<8 | uint16(msg[1])
+	return uint16(msg[0])<<dnsByteShift8 | uint16(msg[1])
 }
 
 // SetMessageID sets the message ID in a DNS message
 // DNS message ID is at bytes 0-1 in network byte order (big endian).
 func SetMessageID(msg []byte, id uint16) {
-	if len(msg) < 2 {
+	if len(msg) < dnsMessageIDSize {
 		return
 	}
-	msg[0] = byte(id >> 8)
+	msg[0] = byte(id >> dnsByteShift8)
 	msg[1] = byte(id)
 }

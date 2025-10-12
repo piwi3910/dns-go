@@ -10,6 +10,17 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Package-level errors for AXFR.
+var (
+	ErrAXFRQueryNoQuestions       = errors.New("AXFR query must have exactly one question")
+	ErrNotAXFRQuery               = errors.New("not an AXFR query")
+	ErrZoneTransferNotAllowed     = errors.New("zone transfer not allowed")
+	ErrZoneEmpty                  = errors.New("zone is empty")
+	ErrAXFRMustBeQuery            = errors.New("AXFR request must be a query, not a response")
+	ErrAXFRQuestionTypeMustBeAXFR = errors.New("question type must be AXFR")
+	ErrAXFRClassMustBeINOrANY     = errors.New("AXFR class must be IN or ANY")
+)
+
 // AXFRHandler handles AXFR (full zone transfer) requests per RFC 5936.
 type AXFRHandler struct {
 	zone *Zone
@@ -27,24 +38,24 @@ func NewAXFRHandler(zone *Zone) *AXFRHandler {
 func (h *AXFRHandler) HandleAXFR(query *dns.Msg, clientIP string) ([]*dns.Msg, error) {
 	// Validate query
 	if len(query.Question) != 1 {
-		return nil, errors.New("AXFR query must have exactly one question")
+		return nil, ErrAXFRQueryNoQuestions
 	}
 
 	q := query.Question[0]
 	if q.Qtype != dns.TypeAXFR {
-		return nil, errors.New("not an AXFR query")
+		return nil, ErrNotAXFRQuery
 	}
 
 	// Check ACL
 	if !h.zone.IsTransferAllowed(clientIP) {
-		return nil, fmt.Errorf("zone transfer not allowed for %s", clientIP)
+		return nil, fmt.Errorf("%w: %s", ErrZoneTransferNotAllowed, clientIP)
 	}
 
 	// Get all records in order
 	records := h.zone.GetAllRecordsOrdered()
 
 	if len(records) == 0 {
-		return nil, errors.New("zone is empty")
+		return nil, ErrZoneEmpty
 	}
 
 	// Split records into multiple messages
@@ -189,24 +200,24 @@ func (h *AXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 func ValidateAXFRQuery(query *dns.Msg) error {
 	// Must be a query
 	if query.Response {
-		return errors.New("AXFR request must be a query, not a response")
+		return ErrAXFRMustBeQuery
 	}
 
 	// Must have exactly one question
 	if len(query.Question) != 1 {
-		return errors.New("AXFR query must have exactly one question")
+		return ErrAXFRQueryNoQuestions
 	}
 
 	q := query.Question[0]
 
 	// Must be AXFR type
 	if q.Qtype != dns.TypeAXFR {
-		return errors.New("question type must be AXFR")
+		return ErrAXFRQuestionTypeMustBeAXFR
 	}
 
 	// Class must be IN (or ANY)
 	if q.Qclass != dns.ClassINET && q.Qclass != dns.ClassANY {
-		return errors.New("AXFR class must be IN or ANY")
+		return ErrAXFRClassMustBeINOrANY
 	}
 
 	return nil

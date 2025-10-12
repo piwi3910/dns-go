@@ -8,6 +8,22 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Package-level errors for NSEC validation.
+var (
+	ErrNoNSECForNXDOMAIN        = errors.New("no NSEC records provided for NXDOMAIN proof")
+	ErrNSECNotCoverNXDOMAIN     = errors.New("no NSEC record covers name for NXDOMAIN proof")
+	ErrNoNSECForNODATA          = errors.New("no NSEC records provided for NODATA proof")
+	ErrNSECTypeInconsistent     = errors.New("NSEC shows name has type, inconsistent with NODATA")
+	ErrNoNSECFoundForNODATA     = errors.New("no NSEC record found to prove NODATA")
+	ErrNoNSECCoversWildcard     = errors.New("no NSEC covers wildcard")
+	ErrNSECEmptyNextDomain      = errors.New("NSEC record has empty NextDomain")
+)
+
+// NSEC validation constants (RFC 4034).
+const (
+	nsecMinChainLength = 2 // Minimum number of NSEC records to form a chain
+)
+
 // NSECValidator validates NSEC records for authenticated denial of existence.
 type NSECValidator struct {
 	validator *Validator
@@ -24,7 +40,7 @@ func NewNSECValidator(validator *Validator) *NSECValidator {
 // RFC 4035 §3.1.3.2: NSEC proof of NXDOMAIN.
 func (nv *NSECValidator) ValidateNXDOMAIN(qname string, nsecRecords []*dns.NSEC) error {
 	if len(nsecRecords) == 0 {
-		return errors.New("no NSEC records provided for NXDOMAIN proof")
+		return ErrNoNSECForNXDOMAIN
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -41,14 +57,14 @@ func (nv *NSECValidator) ValidateNXDOMAIN(qname string, nsecRecords []*dns.NSEC)
 		}
 	}
 
-	return fmt.Errorf("no NSEC record covers %s for NXDOMAIN proof", qname)
+	return fmt.Errorf("%w: %s", ErrNSECNotCoverNXDOMAIN, qname)
 }
 
 // ValidateNODATA validates that a name exists but has no data for the requested type
 // RFC 4035 §3.1.3.1: NSEC proof of NODATA.
 func (nv *NSECValidator) ValidateNODATA(qname string, qtype uint16, nsecRecords []*dns.NSEC) error {
 	if len(nsecRecords) == 0 {
-		return errors.New("no NSEC records provided for NODATA proof")
+		return ErrNoNSECForNODATA
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -60,7 +76,7 @@ func (nv *NSECValidator) ValidateNODATA(qname string, qtype uint16, nsecRecords 
 		if owner == qname {
 			// Exact match - check type bitmap
 			if hasType(nsec.TypeBitMap, qtype) {
-				return fmt.Errorf("NSEC shows %s has type %d, inconsistent with NODATA", qname, qtype)
+				return fmt.Errorf("%w: %s has type %d", ErrNSECTypeInconsistent, qname, qtype)
 			}
 
 			// NSEC proves the name exists but doesn't have this type
@@ -68,7 +84,7 @@ func (nv *NSECValidator) ValidateNODATA(qname string, qtype uint16, nsecRecords 
 		}
 	}
 
-	return fmt.Errorf("no NSEC record found for %s to prove NODATA", qname)
+	return fmt.Errorf("%w: %s", ErrNoNSECFoundForNODATA, qname)
 }
 
 // ValidateWildcardNonExistence validates that no closer wildcard exists
@@ -98,7 +114,7 @@ func (nv *NSECValidator) ValidateWildcardNonExistence(qname string, nsecRecords 
 		}
 
 		if !found {
-			return fmt.Errorf("no NSEC covers wildcard %s", wildcard)
+			return fmt.Errorf("%w: %s", ErrNoNSECCoversWildcard, wildcard)
 		}
 	}
 
@@ -228,7 +244,7 @@ func ExtractNSECRecords(msg *dns.Msg) []*dns.NSEC {
 // ValidateNSECChain validates the NSEC chain consistency
 // Ensures NSEC records form a proper chain without gaps.
 func (nv *NSECValidator) ValidateNSECChain(nsecRecords []*dns.NSEC) error {
-	if len(nsecRecords) < 2 {
+	if len(nsecRecords) < nsecMinChainLength {
 		// Single NSEC record doesn't form a chain
 		// This is OK for specific proofs
 		return nil
@@ -249,7 +265,7 @@ func (nv *NSECValidator) ValidateNSECChain(nsecRecords []*dns.NSEC) error {
 		if _, exists := nsecMap[next]; !exists {
 			// Check if this is the last record pointing back to first
 			if next == "" {
-				return fmt.Errorf("NSEC record %s has empty NextDomain", owner)
+				return fmt.Errorf("%w: %s", ErrNSECEmptyNextDomain, owner)
 			}
 			// This is OK - next might be outside this set of NSECs
 		}

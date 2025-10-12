@@ -9,9 +9,20 @@ import (
 	"github.com/miekg/dns"
 )
 
-// ZoneDelta represents changes between two zone versions
+// Package-level errors for IXFR.
+var (
+	ErrIXFRQueryNoQuestions       = errors.New("IXFR query must have exactly one question")
+	ErrNotIXFRQuery               = errors.New("not an IXFR query")
+	ErrIXFRMustBeQuery            = errors.New("IXFR request must be a query, not a response")
+	ErrIXFRQuestionTypeMustBeIXFR = errors.New("question type must be IXFR")
+	ErrIXFRClassMustBeINOrANY     = errors.New("IXFR class must be IN or ANY")
+	ErrIXFRAuthorityShouldHaveSOA = errors.New("IXFR authority section should contain SOA")
+	ErrIXFRFirstRecordMustBeSOA   = errors.New("first record in authority section must be SOA")
+)
+
+// Delta represents changes between two zone versions
 // Used for IXFR (incremental zone transfer).
-type ZoneDelta struct {
+type Delta struct {
 	// FromSerial is the starting serial number
 	FromSerial uint32
 
@@ -31,14 +42,14 @@ type IXFRHandler struct {
 
 	// deltaLog stores zone deltas for incremental transfers
 	// Map: serial number -> delta to reach that serial
-	deltaLog map[uint32]*ZoneDelta
+	deltaLog map[uint32]*Delta
 }
 
 // NewIXFRHandler creates a new IXFR handler for a zone.
 func NewIXFRHandler(zone *Zone) *IXFRHandler {
 	return &IXFRHandler{
 		zone:     zone,
-		deltaLog: make(map[uint32]*ZoneDelta),
+		deltaLog: make(map[uint32]*Delta),
 	}
 }
 
@@ -47,17 +58,17 @@ func NewIXFRHandler(zone *Zone) *IXFRHandler {
 func (h *IXFRHandler) HandleIXFR(query *dns.Msg, clientIP string, clientSerial uint32) ([]*dns.Msg, bool, error) {
 	// Validate query
 	if len(query.Question) != 1 {
-		return nil, false, errors.New("IXFR query must have exactly one question")
+		return nil, false, ErrIXFRQueryNoQuestions
 	}
 
 	q := query.Question[0]
 	if q.Qtype != dns.TypeIXFR {
-		return nil, false, errors.New("not an IXFR query")
+		return nil, false, ErrNotIXFRQuery
 	}
 
 	// Check ACL
 	if !h.zone.IsTransferAllowed(clientIP) {
-		return nil, false, fmt.Errorf("zone transfer not allowed for %s", clientIP)
+		return nil, false, fmt.Errorf("%w: %s", ErrZoneTransferNotAllowed, clientIP)
 	}
 
 	currentSerial := h.zone.GetSerial()
@@ -90,7 +101,7 @@ func (h *IXFRHandler) HandleIXFR(query *dns.Msg, clientIP string, clientSerial u
 // RecordDelta records a zone delta for IXFR
 // Call this whenever the zone is updated.
 func (h *IXFRHandler) RecordDelta(fromSerial, toSerial uint32, deleted, added []dns.RR) {
-	delta := &ZoneDelta{
+	delta := &Delta{
 		FromSerial: fromSerial,
 		ToSerial:   toSerial,
 		Deleted:    make([]dns.RR, len(deleted)),
@@ -210,8 +221,8 @@ func (h *IXFRHandler) writeMessage(conn net.Conn, msg *dns.Msg) error {
 }
 
 // findDeltas finds the sequence of deltas from oldSerial to newSerial.
-func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, bool) {
-	var deltas []*ZoneDelta
+func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*Delta, bool) {
+	var deltas []*Delta
 
 	currentSerial := oldSerial
 	for currentSerial != newSerial {
@@ -232,7 +243,7 @@ func (h *IXFRHandler) findDeltas(oldSerial, newSerial uint32) ([]*ZoneDelta, boo
 
 // buildIXFRMessages builds IXFR response messages from deltas
 // RFC 1995 Section 2: IXFR response format.
-func (h *IXFRHandler) buildIXFRMessages(query *dns.Msg, deltas []*ZoneDelta) []*dns.Msg {
+func (h *IXFRHandler) buildIXFRMessages(query *dns.Msg, deltas []*Delta) []*dns.Msg {
 	msg := &dns.Msg{
 		MsgHdr: dns.MsgHdr{
 			Id:                 0,
@@ -374,33 +385,33 @@ func serialCompare(s1, s2 uint32) int {
 func ValidateIXFRQuery(query *dns.Msg) error {
 	// Must be a query
 	if query.Response {
-		return errors.New("IXFR request must be a query, not a response")
+		return ErrIXFRMustBeQuery
 	}
 
 	// Must have exactly one question
 	if len(query.Question) != 1 {
-		return errors.New("IXFR query must have exactly one question")
+		return ErrIXFRQueryNoQuestions
 	}
 
 	q := query.Question[0]
 
 	// Must be IXFR type
 	if q.Qtype != dns.TypeIXFR {
-		return errors.New("question type must be IXFR")
+		return ErrIXFRQuestionTypeMustBeIXFR
 	}
 
 	// Class must be IN (or ANY)
 	if q.Qclass != dns.ClassINET && q.Qclass != dns.ClassANY {
-		return errors.New("IXFR class must be IN or ANY")
+		return ErrIXFRClassMustBeINOrANY
 	}
 
 	// IXFR query should have SOA in authority section with client's serial
 	// This is optional validation - the serial can be extracted if present
 	if len(query.Ns) > 0 {
 		if soa, ok := query.Ns[0].(*dns.SOA); !ok {
-			return errors.New("IXFR authority section should contain SOA")
+			return ErrIXFRAuthorityShouldHaveSOA
 		} else if soa.Header().Rrtype != dns.TypeSOA {
-			return errors.New("first record in authority section must be SOA")
+			return ErrIXFRFirstRecordMustBeSOA
 		}
 	}
 

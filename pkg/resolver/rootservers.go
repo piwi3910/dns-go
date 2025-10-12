@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+// Root server configuration constants.
+const (
+	rootServerPoolCapacity = 26 // 13 root servers * 2 (IPv4 + IPv6)
+	rttEMADivisor          = 8  // Exponential moving average divisor for RTT calculation
+)
+
 // RootServer represents a DNS root server with its addresses.
 type RootServer struct {
 	Name string
@@ -45,7 +51,7 @@ func NewRootServerPool() *RootServerPool {
 	}
 
 	pool := &RootServerPool{
-		servers: make([]string, 0, 26), // 13 servers * 2 (IPv4 + IPv6)
+		servers: make([]string, 0, rootServerPoolCapacity), // 13 servers * 2 (IPv4 + IPv6)
 		current: 0,
 		mu:      sync.RWMutex{},
 		rttMap:  make(map[string]time.Duration),
@@ -85,9 +91,9 @@ func (p *RootServerPool) RecordRTT(server string, rtt time.Duration) {
 	p.rttMu.Lock()
 	defer p.rttMu.Unlock()
 
-	// Simple exponential moving average
+	// Simple exponential moving average (EMA): new = (old * (n-1) + new) / n
 	if existing, exists := p.rttMap[server]; exists {
-		p.rttMap[server] = (existing*7 + rtt) / 8
+		p.rttMap[server] = (existing*(rttEMADivisor-1) + rtt) / rttEMADivisor
 	} else {
 		p.rttMap[server] = rtt
 	}

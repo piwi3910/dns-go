@@ -1,14 +1,15 @@
-package io
+package io_test
 
 import (
 	"testing"
 
 	"github.com/miekg/dns"
+	dnsio "github.com/piwi3910/dns-go/pkg/io"
 )
 
 // BenchmarkBufferPool tests zero-allocation buffer pool operations.
 func BenchmarkBufferPoolGet(b *testing.B) {
-	pool := NewBufferPool(DefaultBufferSize)
+	pool := dnsio.NewBufferPool(dnsio.DefaultBufferSize)
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -20,7 +21,7 @@ func BenchmarkBufferPoolGet(b *testing.B) {
 
 // BenchmarkBufferPoolGetPut tests complete get/put cycle.
 func BenchmarkBufferPoolGetPut(b *testing.B) {
-	pool := NewBufferPool(DefaultBufferSize)
+	pool := dnsio.NewBufferPool(dnsio.DefaultBufferSize)
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -36,7 +37,7 @@ func BenchmarkBufferPoolGetPut(b *testing.B) {
 
 // BenchmarkMessagePool tests zero-allocation message pool operations.
 func BenchmarkMessagePoolGet(b *testing.B) {
-	pool := NewMessagePool()
+	pool := dnsio.NewMessagePool()
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -48,7 +49,7 @@ func BenchmarkMessagePoolGet(b *testing.B) {
 
 // BenchmarkMessagePoolGetPut tests complete get/put cycle.
 func BenchmarkMessagePoolGetPut(b *testing.B) {
-	pool := NewMessagePool()
+	pool := dnsio.NewMessagePool()
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -65,7 +66,7 @@ func BenchmarkMessagePoolGetPut(b *testing.B) {
 // TestBufferPoolReuse verifies buffers are actually reused.
 func TestBufferPoolReuse(t *testing.T) {
 	t.Parallel()
-	pool := NewBufferPool(DefaultBufferSize)
+	pool := dnsio.NewBufferPool(dnsio.DefaultBufferSize)
 
 	buf1 := pool.Get()
 	ptr1 := &buf1[0]
@@ -82,7 +83,7 @@ func TestBufferPoolReuse(t *testing.T) {
 // TestMessagePoolReuse verifies messages are actually reused.
 func TestMessagePoolReuse(t *testing.T) {
 	t.Parallel()
-	pool := NewMessagePool()
+	pool := dnsio.NewMessagePool()
 
 	msg1 := pool.Get()
 	ptr1 := msg1
@@ -99,7 +100,7 @@ func TestMessagePoolReuse(t *testing.T) {
 // TestMessagePoolReset verifies messages are properly reset.
 func TestMessagePoolReset(t *testing.T) {
 	t.Parallel()
-	pool := NewMessagePool()
+	pool := dnsio.NewMessagePool()
 
 	msg := pool.Get()
 	msg.SetQuestion("example.com.", dns.TypeA)

@@ -1,33 +1,34 @@
-package zone
+package zone_test
 
 import (
 	"testing"
 
 	"github.com/miekg/dns"
+	"github.com/piwi3910/dns-go/pkg/zone"
 )
 
 func TestNewZone(t *testing.T) {
 	t.Parallel()
-	config := ZoneConfig{
+	config := zone.Config{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
 		UpdateACL:   nil,
 	}
 
-	zone := NewZone(config)
+	z := zone.NewZone(config)
 
-	if zone.Origin != "example.com." {
-		t.Errorf("Expected origin example.com., got %s", zone.Origin)
+	if z.Origin != "example.com." {
+		t.Errorf("Expected origin example.com., got %s", z.Origin)
 	}
 
-	if len(zone.TransferACL) != 1 {
-		t.Errorf("Expected 1 ACL entry, got %d", len(zone.TransferACL))
+	if len(z.TransferACL) != 1 {
+		t.Errorf("Expected 1 ACL entry, got %d", len(z.TransferACL))
 	}
 }
 
 func TestZone_AddRecord(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add A record
 	a := &dns.A{
@@ -41,13 +42,13 @@ func TestZone_AddRecord(t *testing.T) {
 		A: []byte{192, 0, 2, 1},
 	}
 
-	err := zone.AddRecord(a)
+	err := z.AddRecord(a)
 	if err != nil {
 		t.Fatalf("Failed to add record: %v", err)
 	}
 
 	// Retrieve it
-	records := zone.GetRecords("www.example.com.", dns.TypeA)
+	records := z.GetRecords("www.example.com.", dns.TypeA)
 	if len(records) != 1 {
 		t.Fatalf("Expected 1 record, got %d", len(records))
 	}
@@ -64,7 +65,7 @@ func TestZone_AddRecord(t *testing.T) {
 
 func TestZone_AddRecord_OutOfZone(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Try to add record outside zone
 	a := &dns.A{
@@ -78,7 +79,7 @@ func TestZone_AddRecord_OutOfZone(t *testing.T) {
 		A: []byte{192, 0, 2, 1},
 	}
 
-	err := zone.AddRecord(a)
+	err := z.AddRecord(a)
 	if err == nil {
 		t.Error("Expected error when adding out-of-zone record")
 	}
@@ -86,7 +87,7 @@ func TestZone_AddRecord_OutOfZone(t *testing.T) {
 
 func TestZone_AddSOA(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	soa := &dns.SOA{
 		Hdr: dns.RR_Header{
@@ -105,23 +106,23 @@ func TestZone_AddSOA(t *testing.T) {
 		Minttl:  300,
 	}
 
-	err := zone.AddRecord(soa)
+	err := z.AddRecord(soa)
 	if err != nil {
 		t.Fatalf("Failed to add SOA: %v", err)
 	}
 
-	if zone.SOA == nil {
+	if z.SOA == nil {
 		t.Fatal("Expected SOA to be set")
 	}
 
-	if zone.GetSerial() != 2024010101 {
-		t.Errorf("Expected serial 2024010101, got %d", zone.GetSerial())
+	if z.GetSerial() != 2024010101 {
+		t.Errorf("Expected serial 2024010101, got %d", z.GetSerial())
 	}
 }
 
 func TestZone_GetAllRecords(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add multiple records for same owner
 	a := &dns.A{
@@ -145,10 +146,10 @@ func TestZone_GetAllRecords(t *testing.T) {
 		AAAA: []byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 	}
 
-	_ = zone.AddRecord(a)
-	_ = zone.AddRecord(aaaa)
+	_ = z.AddRecord(a)
+	_ = z.AddRecord(aaaa)
 
-	records := zone.GetAllRecords("www.example.com.")
+	records := z.GetAllRecords("www.example.com.")
 	if len(records) != 2 {
 		t.Errorf("Expected 2 records, got %d", len(records))
 	}
@@ -156,7 +157,7 @@ func TestZone_GetAllRecords(t *testing.T) {
 
 func TestZone_IncrementSerial(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	soa := &dns.SOA{
 		Hdr:     dns.RR_Header{
@@ -174,16 +175,16 @@ func TestZone_IncrementSerial(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	_ = zone.AddRecord(soa)
+	_ = z.AddRecord(soa)
 
-	oldSerial := zone.GetSerial()
-	newSerial := zone.IncrementSerial()
+	oldSerial := z.GetSerial()
+	newSerial := z.IncrementSerial()
 
 	if newSerial != oldSerial+1 {
 		t.Errorf("Expected serial %d, got %d", oldSerial+1, newSerial)
 	}
 
-	if zone.SOA.Serial != newSerial {
+	if z.SOA.Serial != newSerial {
 		t.Error("SOA serial not updated")
 	}
 }
@@ -206,13 +207,13 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			zone := NewZone(ZoneConfig{
+			z := zone.NewZone(zone.Config{
 				Origin:      "example.com",
 				TransferACL: tt.acl,
 				UpdateACL:   nil,
 			})
 
-			result := zone.IsTransferAllowed(tt.clientIP)
+			result := z.IsTransferAllowed(tt.clientIP)
 			if result != tt.allowed {
 				t.Errorf("Expected %v, got %v", tt.allowed, result)
 			}
@@ -222,9 +223,9 @@ func TestZone_IsTransferAllowed(t *testing.T) {
 
 func TestZone_RecordCount(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
-	if zone.RecordCount() != 0 {
+	if z.RecordCount() != 0 {
 		t.Error("Expected empty zone to have 0 records")
 	}
 
@@ -244,17 +245,17 @@ func TestZone_RecordCount(t *testing.T) {
 		A:   []byte{192, 0, 2, 1},
 	}
 
-	_ = zone.AddRecord(soa)
-	_ = zone.AddRecord(a)
+	_ = z.AddRecord(soa)
+	_ = z.AddRecord(a)
 
-	if zone.RecordCount() != 2 {
-		t.Errorf("Expected 2 records, got %d", zone.RecordCount())
+	if z.RecordCount() != 2 {
+		t.Errorf("Expected 2 records, got %d", z.RecordCount())
 	}
 }
 
 func TestZone_Clear(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add records
 	soa := &dns.SOA{
@@ -267,27 +268,27 @@ func TestZone_Clear(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	_ = zone.AddRecord(soa)
+	_ = z.AddRecord(soa)
 
 	// Clear
-	zone.Clear()
+	z.Clear()
 
-	if zone.RecordCount() != 0 {
-		t.Errorf("Expected 0 records after clear, got %d", zone.RecordCount())
+	if z.RecordCount() != 0 {
+		t.Errorf("Expected 0 records after clear, got %d", z.RecordCount())
 	}
 
-	if zone.SOA != nil {
+	if z.SOA != nil {
 		t.Error("Expected SOA to be nil after clear")
 	}
 
-	if zone.GetSerial() != 0 {
+	if z.GetSerial() != 0 {
 		t.Error("Expected serial to be 0 after clear")
 	}
 }
 
 func TestZone_Clone(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{
+	z := zone.NewZone(zone.Config{
 		Origin:      "example.com",
 		TransferACL: []string{"192.0.2.1"},
 		UpdateACL:   nil,
@@ -304,41 +305,41 @@ func TestZone_Clone(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	_ = zone.AddRecord(soa)
+	_ = z.AddRecord(soa)
 
 	// Add A record
 	a := &dns.A{
 		Hdr: dns.RR_Header{Name: "www.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
 		A:   []byte{192, 0, 2, 1},
 	}
-	_ = zone.AddRecord(a)
+	_ = z.AddRecord(a)
 
 	// Clone
-	cloned := zone.Clone()
+	cloned := z.Clone()
 
 	// Verify clone
-	if cloned.Origin != zone.Origin {
+	if cloned.Origin != z.Origin {
 		t.Error("Cloned origin doesn't match")
 	}
 
-	if cloned.GetSerial() != zone.GetSerial() {
+	if cloned.GetSerial() != z.GetSerial() {
 		t.Error("Cloned serial doesn't match")
 	}
 
-	if cloned.RecordCount() != zone.RecordCount() {
+	if cloned.RecordCount() != z.RecordCount() {
 		t.Error("Cloned record count doesn't match")
 	}
 
 	// Verify deep copy - modify original shouldn't affect clone
-	zone.IncrementSerial()
-	if cloned.GetSerial() == zone.GetSerial() {
+	z.IncrementSerial()
+	if cloned.GetSerial() == z.GetSerial() {
 		t.Error("Clone was not deep copied - serial changed")
 	}
 }
 
 func TestZone_GetAllRecordsOrdered(t *testing.T) {
 	t.Parallel()
-	zone := NewZone(ZoneConfig{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
+	z := zone.NewZone(zone.Config{Origin: "example.com", TransferACL: nil, UpdateACL: nil})
 
 	// Add SOA
 	soa := &dns.SOA{
@@ -351,7 +352,7 @@ func TestZone_GetAllRecordsOrdered(t *testing.T) {
 		Expire:  0,
 		Minttl:  0,
 	}
-	_ = zone.AddRecord(soa)
+	_ = z.AddRecord(soa)
 
 	// Add other records
 	a := &dns.A{
@@ -363,10 +364,10 @@ func TestZone_GetAllRecordsOrdered(t *testing.T) {
 		Preference: 10,
 		Mx:         "mail.example.com.",
 	}
-	_ = zone.AddRecord(a)
-	_ = zone.AddRecord(mx)
+	_ = z.AddRecord(a)
+	_ = z.AddRecord(mx)
 
-	records := zone.GetAllRecordsOrdered()
+	records := z.GetAllRecordsOrdered()
 
 	// Should have SOA, A, MX, SOA (per RFC 5936)
 	if len(records) != 4 {

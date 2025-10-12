@@ -2,6 +2,7 @@ package io
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,22 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+)
+
+// Package-level errors.
+var (
+	ErrInvalidConnType    = errors.New("invalid connection type")
+	ErrInvalidMessageLen  = errors.New("invalid message length")
+)
+
+// I/O configuration constants.
+const (
+	kiloByte            = 1024
+	defaultBufferSizeMB = 4     // 4MB buffer size for read/write
+	defaultMaxTCPConns  = 1000  // RFC 7766 recommendation
+	tcpLengthPrefixSize = 2     // RFC 7766: 2-byte length prefix
+	byteShift8          = 8     // Shift for second byte (bits 8-15)
+	byteMask8           = 0xFF  // Mask for 8-bit value
 )
 
 // ListenerConfig holds configuration for DNS listeners.
@@ -37,8 +54,8 @@ func DefaultListenerConfig(address string) *ListenerConfig {
 		Address:         address,
 		NumWorkers:      runtime.NumCPU(),
 		ReusePort:       true,
-		ReadBufferSize:  4 * 1024 * 1024, // 4MB (handles traffic spikes)
-		WriteBufferSize: 4 * 1024 * 1024, // 4MB
+		ReadBufferSize:  defaultBufferSizeMB * kiloByte * kiloByte, // 4MB (handles traffic spikes)
+		WriteBufferSize: defaultBufferSizeMB * kiloByte * kiloByte, // 4MB
 	}
 }
 
@@ -189,7 +206,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 	// Type assert to *net.UDPConn with safety check
 	udpConn, ok := packetConn.(*net.UDPConn)
 	if !ok {
-		return nil, fmt.Errorf("ListenPacket did not return *net.UDPConn (got %T)", packetConn)
+		return nil, fmt.Errorf("%w: ListenPacket returned %T instead of *net.UDPConn", ErrInvalidConnType, packetConn)
 	}
 
 	return udpConn, nil
@@ -278,7 +295,7 @@ func NewTCPListener(config *ListenerConfig, handler QueryHandler) (*TCPListener,
 		handler:        handler,
 		wg:             sync.WaitGroup{},
 		done:           make(chan struct{}),
-		maxConnections: 1000, // RFC 7766 recommendation
+		maxConnections: defaultMaxTCPConns,
 		activeConns:    0,
 		connMutex:      sync.Mutex{},
 	}
@@ -395,11 +412,7 @@ func (tl *TCPListener) acceptLoop() {
 func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
 	defer func() { _ = conn.Close() }() // Ignore close error in defer
-	defer func() {
-		tl.connMutex.Lock()
-		tl.activeConns--
-		tl.connMutex.Unlock()
-	}()
+	defer tl.decrementActiveConns()
 
 	// Set read/write timeouts
 	// RFC 7766 recommends at least 10 seconds idle timeout
@@ -411,75 +424,124 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	bufferPool := NewBufferPool(DefaultBufferSize)
 
 	for {
-		select {
-		case <-tl.done:
+		// Check for shutdown signal
+		if tl.shouldStop() {
 			return
-		default:
 		}
 
-		// Set read deadline
-		_ = conn.SetReadDeadline(time.Now().Add(readTimeout)) // Ignore deadline error
-
-		// Read 2-byte length prefix (RFC 7766)
-		lengthBuf := make([]byte, 2)
-		_, err := io.ReadFull(conn, lengthBuf)
+		// Read DNS query
+		queryBuf, messageLen, err := readTCPMessage(conn, bufferPool, readTimeout)
 		if err != nil {
-			// Connection closed or timeout
-			return
-		}
-
-		// Parse message length (big endian)
-		messageLen := int(lengthBuf[0])<<8 | int(lengthBuf[1])
-
-		// Validate message length (RFC 1035: max 65535 bytes)
-		if messageLen == 0 || messageLen > 65535 {
-			return // Invalid length, close connection
-		}
-
-		// Read DNS message
-		queryBuf := bufferPool.Get()
-		if len(queryBuf) < messageLen {
-			// Need larger buffer
-			queryBuf = make([]byte, messageLen)
-		}
-
-		_, err = io.ReadFull(conn, queryBuf[:messageLen])
-		if err != nil {
-			bufferPool.Put(queryBuf)
-
-			return
-		}
-
-		// Process query
-		response, err := tl.handler.HandleQuery(context.Background(), queryBuf[:messageLen], conn.RemoteAddr())
-		if err != nil {
-			bufferPool.Put(queryBuf)
-
-			return
-		}
-
-		// Send response with 2-byte length prefix
-		if response != nil {
-			_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout)) // Ignore deadline error
-
-			// Build response with length prefix
-			responseLen := len(response)
-			responseBuf := make([]byte, 2+responseLen)
-			responseBuf[0] = byte(responseLen >> 8)   // High byte
-			responseBuf[1] = byte(responseLen & 0xFF) // Low byte
-			copy(responseBuf[2:], response)
-
-			_, err = conn.Write(responseBuf)
-			if err != nil {
+			if queryBuf != nil {
 				bufferPool.Put(queryBuf)
-
-				return
 			}
+
+			return
+		}
+
+		// Process and respond
+		if err := tl.processAndRespond(conn, queryBuf, messageLen, writeTimeout); err != nil {
+			bufferPool.Put(queryBuf)
+
+			return
 		}
 
 		bufferPool.Put(queryBuf)
-
-		// RFC 7766: TCP connections should be persistent
-		// Continue reading more queries on same connection
 	}
+}
+
+// shouldStop checks if the listener is shutting down.
+func (tl *TCPListener) shouldStop() bool {
+	select {
+	case <-tl.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// decrementActiveConns decrements the active connection count.
+func (tl *TCPListener) decrementActiveConns() {
+	tl.connMutex.Lock()
+	tl.activeConns--
+	tl.connMutex.Unlock()
+}
+
+// readTCPMessage reads a DNS message from TCP connection with 2-byte length prefix.
+func readTCPMessage(conn net.Conn, bufferPool *BufferPool, readTimeout time.Duration) ([]byte, int, error) {
+	// Set read deadline
+	_ = conn.SetReadDeadline(time.Now().Add(readTimeout)) // Ignore deadline error
+
+	// Read 2-byte length prefix (RFC 7766)
+	lengthBuf := make([]byte, tcpLengthPrefixSize)
+	if _, err := io.ReadFull(conn, lengthBuf); err != nil {
+		return nil, 0, fmt.Errorf("failed to read TCP message length prefix: %w", err)
+	}
+
+	// Parse and validate message length
+	messageLen, err := parseAndValidateMessageLen(lengthBuf)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Allocate buffer and read message
+	queryBuf := bufferPool.Get()
+	if len(queryBuf) < messageLen {
+		queryBuf = make([]byte, messageLen)
+	}
+
+	if _, err := io.ReadFull(conn, queryBuf[:messageLen]); err != nil {
+		return queryBuf, 0, fmt.Errorf("failed to read TCP message body (%d bytes): %w", messageLen, err)
+	}
+
+	return queryBuf, messageLen, nil
+}
+
+// parseAndValidateMessageLen parses the 2-byte length prefix and validates it.
+func parseAndValidateMessageLen(lengthBuf []byte) (int, error) {
+	messageLen := int(lengthBuf[0])<<byteShift8 | int(lengthBuf[1])
+
+	// Validate message length (RFC 1035: max 65535 bytes)
+	if messageLen == 0 || messageLen > 65535 {
+		return 0, fmt.Errorf("%w: %d (must be 1-65535)", ErrInvalidMessageLen, messageLen)
+	}
+
+	return messageLen, nil
+}
+
+// processAndRespond processes a DNS query and sends the response.
+func (tl *TCPListener) processAndRespond(
+	conn net.Conn, queryBuf []byte, messageLen int, writeTimeout time.Duration,
+) error {
+	// Process query
+	response, err := tl.handler.HandleQuery(context.Background(), queryBuf[:messageLen], conn.RemoteAddr())
+	if err != nil {
+		return fmt.Errorf("handler failed to process query: %w", err)
+	}
+
+	// Send response if present
+	if response != nil {
+		return writeTCPResponse(conn, response, writeTimeout)
+	}
+
+	return nil
+}
+
+// writeTCPResponse writes a DNS response to TCP connection with 2-byte length prefix.
+func writeTCPResponse(conn net.Conn, response []byte, writeTimeout time.Duration) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout)) // Ignore deadline error
+
+	// Build response with length prefix
+	responseLen := len(response)
+	responseBuf := make([]byte, tcpLengthPrefixSize+responseLen)
+	responseBuf[0] = byte(responseLen >> byteShift8) // High byte
+	responseBuf[1] = byte(responseLen & byteMask8)   // Low byte
+	copy(responseBuf[tcpLengthPrefixSize:], response)
+
+	_, err := conn.Write(responseBuf)
+	if err != nil {
+		return fmt.Errorf("failed to write TCP response (%d bytes): %w", len(responseBuf), err)
+	}
+
+	return nil
 }

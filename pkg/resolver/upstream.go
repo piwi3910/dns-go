@@ -13,6 +13,19 @@ import (
 	"github.com/piwi3910/dns-go/pkg/cache"
 )
 
+// Package-level errors.
+var (
+	ErrNilResponse      = errors.New("nil response from upstream")
+	ErrAllUpstreamsFailed = errors.New("all upstreams failed")
+	ErrNilUDPConnection = errors.New("nil UDP connection")
+)
+
+// Upstream configuration defaults.
+const (
+	defaultUpstreamTimeoutSec = 5 // Default upstream query timeout in seconds
+	defaultUpstreamMaxRetries = 2 // Default maximum retry attempts
+)
+
 // UpstreamPool manages connections to upstream DNS servers
 // Uses client pooling for efficient query handling.
 type UpstreamPool struct {
@@ -62,9 +75,9 @@ func DefaultUpstreamConfig() UpstreamConfig {
 			"1.1.1.1:53", // Cloudflare DNS
 			"1.0.0.1:53", // Cloudflare DNS
 		},
-		Timeout:                5 * time.Second,
-		MaxRetries:             2,
-		ConnectionsPerUpstream: runtime.NumCPU(),
+		Timeout:                defaultUpstreamTimeoutSec * time.Second, // 5 second timeout
+		MaxRetries:             defaultUpstreamMaxRetries,               // 2 retry attempts
+		ConnectionsPerUpstream: runtime.NumCPU(),                        // One connection per CPU core
 	}
 }
 
@@ -143,7 +156,7 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	if response == nil {
 		stats.RecordFailure()
 
-		return nil, errors.New("nil response from upstream")
+		return nil, ErrNilResponse
 	}
 
 	stats.RecordSuccess(rtt)
@@ -189,54 +202,9 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 	var lastErr error
 
 	for range maxRetries {
-		// Select best upstream (may be different after failures)
-		addr := up.infraCache.SelectBest(upstreams)
-		stats := up.infraCache.GetOrCreate(addr)
-
-		stats.RecordQueryStart()
-		attemptCtx, cancelAttempt := context.WithTimeout(ctx, up.timeout)
-
-		pool := up.getPool(addr)
-		conn, err := pool.Get(attemptCtx)
+		response, err := up.attemptQueryWithFallback(ctx, msg, upstreams)
 		if err != nil {
-			cancelAttempt()
-			stats.RecordFailure()
-			stats.RecordQueryEnd()
 			lastErr = err
-
-			continue
-		}
-
-		response, rtt, err := up.exchangeWithConn(attemptCtx, conn, msg)
-		cancelAttempt()
-		if err != nil {
-			pool.Discard(conn)
-			stats.RecordFailure()
-			stats.RecordQueryEnd()
-			lastErr = err
-
-			continue
-		}
-
-		pool.Put(conn)
-		stats.RecordQueryEnd()
-
-		if response == nil {
-			stats.RecordFailure()
-			lastErr = errors.New("nil response from upstream")
-
-			continue
-		}
-
-		stats.RecordSuccess(rtt)
-
-		// Check for truncated response - retry with TCP
-		if response.Truncated {
-			tcpResponse, tcpErr := up.queryTCP(ctx, msg, addr, stats)
-			if tcpErr == nil {
-				return tcpResponse, nil
-			}
-			lastErr = tcpErr
 
 			continue
 		}
@@ -246,7 +214,7 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 
 	// All attempts failed
 	if lastErr == nil {
-		lastErr = errors.New("all upstreams failed")
+		lastErr = ErrAllUpstreamsFailed
 	}
 
 	return nil, lastErr
@@ -293,6 +261,72 @@ func (up *UpstreamPool) GetStats() []cache.UpstreamSnapshot {
 	return up.infraCache.GetAllStats()
 }
 
+// attemptQueryWithFallback performs a single query attempt with automatic failover.
+func (up *UpstreamPool) attemptQueryWithFallback(
+	ctx context.Context,
+	msg *dns.Msg,
+	upstreams []string,
+) (*dns.Msg, error) {
+	// Select best upstream (may be different after failures)
+	addr := up.infraCache.SelectBest(upstreams)
+	stats := up.infraCache.GetOrCreate(addr)
+
+	stats.RecordQueryStart()
+	defer stats.RecordQueryEnd()
+
+	attemptCtx, cancelAttempt := context.WithTimeout(ctx, up.timeout)
+	defer cancelAttempt()
+
+	// Get connection and execute query
+	response, rtt, err := up.executeQueryAttempt(attemptCtx, msg, addr, stats)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.RecordSuccess(rtt)
+
+	// Check for truncated response - retry with TCP
+	if response.Truncated {
+		return up.queryTCP(ctx, msg, addr, stats)
+	}
+
+	return response, nil
+}
+
+// executeQueryAttempt executes a single query attempt on a specific upstream.
+func (up *UpstreamPool) executeQueryAttempt(
+	ctx context.Context,
+	msg *dns.Msg,
+	addr string,
+	stats *cache.UpstreamStats,
+) (*dns.Msg, time.Duration, error) {
+	pool := up.getPool(addr)
+	conn, err := pool.Get(ctx)
+	if err != nil {
+		stats.RecordFailure()
+
+		return nil, 0, err
+	}
+
+	response, rtt, err := up.exchangeWithConn(ctx, conn, msg)
+	if err != nil {
+		pool.Discard(conn)
+		stats.RecordFailure()
+
+		return nil, 0, err
+	}
+
+	pool.Put(conn)
+
+	if response == nil {
+		stats.RecordFailure()
+
+		return nil, 0, ErrNilResponse
+	}
+
+	return response, rtt, nil
+}
+
 // queryTCP performs a query over TCP (for truncated responses).
 func (up *UpstreamPool) queryTCP(
 	ctx context.Context,
@@ -336,7 +370,7 @@ func (up *UpstreamPool) exchangeWithConn(
 	msg *dns.Msg,
 ) (*dns.Msg, time.Duration, error) {
 	if conn == nil {
-		return nil, 0, errors.New("nil UDP connection")
+		return nil, 0, ErrNilUDPConnection
 	}
 
 	deadline, ok := ctx.Deadline()

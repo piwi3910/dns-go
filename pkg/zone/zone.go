@@ -1,12 +1,18 @@
 package zone
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
+)
+
+// Package-level errors.
+var (
+	ErrRecordNotInZone = errors.New("record is not within zone")
 )
 
 // Zone represents an authoritative DNS zone.
@@ -37,15 +43,15 @@ type Zone struct {
 	UpdateACL []string
 }
 
-// ZoneConfig holds configuration for a zone.
-type ZoneConfig struct {
+// Config holds configuration for a zone.
+type Config struct {
 	Origin      string
 	TransferACL []string
 	UpdateACL   []string
 }
 
 // NewZone creates a new empty zone.
-func NewZone(config ZoneConfig) *Zone {
+func NewZone(config Config) *Zone {
 	return &Zone{
 		Origin:       dns.Fqdn(config.Origin),
 		SOA:          nil,
@@ -69,7 +75,7 @@ func (z *Zone) AddRecord(rr dns.RR) error {
 
 	// Ensure owner is within zone
 	if !dns.IsSubDomain(z.Origin, owner) {
-		return fmt.Errorf("record %s is not within zone %s", owner, z.Origin)
+		return fmt.Errorf("%w: %s not in %s", ErrRecordNotInZone, owner, z.Origin)
 	}
 
 	// Initialize nested map if needed

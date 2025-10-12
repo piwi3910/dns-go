@@ -7,8 +7,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-// EDNS0Info holds EDNS0 parameters from a query.
-type EDNS0Info struct {
+// Info holds EDNS0 parameters from a query.
+type Info struct {
 	Present       bool   // Whether EDNS0 is present in the query
 	UDPSize       uint16 // Client's UDP payload size
 	DO            bool   // DNSSEC OK bit
@@ -30,6 +30,14 @@ const (
 	RcodeBadVers = 16 // BADVERS - unsupported EDNS version
 )
 
+// EDNS0 bit manipulation constants for extended RCODE encoding in OPT TTL field (RFC 6891).
+const (
+	rcodeLowerBitsMask   = 0x0F       // Mask for lower 4 bits of RCODE (bits 0-3)
+	rcodeTTLUpperMask    = 0x00FFFFFF // Mask to preserve lower 24 bits of OPT TTL
+	rcodeUpperBitsShift  = 4          // Shift amount for upper RCODE bits
+	rcodeTTLShift        = 24         // Shift amount for extended RCODE in TTL field
+)
+
 // ValidationError represents an EDNS0 validation error.
 type ValidationError struct {
 	Message      string
@@ -41,8 +49,8 @@ func (e *ValidationError) Error() string {
 }
 
 // ParseEDNS0 extracts EDNS0 information from a DNS query.
-func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
-	info := &EDNS0Info{
+func ParseEDNS0(msg *dns.Msg) *Info {
+	info := &Info{
 		Present:       false,
 		UDPSize:       MinimumUDPSize, // Default to minimum if no EDNS0
 		DO:            false,
@@ -64,7 +72,7 @@ func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
 	// Extended RCODE is stored in TTL field (upper 8 bits)
 	// Lower 4 bits combine with message RCODE to form extended RCODE
 	//nolint:gosec // G115: uint32 >> 24 produces value 0-255, safe for uint8 conversion
-	info.ExtendedRcode = uint8(opt.Hdr.Ttl >> 24)
+	info.ExtendedRcode = uint8(opt.Hdr.Ttl >> rcodeTTLShift)
 
 	// Validate and clamp UDP size to reasonable limits
 	if info.UDPSize < MinimumUDPSize {
@@ -146,7 +154,7 @@ func NegotiateBufferSize(clientSize, serverSize uint16) uint16 {
 // responseSize: the size of the packed response in bytes
 // ednsInfo: EDNS0 info from the query
 // Returns true if the response should be truncated.
-func ShouldTruncate(responseSize int, ednsInfo *EDNS0Info) bool {
+func ShouldTruncate(responseSize int, ednsInfo *Info) bool {
 	maxSize := int(MinimumUDPSize)
 
 	if ednsInfo.Present {
@@ -246,7 +254,7 @@ func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg 
 		Extra:    nil,
 	}
 	response.SetReply(query)
-	response.Rcode = rcode & 0x0F // Lower 4 bits
+	response.Rcode = rcode & rcodeLowerBitsMask // Lower 4 bits
 
 	// If query had EDNS0, include OPT in error response
 	if query.IsEdns0() != nil {
@@ -256,7 +264,7 @@ func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg 
 				Rrtype:   dns.TypeOPT,
 				Class:    DefaultUDPSize,
 				//nolint:gosec // G115: DNS RCODE (0-4095) >> 4 produces 0-255, safe for uint32 conversion and shift
-				Ttl:      uint32(rcode>>4) << 24, // Extended RCODE in upper 8 bits of TTL
+				Ttl:      uint32(rcode>>rcodeUpperBitsShift) << rcodeTTLShift, // Extended RCODE in upper 8 bits of TTL
 				Rdlength: 0,
 			},
 			Option: nil,
@@ -272,15 +280,15 @@ func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg 
 // rcode: the full extended RCODE (lower 4 bits go in msg.Rcode, upper bits in OPT)
 func SetExtendedRcode(msg *dns.Msg, rcode int) {
 	// Set lower 4 bits in message RCODE
-	msg.Rcode = rcode & 0x0F
+	msg.Rcode = rcode & rcodeLowerBitsMask
 
 	// Set upper 8 bits in OPT record TTL if EDNS0 is present
 	opt := msg.IsEdns0()
 	if opt != nil {
 		// Extended RCODE goes in upper 8 bits of TTL field
 		//nolint:gosec // G115: DNS RCODE (0-4095) >> 4 produces 0-255, safe for uint32 conversion and shift
-		extendedBits := uint32(rcode>>4) << 24
-		opt.Hdr.Ttl = (opt.Hdr.Ttl & 0x00FFFFFF) | extendedBits
+		extendedBits := uint32(rcode>>rcodeUpperBitsShift) << rcodeTTLShift
+		opt.Hdr.Ttl = (opt.Hdr.Ttl & rcodeTTLUpperMask) | extendedBits
 	}
 }
 
@@ -292,8 +300,8 @@ func GetExtendedRcode(msg *dns.Msg) int {
 	opt := msg.IsEdns0()
 	if opt != nil {
 		// Extended RCODE is in upper 8 bits of TTL
-		extendedBits := int(opt.Hdr.Ttl >> 24)
-		rcode |= (extendedBits << 4)
+		extendedBits := int(opt.Hdr.Ttl >> rcodeTTLShift)
+		rcode |= (extendedBits << rcodeUpperBitsShift)
 	}
 
 	return rcode
@@ -305,32 +313,30 @@ func HandleUnknownOptions(opt *dns.OPT) []string {
 	unknownOptions := []string{}
 
 	for _, option := range opt.Option {
-		switch option.(type) {
-		case *dns.EDNS0_NSID:
-			// Known option
-		case *dns.EDNS0_SUBNET:
-			// Known option (ECS - Client Subnet)
-		case *dns.EDNS0_COOKIE:
-			// Known option
-		case *dns.EDNS0_EXPIRE:
-			// Known option
-		case *dns.EDNS0_TCP_KEEPALIVE:
-			// Known option
-		case *dns.EDNS0_PADDING:
-			// Known option
-		case *dns.EDNS0_DAU:
-			// Known option (DNSSEC Algorithm Understood)
-		case *dns.EDNS0_DHU:
-			// Known option (DS Hash Understood)
-		case *dns.EDNS0_N3U:
-			// Known option (NSEC3 Hash Understood)
-		default:
-			// Unknown option - RFC 6891: must be ignored
+		if !isKnownEDNS0Option(option) {
 			unknownOptions = append(unknownOptions, fmt.Sprintf("code=%d", option.Option()))
 		}
 	}
 
 	return unknownOptions
+}
+
+// isKnownEDNS0Option checks if an EDNS0 option is known to our implementation.
+func isKnownEDNS0Option(option dns.EDNS0) bool {
+	switch option.(type) {
+	case *dns.EDNS0_NSID,
+		*dns.EDNS0_SUBNET,
+		*dns.EDNS0_COOKIE,
+		*dns.EDNS0_EXPIRE,
+		*dns.EDNS0_TCP_KEEPALIVE,
+		*dns.EDNS0_PADDING,
+		*dns.EDNS0_DAU,
+		*dns.EDNS0_DHU,
+		*dns.EDNS0_N3U:
+		return true
+	default:
+		return false
+	}
 }
 
 // CopyEDNS0Options copies EDNS0 options from query to response

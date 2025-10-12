@@ -8,6 +8,16 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Prefetch engine configuration constants.
+const (
+	defaultPrefetchThreshold       = 0.10 // Prefetch at 10% TTL remaining
+	defaultPrefetchMinHits         = 3    // Need at least 3 hits to be "popular"
+	defaultPrefetchMaxConcurrent   = 10   // Up to 10 concurrent prefetches
+	defaultPrefetchCheckIntervalSec = 5   // Check every 5 seconds
+	prefetchQueueBufferSize        = 1000 // Channel buffer size for prefetch queue
+	prefetchTimeoutSec             = 10   // Timeout for prefetch operations
+)
+
 // PrefetchEngine automatically refreshes popular cache entries before they expire
 // This keeps the cache warm and ensures low latency for frequently accessed domains.
 type PrefetchEngine struct {
@@ -58,10 +68,10 @@ type PrefetchConfig struct {
 func DefaultPrefetchConfig() PrefetchConfig {
 	return PrefetchConfig{
 		Enabled:        true,
-		PrefetchThresh: 0.10, // Prefetch at 10% TTL remaining
-		MinHits:        3,    // Need at least 3 hits to be considered "popular"
-		MaxConcurrent:  10,   // Up to 10 concurrent prefetches
-		CheckInterval:  5 * time.Second,
+		PrefetchThresh: defaultPrefetchThreshold,
+		MinHits:        defaultPrefetchMinHits,
+		MaxConcurrent:  defaultPrefetchMaxConcurrent,
+		CheckInterval:  defaultPrefetchCheckIntervalSec * time.Second,
 	}
 }
 
@@ -82,7 +92,7 @@ func NewPrefetchEngine(
 		maxConcurrent:  config.MaxConcurrent,
 		mu:             sync.RWMutex{},
 		candidates:     make(map[string]*prefetchCandidate),
-		prefetchQueue:  make(chan *prefetchCandidate, 1000),
+		prefetchQueue:  make(chan *prefetchCandidate, prefetchQueueBufferSize),
 		stopCh:         make(chan struct{}),
 		wg:             sync.WaitGroup{},
 	}
@@ -196,39 +206,54 @@ func (pe *PrefetchEngine) scanner(interval time.Duration) {
 
 // scanForCandidates scans the cache for entries that need prefetching.
 func (pe *PrefetchEngine) scanForCandidates() {
+	candidates := pe.collectEligibleCandidates()
+
+	for _, candidate := range candidates {
+		if pe.shouldPrefetch(candidate) {
+			pe.queueCandidateForPrefetch(candidate)
+		}
+	}
+}
+
+// collectEligibleCandidates returns candidates that are eligible for prefetching.
+func (pe *PrefetchEngine) collectEligibleCandidates() []*prefetchCandidate {
 	pe.mu.RLock()
+	defer pe.mu.RUnlock()
+
 	candidates := make([]*prefetchCandidate, 0, len(pe.candidates))
 	for _, candidate := range pe.candidates {
 		if candidate.hits >= pe.minHits && !candidate.prefetching {
 			candidates = append(candidates, candidate)
 		}
 	}
-	pe.mu.RUnlock()
 
-	// Check each candidate
-	for _, candidate := range candidates {
-		if pe.shouldPrefetch(candidate) {
-			// Mark as prefetching
-			pe.mu.Lock()
-			if c, exists := pe.candidates[candidate.key]; exists {
-				c.prefetching = true
-			}
-			pe.mu.Unlock()
+	return candidates
+}
 
-			// Queue for prefetch
-			select {
-			case pe.prefetchQueue <- candidate:
-			case <-pe.stopCh:
-				return
-			default:
-				// Queue full, skip this one
-				pe.mu.Lock()
-				if c, exists := pe.candidates[candidate.key]; exists {
-					c.prefetching = false
-				}
-				pe.mu.Unlock()
-			}
-		}
+// queueCandidateForPrefetch marks a candidate as prefetching and queues it.
+func (pe *PrefetchEngine) queueCandidateForPrefetch(candidate *prefetchCandidate) {
+	// Mark as prefetching
+	pe.markCandidatePrefetching(candidate.key, true)
+
+	// Try to queue for prefetch
+	select {
+	case pe.prefetchQueue <- candidate:
+		// Successfully queued
+	case <-pe.stopCh:
+		// Engine stopped
+	default:
+		// Queue full, skip this one and unmark
+		pe.markCandidatePrefetching(candidate.key, false)
+	}
+}
+
+// markCandidatePrefetching updates the prefetching status of a candidate.
+func (pe *PrefetchEngine) markCandidatePrefetching(key string, prefetching bool) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+
+	if c, exists := pe.candidates[key]; exists {
+		c.prefetching = prefetching
 	}
 }
 
@@ -285,7 +310,7 @@ func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 	query.RecursionDesired = true
 
 	// Resolve with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), prefetchTimeoutSec*time.Second)
 	defer cancel()
 
 	_, err := pe.resolver.Resolve(ctx, query)

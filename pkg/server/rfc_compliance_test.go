@@ -1,24 +1,93 @@
-package server
+package server_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
+	"github.com/piwi3910/dns-go/pkg/server"
 )
 
 // RFC Compliance Test Suite
 // Based on dns-c project: https://github.com/piwi3910/dns-c/blob/main/test/src/dns_rfc_test.cpp
 
 // createTestHandler creates a handler for testing.
-func createTestHandler() *Handler {
-	config := DefaultHandlerConfig()
+func createTestHandler() *server.Handler {
+	config := server.DefaultHandlerConfig()
 	config.ResolverMode = resolver.ForwardingMode
 
-	return NewHandler(config)
+	return server.NewHandler(config)
+}
+
+// sendQueryAndParse sends a DNS query and parses the response.
+func sendQueryAndParse(
+	ctx context.Context,
+	t *testing.T,
+	handler *server.Handler,
+	domain string,
+	qtype uint16,
+) ([]byte, *dns.Msg) {
+	t.Helper()
+
+	// Create and pack query
+	msg := new(dns.Msg)
+	msg.SetQuestion(domain, qtype)
+	query, err := msg.Pack()
+	if err != nil {
+		t.Fatalf("Failed to pack query: %v", err)
+	}
+
+	// Send query
+	response, err := handler.HandleQuery(ctx, query, nil)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+
+	// Parse response
+	respMsg := new(dns.Msg)
+	if err := respMsg.Unpack(response); err != nil {
+		t.Fatalf("Failed to unpack response: %v", err)
+	}
+
+	return response, respMsg
+}
+
+// validateMessageSizeCompliance validates RFC 1035 message size compliance.
+func validateMessageSizeCompliance(t *testing.T, responseSize int, respMsg *dns.Msg) {
+	t.Helper()
+
+	const maxUDPSize = 512 // RFC 1035 limit without EDNS0
+
+	// If response is larger than 512 bytes, truncation flag should be set OR EDNS0 should be used
+	if responseSize > maxUDPSize && !respMsg.Truncated {
+		if !hasEDNS0(respMsg) {
+			t.Logf("⚠ RFC 1035: Response size %d > 512 bytes but TC flag not set and no EDNS0", responseSize)
+		}
+	}
+}
+
+// hasEDNS0 checks if a DNS message has EDNS0 (OPT record).
+func hasEDNS0(msg *dns.Msg) bool {
+	for _, rr := range msg.Extra {
+		if _, ok := rr.(*dns.OPT); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// verifyResponseHasData verifies that a successful response has answers.
+func verifyResponseHasData(t *testing.T, respMsg *dns.Msg) {
+	t.Helper()
+
+	if len(respMsg.Answer) == 0 && respMsg.Rcode == dns.RcodeSuccess {
+		t.Error("NOERROR response with no answers")
+	}
 }
 
 // TestRFC1035_BasicDNSFunctionality tests core DNS query/response mechanism
@@ -56,66 +125,131 @@ func TestRFC1035_BasicDNSFunctionality(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			msg := new(dns.Msg)
-			msg.SetQuestion(tt.domain, tt.qtype)
-			query, err := msg.Pack()
-			if err != nil {
-				t.Fatalf("Failed to pack %s query: %v", tt.qtypeName, err)
-			}
-
-			// Send query
-			response, err := handler.HandleQuery(ctx, query, nil)
-			if err != nil {
-				t.Fatalf("%s query failed: %v", tt.qtypeName, err)
-			}
-
-			// Parse response
-			respMsg := new(dns.Msg)
-			if err := respMsg.Unpack(response); err != nil {
-				t.Fatalf("Failed to unpack %s response: %v", tt.qtypeName, err)
-			}
-
-			// Validate DNS header
-			if !respMsg.Response {
-				t.Errorf("%s: Response flag (QR) not set", tt.qtypeName)
-			}
-
-			// Check response code
-			if respMsg.Rcode != dns.RcodeSuccess && respMsg.Rcode != dns.RcodeNameError {
-				t.Logf("⚠ %s: Unexpected rcode %s (may not be available)",
-					tt.qtypeName, dns.RcodeToString[respMsg.Rcode])
-			}
-
-			// Must have answers or authority section (for valid responses)
-			if respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) == 0 && len(respMsg.Ns) == 0 {
-				t.Logf("⚠ %s: NOERROR but no answers or authority records (may not exist)", tt.qtypeName)
-			}
-
-			// Verify question section matches
-			if len(respMsg.Question) > 0 {
-				if respMsg.Question[0].Name != tt.domain {
-					t.Errorf("%s: Question name mismatch: got %s, want %s",
-						tt.qtypeName, respMsg.Question[0].Name, tt.domain)
-				}
-				if respMsg.Question[0].Qtype != tt.qtype {
-					t.Errorf("%s: Question type mismatch: got %d, want %d",
-						tt.qtypeName, respMsg.Question[0].Qtype, tt.qtype)
-				}
-			}
-
-			// Log result based on response code
-			switch {
-			case respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) > 0:
-				t.Logf("✓ %s query successful: %d answers", tt.qtypeName, len(respMsg.Answer))
-			case respMsg.Rcode == dns.RcodeNameError:
-				t.Logf("✓ %s query returned NXDOMAIN (record doesn't exist)", tt.qtypeName)
-			default:
-				t.Logf("✓ %s query completed with rcode %s", tt.qtypeName, dns.RcodeToString[respMsg.Rcode])
-			}
+			testDNSRecordType(ctx, t, handler, tt.domain, tt.qtype, tt.qtypeName)
 		})
 	}
 
 	t.Logf("✓ RFC 1035 Basic DNS Functionality: All record types tested")
+}
+
+// testDNSRecordType tests a single DNS record type query.
+func testDNSRecordType(
+	ctx context.Context,
+	t *testing.T,
+	handler *server.Handler,
+	domain string,
+	qtype uint16,
+	qtypeName string,
+) {
+	t.Helper()
+
+	// Create and send query
+	respMsg, err := executeDNSQuery(ctx, t, handler, domain, qtype, qtypeName)
+	if err != nil {
+		return // Error already logged by helper
+	}
+
+	// Validate response
+	validateDNSResponse(t, respMsg, domain, qtype, qtypeName)
+
+	// Log result
+	logDNSQueryResult(t, respMsg, qtypeName)
+}
+
+// executeDNSQuery creates, sends, and parses a DNS query.
+func executeDNSQuery(
+	ctx context.Context,
+	t *testing.T,
+	handler *server.Handler,
+	domain string,
+	qtype uint16,
+	qtypeName string,
+) (*dns.Msg, error) {
+	t.Helper()
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(domain, qtype)
+	query, err := msg.Pack()
+	if err != nil {
+		t.Fatalf("Failed to pack %s query: %v", qtypeName, err)
+
+		return nil, fmt.Errorf("failed to pack %s query: %w", qtypeName, err)
+	}
+
+	// Send query
+	response, err := handler.HandleQuery(ctx, query, nil)
+	if err != nil {
+		t.Fatalf("%s query failed: %v", qtypeName, err)
+
+		return nil, fmt.Errorf("%s query failed: %w", qtypeName, err)
+	}
+
+	// Parse response
+	respMsg := new(dns.Msg)
+	if err := respMsg.Unpack(response); err != nil {
+		t.Fatalf("Failed to unpack %s response: %v", qtypeName, err)
+
+		return nil, fmt.Errorf("failed to unpack %s response: %w", qtypeName, err)
+	}
+
+	return respMsg, nil
+}
+
+// validateDNSResponse validates a DNS response against expected criteria.
+func validateDNSResponse(t *testing.T, respMsg *dns.Msg, domain string, qtype uint16, qtypeName string) {
+	t.Helper()
+
+	// Validate DNS header
+	if !respMsg.Response {
+		t.Errorf("%s: Response flag (QR) not set", qtypeName)
+	}
+
+	// Check response code
+	if respMsg.Rcode != dns.RcodeSuccess && respMsg.Rcode != dns.RcodeNameError {
+		t.Logf("⚠ %s: Unexpected rcode %s (may not be available)",
+			qtypeName, dns.RcodeToString[respMsg.Rcode])
+	}
+
+	// Must have answers or authority section (for valid responses)
+	if respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) == 0 && len(respMsg.Ns) == 0 {
+		t.Logf("⚠ %s: NOERROR but no answers or authority records (may not exist)", qtypeName)
+	}
+
+	// Verify question section matches
+	validateQuestionSection(t, respMsg, domain, qtype, qtypeName)
+}
+
+// validateQuestionSection validates the question section of a DNS response.
+func validateQuestionSection(t *testing.T, respMsg *dns.Msg, domain string, qtype uint16, qtypeName string) {
+	t.Helper()
+
+	if len(respMsg.Question) == 0 {
+		return
+	}
+
+	if respMsg.Question[0].Name != domain {
+		t.Errorf("%s: Question name mismatch: got %s, want %s",
+			qtypeName, respMsg.Question[0].Name, domain)
+	}
+
+	if respMsg.Question[0].Qtype != qtype {
+		t.Errorf("%s: Question type mismatch: got %d, want %d",
+			qtypeName, respMsg.Question[0].Qtype, qtype)
+	}
+}
+
+// logDNSQueryResult logs the result of a DNS query based on response code.
+func logDNSQueryResult(t *testing.T, respMsg *dns.Msg, qtypeName string) {
+	t.Helper()
+
+	switch {
+	case respMsg.Rcode == dns.RcodeSuccess && len(respMsg.Answer) > 0:
+		t.Logf("✓ %s query successful: %d answers", qtypeName, len(respMsg.Answer))
+	case respMsg.Rcode == dns.RcodeNameError:
+		t.Logf("✓ %s query returned NXDOMAIN (record doesn't exist)", qtypeName)
+	default:
+		t.Logf("✓ %s query completed with rcode %s", qtypeName, dns.RcodeToString[respMsg.Rcode])
+	}
 }
 
 // TestRFC2308_NegativeCaching tests proper handling of non-existent domains
@@ -405,50 +539,15 @@ func TestRFC1035_MessageSizeLimits(t *testing.T) {
 	handler := createTestHandler()
 	ctx := context.Background()
 
-	// Query a domain that might have many records (like TXT records)
-	msg := new(dns.Msg)
-	msg.SetQuestion("google.com.", dns.TypeTXT)
-	query, err := msg.Pack()
-	if err != nil {
-		t.Fatalf("Failed to pack query: %v", err)
-	}
+	// Send query and get response
+	response, respMsg := sendQueryAndParse(ctx, t, handler, "google.com.", dns.TypeTXT)
 
-	// Send query
-	response, err := handler.HandleQuery(ctx, query, nil)
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	// Parse response
-	respMsg := new(dns.Msg)
-	if err := respMsg.Unpack(response); err != nil {
-		t.Fatalf("Failed to unpack response: %v", err)
-	}
-
-	// Check response size
+	// Check message size compliance
 	responseSize := len(response)
-	maxUDPSize := 512 // RFC 1035 limit without EDNS0
+	validateMessageSizeCompliance(t, responseSize, respMsg)
 
-	// If response is larger than 512 bytes, truncation flag should be set OR EDNS0 should be used
-	if responseSize > maxUDPSize && !respMsg.Truncated {
-		// Check if EDNS0 is present
-		hasEdns := false
-		for _, rr := range respMsg.Extra {
-			if _, ok := rr.(*dns.OPT); ok {
-				hasEdns = true
-
-				break
-			}
-		}
-		if !hasEdns {
-			t.Logf("⚠ RFC 1035: Response size %d > 512 bytes but TC flag not set and no EDNS0", responseSize)
-		}
-	}
-
-	// Response should have data
-	if len(respMsg.Answer) == 0 && respMsg.Rcode == dns.RcodeSuccess {
-		t.Error("NOERROR response with no answers")
-	}
+	// Verify response has data
+	verifyResponseHasData(t, respMsg)
 
 	t.Logf("✓ RFC 1035 Message Size: Response size %d bytes, TC=%v",
 		responseSize, respMsg.Truncated)

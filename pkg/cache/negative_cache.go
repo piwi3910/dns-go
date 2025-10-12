@@ -8,6 +8,18 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Negative cache configuration constants.
+const (
+	defaultNegativeCacheShards     = 32 // Smaller than message cache
+	defaultNegativeCacheMinTTLMin  = 5  // RFC 2308 Section 5 (5 minutes)
+	defaultNegativeCacheMaxTTLHr   = 3  // RFC 2308 Section 5 (3 hours)
+	defaultNegativeCacheDefaultMin = 10 // Fallback if no SOA (10 minutes)
+
+	// FNV-1a hash constants (64-bit).
+	fnvOffsetBasis64 uint64 = 14695981039346656037 // FNV-1a 64-bit offset basis
+	fnvPrime64       uint64 = 1099511628211        // FNV-1a 64-bit prime
+)
+
 // NegativeCacheEntry represents a cached negative response
 // Per RFC 2308, negative responses (NXDOMAIN and NODATA) should be cached.
 type NegativeCacheEntry struct {
@@ -84,11 +96,11 @@ type NegativeCacheConfig struct {
 // DefaultNegativeCacheConfig returns configuration with RFC 2308 recommendations.
 func DefaultNegativeCacheConfig() NegativeCacheConfig {
 	return NegativeCacheConfig{
-		NumShards:  32, // Smaller than message cache
+		NumShards:  defaultNegativeCacheShards,
 		Enable:     true,
-		MinTTL:     5 * time.Minute,  // RFC 2308 Section 5
-		MaxTTL:     3 * time.Hour,    // RFC 2308 Section 5
-		DefaultTTL: 10 * time.Minute, // Fallback if no SOA
+		MinTTL:     defaultNegativeCacheMinTTLMin * time.Minute,
+		MaxTTL:     defaultNegativeCacheMaxTTLHr * time.Hour,
+		DefaultTTL: defaultNegativeCacheDefaultMin * time.Minute,
 	}
 }
 
@@ -329,10 +341,10 @@ func CreateNegativeResponse(query *dns.Msg, negType NegativeType, soa *dns.SOA) 
 
 // fnvHash is a helper for FNV-1a hashing.
 func fnvHash(key string) uint64 {
-	hash := uint64(14695981039346656037)
+	hash := fnvOffsetBasis64
 	for i := range len(key) {
 		hash ^= uint64(key[i])
-		hash *= 1099511628211
+		hash *= fnvPrime64
 	}
 
 	return hash

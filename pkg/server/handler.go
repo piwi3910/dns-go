@@ -16,6 +16,12 @@ import (
 	"github.com/piwi3910/dns-go/pkg/security"
 )
 
+// Handler configuration constants.
+const (
+	defaultTTLMinutes     = 5  // Default TTL in minutes for responses without TTL info
+	dnsARCountByteShift   = 8  // Bit shift for ARCOUNT field in DNS header (network byte order)
+)
+
 // Handler implements the DNS query handler with fast-path optimization.
 type Handler struct {
 	// Caches
@@ -75,12 +81,12 @@ func DefaultHandlerConfig() HandlerConfig {
 	return HandlerConfig{
 		EnableCache:                    true,
 		EnableFastPath:                 true,
-		DefaultTTL:                     5 * time.Minute,
-		ResolverMode:                   resolver.ForwardingMode, // Default to forwarding for performance
-		EnableDNSSEC:                   true,                    // Enable DNSSEC validation by default
-		EnableRateLimiting:             true,                    // Enable rate limiting by default
-		EnableQueryValidation:          true,                    // Enable query validation by default
-		EnableCachePoisoningProtection: true,                    // Enable cache poisoning protection by default
+		DefaultTTL:                     defaultTTLMinutes * time.Minute, // 5 minute default TTL
+		ResolverMode:                   resolver.ForwardingMode,          // Default to forwarding for performance
+		EnableDNSSEC:                   true,                             // Enable DNSSEC validation by default
+		EnableRateLimiting:             true,                             // Enable rate limiting by default
+		EnableQueryValidation:          true,                             // Enable query validation by default
+		EnableCachePoisoningProtection: true,                             // Enable cache poisoning protection by default
 	}
 }
 
@@ -92,7 +98,7 @@ func NewHandler(config HandlerConfig) *Handler {
 	upstreamPool := resolver.NewUpstreamPool(resolver.DefaultUpstreamConfig(), infraCache)
 
 	// Create resolver with configured mode
-	resolverConfig := resolver.DefaultResolverConfig()
+	resolverConfig := resolver.DefaultConfig()
 	resolverConfig.Mode = config.ResolverMode
 	// Disable coalescing in forwarding mode for better concurrency
 	if config.ResolverMode == resolver.ForwardingMode {
@@ -316,6 +322,7 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 // handleCacheMiss handles queries that are not in cache.
 func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.FastPathQuery) ([]byte, error) {
 	_ = fpq // Reserved for future optimizations
+
 	// Parse query
 	msg := h.msgPool.Get()
 	defer h.msgPool.Put(msg)
@@ -325,53 +332,91 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 	}
 
 	// Resolve via upstream
-	response, err := h.resolver.Resolve(ctx, msg)
+	response, err := h.resolveQuery(ctx, msg, query)
 	if err != nil {
-		// Resolution failed - return SERVFAIL
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)
 	}
 
-	// Security: Validate response against query (cache poisoning protection)
-	if h.config.EnableCachePoisoningProtection {
-		if err := h.cachePoisoningProtector.ValidateResponse(msg, response); err != nil {
-			// Response validation failed - potential cache poisoning attempt
-			// Return SERVFAIL and don't cache
-			return h.buildErrorResponse(query, dns.RcodeServerFailure)
-		}
-	}
-
-	// Validate DNSSEC if DO bit is set
-	ednsInfo := edns0.ParseEDNS0(msg)
-	if ednsInfo.DO && h.config.EnableDNSSEC {
-		validationResult, err := h.dnssecValidator.ValidateResponse(ctx, response)
-		if err == nil && validationResult.Secure {
-			// Set AD (Authenticated Data) bit
-			response.AuthenticatedData = true
-		}
-		// Note: If validationResult.Bogus is true, we currently serve the response anyway
-		// Future enhancement: Consider adding strict mode that returns SERVFAIL for bogus responses
+	// Security: Validate and secure response
+	if err := h.validateAndSecureResponse(ctx, msg, response); err != nil {
+		return h.buildErrorResponse(query, dns.RcodeServerFailure)
 	}
 
 	// Apply EDNS0 if query had it
 	h.applyEDNS0(msg, response)
 
-	// Cache the response
-	if len(response.Answer) > 0 {
-		ttl := cache.GetMinTTL(response.Answer)
-		if ttl == 0 {
-			ttl = h.config.DefaultTTL
-		}
-		_ = h.CacheResponse(response, ttl) // Ignore cache errors - response should still be returned to client
-	}
+	// Cache the response if valid
+	h.cacheResponseIfValid(response)
 
 	// Pack and return response
-	responseBytes, err := response.Pack()
+	return h.packAndHandleSize(msg, response, query)
+}
+
+// resolveQuery resolves a query via the upstream resolver.
+func (h *Handler) resolveQuery(ctx context.Context, msg *dns.Msg, _ []byte) (*dns.Msg, error) {
+	response, err := h.resolver.Resolve(ctx, msg)
+	if err != nil {
+		// Resolution failed - return SERVFAIL
+		return nil, fmt.Errorf("resolution failed: %w", err)
+	}
+
+	return response, nil
+}
+
+// validateAndSecureResponse validates and secures a DNS response.
+func (h *Handler) validateAndSecureResponse(ctx context.Context, queryMsg, responseMsg *dns.Msg) error {
+	// Security: Validate response against query (cache poisoning protection)
+	if h.config.EnableCachePoisoningProtection {
+		if err := h.cachePoisoningProtector.ValidateResponse(queryMsg, responseMsg); err != nil {
+			// Response validation failed - potential cache poisoning attempt
+			return fmt.Errorf("cache poisoning protection failed: %w", err)
+		}
+	}
+
+	// Validate DNSSEC if DO bit is set
+	ednsInfo := edns0.ParseEDNS0(queryMsg)
+	if ednsInfo.DO && h.config.EnableDNSSEC {
+		h.performDNSSECValidation(ctx, responseMsg)
+	}
+
+	return nil
+}
+
+// performDNSSECValidation performs DNSSEC validation and sets AD bit if secure.
+func (h *Handler) performDNSSECValidation(ctx context.Context, responseMsg *dns.Msg) {
+	validationResult, err := h.dnssecValidator.ValidateResponse(ctx, responseMsg)
+	if err == nil && validationResult.Secure {
+		// Set AD (Authenticated Data) bit
+		responseMsg.AuthenticatedData = true
+	}
+	// Note: If validationResult.Bogus is true, we currently serve the response anyway
+	// Future enhancement: Consider adding strict mode that returns SERVFAIL for bogus responses
+}
+
+// cacheResponseIfValid caches the response if it contains answers.
+func (h *Handler) cacheResponseIfValid(response *dns.Msg) {
+	if len(response.Answer) == 0 {
+		return
+	}
+
+	ttl := cache.GetMinTTL(response.Answer)
+	if ttl == 0 {
+		ttl = h.config.DefaultTTL
+	}
+
+	// Ignore cache errors - response should still be returned to client
+	_ = h.CacheResponse(response, ttl)
+}
+
+// packAndHandleSize packs the response and handles size truncation if needed.
+func (h *Handler) packAndHandleSize(queryMsg, responseMsg *dns.Msg, query []byte) ([]byte, error) {
+	responseBytes, err := responseMsg.Pack()
 	if err != nil {
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)
 	}
 
 	// Handle response size (truncate if needed)
-	return h.handleResponseSize(msg, responseBytes)
+	return h.handleResponseSize(queryMsg, responseBytes)
 }
 
 // buildErrorResponse builds an error response for a query.
@@ -487,8 +532,8 @@ func (h *Handler) handleResponseSize(queryMsg *dns.Msg, responseBytes []byte) ([
 
 // serveCachedResponse serves a cached response, adding EDNS0 if needed.
 func (h *Handler) serveCachedResponse(query, cachedResponse []byte) ([]byte, error) {
-	// Check ARCOUNT to see if query has EDNS0
-	arcount := uint16(query[10])<<8 | uint16(query[11])
+	// Check ARCOUNT to see if query has EDNS0 (network byte order)
+	arcount := uint16(query[10])<<dnsARCountByteShift | uint16(query[11])
 
 	if arcount > 0 {
 		// Query has EDNS0, need to add OPT to response

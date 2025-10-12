@@ -1,9 +1,10 @@
-package io
+package io_test
 
 import (
 	"testing"
 
 	"github.com/miekg/dns"
+	dnsio "github.com/piwi3910/dns-go/pkg/io"
 )
 
 // BenchmarkCanUseFastPath tests zero-allocation fast path detection
@@ -18,7 +19,7 @@ func BenchmarkCanUseFastPath(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		_ = CanUseFastPath(query)
+		_ = dnsio.CanUseFastPath(query)
 	}
 }
 
@@ -33,7 +34,7 @@ func BenchmarkCanUseFastPathParallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = CanUseFastPath(query)
+			_ = dnsio.CanUseFastPath(query)
 		}
 	})
 }
@@ -66,9 +67,9 @@ func TestCanUseFastPath_CommonQueries(t *testing.T) {
 				t.Fatalf("Failed to pack message: %v", err)
 			}
 
-			result := CanUseFastPath(query)
+			result := dnsio.CanUseFastPath(query)
 			if result != tt.expected {
-				t.Errorf("CanUseFastPath() = %v, want %v", result, tt.expected)
+				t.Errorf("dnsio.CanUseFastPath() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -98,9 +99,9 @@ func TestCanUseFastPath_UncommonQueries(t *testing.T) {
 				t.Fatalf("Failed to pack message: %v", err)
 			}
 
-			result := CanUseFastPath(query)
+			result := dnsio.CanUseFastPath(query)
 			if result != false {
-				t.Errorf("CanUseFastPath() = %v, want false for uncommon query type", result)
+				t.Errorf("dnsio.CanUseFastPath() = %v, want false for uncommon query type", result)
 			}
 		})
 	}
@@ -119,7 +120,7 @@ func TestCanUseFastPath_EDNS0(t *testing.T) {
 		t.Fatalf("Failed to pack message: %v", err)
 	}
 
-	result := CanUseFastPath(query)
+	result := dnsio.CanUseFastPath(query)
 	if result != true {
 		t.Error("EDNS0 query without DO bit should use fast path")
 	}
@@ -134,7 +135,7 @@ func TestCanUseFastPath_EDNS0(t *testing.T) {
 		t.Fatalf("Failed to pack message: %v", err)
 	}
 
-	result2 := CanUseFastPath(query2)
+	result2 := dnsio.CanUseFastPath(query2)
 	if result2 != false {
 		t.Error("EDNS0 query with DO bit should not use fast path (requires DNSSEC)")
 	}
@@ -154,7 +155,7 @@ func TestCanUseFastPath_MultipleQuestions(t *testing.T) {
 		t.Fatalf("Failed to pack message: %v", err)
 	}
 
-	result := CanUseFastPath(query)
+	result := dnsio.CanUseFastPath(query)
 	if result != false {
 		t.Error("Query with multiple questions should not use fast path")
 	}
@@ -172,7 +173,7 @@ func TestCanUseFastPath_Response(t *testing.T) {
 		t.Fatalf("Failed to pack message: %v", err)
 	}
 
-	result := CanUseFastPath(query)
+	result := dnsio.CanUseFastPath(query)
 	if result != false {
 		t.Error("DNS response should not use fast path")
 	}
@@ -193,7 +194,7 @@ func TestCanUseFastPath_InvalidQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := CanUseFastPath(tt.query)
+			result := dnsio.CanUseFastPath(tt.query)
 			if result != false {
 				t.Error("Invalid query should not use fast path")
 			}
@@ -211,9 +212,9 @@ func TestParseFastPathQuery(t *testing.T) {
 		t.Fatalf("Failed to pack message: %v", err)
 	}
 
-	fpq, err := ParseFastPathQuery(query)
+	fpq, err := dnsio.ParseFastPathQuery(query)
 	if err != nil {
-		t.Fatalf("ParseFastPathQuery failed: %v", err)
+		t.Fatalf("dnsio.ParseFastPathQuery failed: %v", err)
 	}
 
 	if fpq.Name != "example.com." {

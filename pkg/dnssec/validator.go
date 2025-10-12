@@ -20,6 +20,55 @@ import (
 	"github.com/miekg/dns"
 )
 
+// DNSSEC validation constants.
+const (
+	// Chain of trust configuration.
+	defaultMaxChainLength = 10 // Maximum depth of DNSSEC chain of trust
+
+	// Root zone constants.
+	rootKSKKeyTag = 20326 // Root KSK-2017 key tag (currently active)
+
+	// Wire format encoding constants.
+	signatureDataBufferSize = 4096 // Buffer size for signature data computation
+	rrsigWireSize           = 18   // Size of RRSIG RDATA prefix (before signature)
+	// Note: Using dnsWireBufferSize, dnsRDataHeaderSize, dnsCompressionPointerMask,
+	// and dnsCompressionPointerSize from keys.go.
+
+	// Byte shift constants for multi-byte encoding.
+	byteShift8  = 8  // Shift for second byte (bits 8-15)
+	byteShift16 = 16 // Shift for third byte (bits 16-23)
+	byteShift24 = 24 // Shift for fourth byte (bits 24-31)
+
+	// RSA key parsing constants (RFC 3110).
+	rsaMinKeyLength      = 3 // Minimum RSA public key length in bytes
+	rsaExtendedExpOffset = 3 // Offset for modulus when exponent length is extended
+
+	// ECDSA key size constants (RFC 6605).
+	ecdsaP256KeySize     = 64 // P-256 curve: 32 bytes X + 32 bytes Y
+	ecdsaP384KeySize     = 96 // P-384 curve: 48 bytes X + 48 bytes Y
+	ecdsaCoordDivisor    = 2  // Divisor to get coordinate size from key size
+	ecdsaUncompressedPointPrefix = 0x04 // Uncompressed point prefix
+)
+
+// Package-level errors for DNSSEC validation.
+var (
+	ErrUnsupportedAlgorithm                 = errors.New("unsupported algorithm")
+	ErrRRSIGNoCorrespondingRRset            = errors.New("RRSIG has no corresponding RRset")
+	ErrSignatureExpiredOrNotYetValid        = errors.New("signature expired or not yet valid")
+	ErrDNSKEYNotFound                       = errors.New("DNSKEY not found")
+	ErrPublicKeyTooShort                    = errors.New("public key too short")
+	ErrInvalidPublicKeyFormat               = errors.New("invalid public key format")
+	ErrUnsupportedRSAHashAlgorithm          = errors.New("unsupported RSA hash algorithm")
+	ErrUnknownHashAlgorithm                 = errors.New("unknown hash algorithm")
+	ErrECDSAPublicKeyTooShort               = errors.New("ECDSA public key too short")
+	ErrInvalidECDSAKeySize                  = errors.New("invalid ECDSA key size")
+	ErrECDSASignatureVerificationFailed     = errors.New("ECDSA signature verification failed")
+	ErrUnsupportedECDSAHashAlgorithm        = errors.New("unsupported ECDSA hash algorithm")
+	ErrUnknownECDSAHashAlgorithm            = errors.New("unknown ECDSA hash algorithm")
+	ErrInvalidECDSASignatureSize            = errors.New("invalid ECDSA signature size")
+	ErrUnsupportedECDSASignatureHashAlgorit = errors.New("unsupported ECDSA signature hash algorithm")
+)
+
 // Validator handles DNSSEC validation of DNS responses.
 type Validator struct {
 	trustAnchors map[string]*TrustAnchor
@@ -47,7 +96,7 @@ func DefaultValidatorConfig() ValidatorConfig {
 	return ValidatorConfig{
 		EnableValidation:   true,
 		ValidateExpiration: true,
-		MaxChainLength:     10,
+		MaxChainLength:     defaultMaxChainLength,
 		RequireValidation:  false,
 	}
 }
@@ -86,12 +135,12 @@ func NewValidator(config ValidatorConfig) *Validator {
 // LoadRootTrustAnchors loads the current root zone trust anchors
 // Root KSK (Key Signing Key) 2017 - currently active.
 func (v *Validator) LoadRootTrustAnchors() {
-	// Root zone KSK-2017 (20326)
+	// Root zone KSK-2017
 	// Valid as of 2017 and currently active
 	rootKSK := &TrustAnchor{
 		Name:      ".",
 		Algorithm: dns.RSASHA256, // Algorithm 8
-		KeyTag:    20326,
+		KeyTag:    rootKSKKeyTag,
 		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+" +
 			"/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3Eg" +
 			"VLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIds" +
@@ -188,7 +237,7 @@ func (v *Validator) VerifyRRSIG(rrsig *dns.RRSIG, rrset []dns.RR, dnskey *dns.DN
 	case dns.ECDSAP384SHA384:
 		return v.verifyECDSA(sigData, signature, pubKeyBytes, crypto.SHA512)
 	default:
-		return fmt.Errorf("unsupported algorithm: %d", rrsig.Algorithm)
+		return fmt.Errorf("%w: %d", ErrUnsupportedAlgorithm, rrsig.Algorithm)
 	}
 }
 
@@ -215,7 +264,7 @@ func (v *Validator) validateRRSIGs(msg *dns.Msg) error {
 		key := fmt.Sprintf("%s:%d", rrsig.Header().Name, rrsig.TypeCovered)
 		rrset, ok := rrsets[key]
 		if !ok {
-			return fmt.Errorf("RRSIG for %s type %d has no corresponding RRset", rrsig.Header().Name, rrsig.TypeCovered)
+			return fmt.Errorf("%w: RRSIG for %s type %d", ErrRRSIGNoCorrespondingRRset, rrsig.Header().Name, rrsig.TypeCovered)
 		}
 
 		// Validate this RRSIG
@@ -234,8 +283,8 @@ func (v *Validator) validateRRSIG(rrsig *dns.RRSIG, rrset []dns.RR) error {
 		//nolint:gosec // G115: DNSSEC timestamps use uint32 seconds since epoch per RFC 4034; safe until year 2106
 		now := uint32(time.Now().Unix())
 		if now < rrsig.Inception || now > rrsig.Expiration {
-			return fmt.Errorf("signature expired or not yet valid (inception: %d, expiration: %d, now: %d)",
-				rrsig.Inception, rrsig.Expiration, now)
+			return fmt.Errorf("%w (inception: %d, expiration: %d, now: %d)",
+				ErrSignatureExpiredOrNotYetValid, rrsig.Inception, rrsig.Expiration, now)
 		}
 	}
 
@@ -246,7 +295,7 @@ func (v *Validator) validateRRSIG(rrsig *dns.RRSIG, rrset []dns.RR) error {
 		// No DNSKEY found - this is not necessarily an error
 		// The key might need to be fetched from the zone
 		// For now, we'll consider it a validation failure
-		return fmt.Errorf("DNSKEY not found for %s (keytag=%d)", rrsig.SignerName, rrsig.KeyTag)
+		return fmt.Errorf("%w: %s (keytag=%d)", ErrDNSKEYNotFound, rrsig.SignerName, rrsig.KeyTag)
 	}
 
 	// Verify the RRSIG with the DNSKEY
@@ -272,8 +321,8 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 				Ttl:      0,
 				Rdlength: 0,
 			},
-			Flags:     257, // KSK flag (trust anchors are typically KSKs)
-			Protocol:  3,
+			Flags:     dnskeyFlagsKSK,
+			Protocol:  dnskeyProtocol,
 			Algorithm: ta.Algorithm,
 			PublicKey: ta.PublicKey,
 		}
@@ -288,36 +337,36 @@ func (v *Validator) findDNSKEY(signerName string, keyTag uint16, algorithm uint8
 // calculateSignatureData computes the data that was signed
 // Implements RFC 4034 Section 6: Canonical RR Ordering.
 func (v *Validator) calculateSignatureData(rrsig *dns.RRSIG, rrset []dns.RR) []byte {
-	buf := make([]byte, 0, 4096)
+	buf := make([]byte, 0, signatureDataBufferSize)
 
 	// Add RRSIG RDATA (without signature) - RFC 4034 §3.1.8.1
-	rrsigWire := make([]byte, 18)
-	rrsigWire[0] = byte(rrsig.TypeCovered >> 8)
+	rrsigWire := make([]byte, rrsigWireSize)
+	rrsigWire[0] = byte(rrsig.TypeCovered >> byteShift8)
 	rrsigWire[1] = byte(rrsig.TypeCovered)
 	rrsigWire[2] = rrsig.Algorithm
 	rrsigWire[3] = rrsig.Labels
 
 	// Original TTL (4 bytes, big endian)
 	ttl := rrsig.OrigTtl
-	rrsigWire[4] = byte(ttl >> 24)
-	rrsigWire[5] = byte(ttl >> 16)
-	rrsigWire[6] = byte(ttl >> 8)
+	rrsigWire[4] = byte(ttl >> byteShift24)
+	rrsigWire[5] = byte(ttl >> byteShift16)
+	rrsigWire[6] = byte(ttl >> byteShift8)
 	rrsigWire[7] = byte(ttl)
 
 	// Expiration (4 bytes)
-	rrsigWire[8] = byte(rrsig.Expiration >> 24)
-	rrsigWire[9] = byte(rrsig.Expiration >> 16)
-	rrsigWire[10] = byte(rrsig.Expiration >> 8)
+	rrsigWire[8] = byte(rrsig.Expiration >> byteShift24)
+	rrsigWire[9] = byte(rrsig.Expiration >> byteShift16)
+	rrsigWire[10] = byte(rrsig.Expiration >> byteShift8)
 	rrsigWire[11] = byte(rrsig.Expiration)
 
 	// Inception (4 bytes)
-	rrsigWire[12] = byte(rrsig.Inception >> 24)
-	rrsigWire[13] = byte(rrsig.Inception >> 16)
-	rrsigWire[14] = byte(rrsig.Inception >> 8)
+	rrsigWire[12] = byte(rrsig.Inception >> byteShift24)
+	rrsigWire[13] = byte(rrsig.Inception >> byteShift16)
+	rrsigWire[14] = byte(rrsig.Inception >> byteShift8)
 	rrsigWire[15] = byte(rrsig.Inception)
 
 	// KeyTag (2 bytes)
-	rrsigWire[16] = byte(rrsig.KeyTag >> 8)
+	rrsigWire[16] = byte(rrsig.KeyTag >> byteShift8)
 	rrsigWire[17] = byte(rrsig.KeyTag)
 
 	buf = append(buf, rrsigWire...)
@@ -399,28 +448,28 @@ func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 	rrCopy.Header().Name = strings.ToLower(dns.Fqdn(rrCopy.Header().Name))
 
 	// Pack to wire format
-	buf := make([]byte, 0, 512)
+	buf := make([]byte, 0, dnsWireBufferSize)
 
 	// Pack owner name
 	ownerWire := canonicalName(rrCopy.Header().Name)
 	buf = append(buf, ownerWire...)
 
 	// Pack header fields
-	header := make([]byte, 10)
-	header[0] = byte(rrCopy.Header().Rrtype >> 8)
+	header := make([]byte, dnsRDataHeaderSize)
+	header[0] = byte(rrCopy.Header().Rrtype >> byteShift8)
 	header[1] = byte(rrCopy.Header().Rrtype)
-	header[2] = byte(rrCopy.Header().Class >> 8)
+	header[2] = byte(rrCopy.Header().Class >> byteShift8)
 	header[3] = byte(rrCopy.Header().Class)
-	header[4] = byte(origTTL >> 24)
-	header[5] = byte(origTTL >> 16)
-	header[6] = byte(origTTL >> 8)
+	header[4] = byte(origTTL >> byteShift24)
+	header[5] = byte(origTTL >> byteShift16)
+	header[6] = byte(origTTL >> byteShift8)
 	header[7] = byte(origTTL)
 
 	// Pack RDATA
 	rdataWire := packRDATA(rrCopy)
 	//nolint:gosec // G115: DNS RDATA length limited to 65535 bytes per RFC 1035; packRDATA uses 512-byte buffer
 	rdataLen := uint16(len(rdataWire))
-	header[8] = byte(rdataLen >> 8)
+	header[8] = byte(rdataLen >> byteShift8)
 	header[9] = byte(rdataLen)
 
 	buf = append(buf, header...)
@@ -433,7 +482,7 @@ func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 func packRDATA(rr dns.RR) []byte {
 	// Use miekg/dns packing, then lowercase domain names in RDATA
 	// For types that contain domain names (CNAME, NS, MX, etc.)
-	buf := make([]byte, 512)
+	buf := make([]byte, dnsWireBufferSize)
 	off, err := dns.PackRR(rr, buf, 0, nil, false)
 	if err != nil {
 		return []byte{}
@@ -443,9 +492,9 @@ func packRDATA(rr dns.RR) []byte {
 	// Find where RDATA starts
 	nameLen := 0
 	for i := 0; i < len(buf) && buf[i] != 0; {
-		if buf[i]&0xC0 == 0xC0 {
+		if buf[i]&dnsCompressionPointerMask == dnsCompressionPointerMask {
 			// Compression pointer
-			nameLen = i + 2
+			nameLen = i + dnsCompressionPointerSize
 
 			break
 		}
@@ -459,7 +508,7 @@ func packRDATA(rr dns.RR) []byte {
 	}
 
 	// RDATA starts after name (nameLen) + type(2) + class(2) + ttl(4) + rdlength(2) = nameLen + 10
-	rdataStart := nameLen + 10
+	rdataStart := nameLen + dnsRDataHeaderSize
 	if rdataStart >= off {
 		return []byte{}
 	}
@@ -510,8 +559,8 @@ func compareWireFormat(a, b []byte) int {
 // verifyRSA verifies an RSA signature.
 func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Hash) error {
 	// Parse RSA public key (RFC 3110 format)
-	if len(pubKey) < 3 {
-		return errors.New("public key too short")
+	if len(pubKey) < rsaMinKeyLength {
+		return ErrPublicKeyTooShort
 	}
 
 	// Extract exponent
@@ -520,8 +569,8 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 
 	if pubKey[0] == 0 {
 		// Exponent length is in next 2 bytes
-		exponent = int(pubKey[1])<<8 | int(pubKey[2])
-		modulusStart = 3 + exponent
+		exponent = int(pubKey[1])<<byteShift8 | int(pubKey[2])
+		modulusStart = rsaExtendedExpOffset + exponent
 	} else {
 		// Exponent length is in first byte
 		exponent = int(pubKey[0])
@@ -529,7 +578,7 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 	}
 
 	if modulusStart > len(pubKey) {
-		return errors.New("invalid public key format")
+		return ErrInvalidPublicKeyFormat
 	}
 
 	// Extract exponent bytes
@@ -560,9 +609,9 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 		crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256, crypto.BLAKE2s_256,
 		crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
 		// Explicitly unsupported hash algorithms for DNSSEC RSA verification
-		return fmt.Errorf("unsupported RSA hash algorithm: %v", hashAlgo)
+		return fmt.Errorf("%w: %v", ErrUnsupportedRSAHashAlgorithm, hashAlgo)
 	default:
-		return fmt.Errorf("unknown hash algorithm: %v", hashAlgo)
+		return fmt.Errorf("%w: %v", ErrUnknownHashAlgorithm, hashAlgo)
 	}
 	h.Write(data)
 	hashed := h.Sum(nil)
@@ -578,59 +627,94 @@ func (v *Validator) verifyRSA(data, signature, pubKey []byte, hashAlgo crypto.Ha
 // verifyECDSA verifies an ECDSA signature.
 func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.Hash) error {
 	// RFC 6605 - ECDSA for DNSSEC
-	// Public key format: 0x04 || X || Y (uncompressed point)
-
 	if len(pubKey) < 1 {
-		return errors.New("ECDSA public key too short")
+		return ErrECDSAPublicKeyTooShort
 	}
 
-	// Determine curve based on algorithm
+	// Determine curve and extract public key
+	curve, keySize, err := setupECDSACurve(hashAlgo)
+	if err != nil {
+		return err
+	}
+
+	pubKey = stripUncompressedPointPrefix(pubKey)
+	if len(pubKey) != keySize {
+		return fmt.Errorf("%w: expected %d, got %d", ErrInvalidECDSAKeySize, keySize, len(pubKey))
+	}
+
+	// Parse public key coordinates
+	coordSize := keySize / ecdsaCoordDivisor
+	curve.X = big.NewInt(0).SetBytes(pubKey[:coordSize])
+	curve.Y = big.NewInt(0).SetBytes(pubKey[coordSize:])
+
+	// Parse signature
+	r, s, err := parseECDSASignature(signature, keySize, coordSize)
+	if err != nil {
+		return err
+	}
+
+	// Hash and verify
+	hashed, err := hashDataForECDSA(data, hashAlgo)
+	if err != nil {
+		return err
+	}
+
+	if !ecdsa.Verify(curve, hashed, r, s) {
+		return ErrECDSASignatureVerificationFailed
+	}
+
+	return nil
+}
+
+// setupECDSACurve determines the curve and key size based on hash algorithm.
+func setupECDSACurve(hashAlgo crypto.Hash) (*ecdsa.PublicKey, int, error) {
 	var curve ecdsa.PublicKey
 	var expectedKeySize int
 
 	switch hashAlgo {
 	case crypto.SHA256:
-		// P-256 curve
 		curve.Curve = elliptic.P256()
-		expectedKeySize = 64 // 32 bytes X + 32 bytes Y
+		expectedKeySize = ecdsaP256KeySize
 	case crypto.SHA512:
-		// P-384 curve
 		curve.Curve = elliptic.P384()
-		expectedKeySize = 96 // 48 bytes X + 48 bytes Y
+		expectedKeySize = ecdsaP384KeySize
 	case crypto.MD4, crypto.MD5, crypto.SHA1, crypto.SHA224, crypto.SHA384,
 		crypto.MD5SHA1, crypto.RIPEMD160, crypto.SHA3_224, crypto.SHA3_256,
 		crypto.SHA3_384, crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256,
 		crypto.BLAKE2s_256, crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
-		// Explicitly unsupported hash algorithms for DNSSEC ECDSA verification
-		return fmt.Errorf("unsupported ECDSA hash algorithm: %v", hashAlgo)
+		return nil, 0, fmt.Errorf("%w: %v", ErrUnsupportedECDSAHashAlgorithm, hashAlgo)
 	default:
-		return fmt.Errorf("unknown ECDSA hash algorithm: %v", hashAlgo)
+		return nil, 0, fmt.Errorf("%w: %v", ErrUnknownECDSAHashAlgorithm, hashAlgo)
 	}
 
-	// Uncompressed point format: 0x04 || X || Y
-	if pubKey[0] == 0x04 {
-		pubKey = pubKey[1:]
+	return &curve, expectedKeySize, nil
+}
+
+// stripUncompressedPointPrefix removes the 0x04 prefix if present.
+func stripUncompressedPointPrefix(pubKey []byte) []byte {
+	if pubKey[0] == ecdsaUncompressedPointPrefix {
+		return pubKey[1:]
 	}
 
-	if len(pubKey) != expectedKeySize {
-		return fmt.Errorf("invalid ECDSA key size: expected %d, got %d", expectedKeySize, len(pubKey))
-	}
+	return pubKey
+}
 
-	// Split into X and Y coordinates
-	coordSize := expectedKeySize / 2
-	curve.X = big.NewInt(0).SetBytes(pubKey[:coordSize])
-	curve.Y = big.NewInt(0).SetBytes(pubKey[coordSize:])
-
-	// ECDSA signature format: R || S (each 32 bytes for P-256, 48 bytes for P-384)
+// parseECDSASignature extracts R and S values from ECDSA signature.
+func parseECDSASignature(signature []byte, expectedKeySize, coordSize int) (*big.Int, *big.Int, error) {
 	if len(signature) != expectedKeySize {
-		return errors.New("invalid ECDSA signature size")
+		return nil, nil, ErrInvalidECDSASignatureSize
 	}
 
 	r := big.NewInt(0).SetBytes(signature[:coordSize])
 	s := big.NewInt(0).SetBytes(signature[coordSize:])
 
-	// Hash the data
+	return r, s, nil
+}
+
+// hashDataForECDSA hashes data using the specified algorithm.
+func hashDataForECDSA(data []byte, hashAlgo crypto.Hash) ([]byte, error) {
 	var h hash.Hash
+
 	switch hashAlgo {
 	case crypto.SHA256:
 		h = sha256.New()
@@ -640,20 +724,14 @@ func (v *Validator) verifyECDSA(data, signature, pubKey []byte, hashAlgo crypto.
 		crypto.MD5SHA1, crypto.RIPEMD160, crypto.SHA3_224, crypto.SHA3_256,
 		crypto.SHA3_384, crypto.SHA3_512, crypto.SHA512_224, crypto.SHA512_256,
 		crypto.BLAKE2s_256, crypto.BLAKE2b_256, crypto.BLAKE2b_384, crypto.BLAKE2b_512:
-		// Explicitly unsupported hash algorithms for DNSSEC ECDSA signature hashing
-		return fmt.Errorf("unsupported ECDSA signature hash algorithm: %v", hashAlgo)
+		return nil, fmt.Errorf("%w: %v", ErrUnsupportedECDSASignatureHashAlgorit, hashAlgo)
 	default:
-		return fmt.Errorf("unknown hash algorithm: %v", hashAlgo)
+		return nil, fmt.Errorf("%w: %v", ErrUnknownHashAlgorithm, hashAlgo)
 	}
+
 	h.Write(data)
-	hashed := h.Sum(nil)
 
-	// Verify signature
-	if !ecdsa.Verify(&curve, hashed, r, s) {
-		return errors.New("ECDSA signature verification failed")
-	}
-
-	return nil
+	return h.Sum(nil), nil
 }
 
 // hasRRSIG checks if a message contains RRSIG records.

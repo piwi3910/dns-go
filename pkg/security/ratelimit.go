@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+// Rate limiting configuration defaults.
+const (
+	defaultQueriesPerSecond = 100 // Default queries per second per IP
+	defaultBurstSize        = 200 // Default token bucket burst size
+	defaultBucketTTLMinutes = 5   // Default bucket TTL in minutes
+)
+
 // RateLimiter implements token bucket rate limiting per client IP
 // This prevents DNS amplification attacks and abuse.
 type RateLimiter struct {
@@ -41,12 +48,12 @@ type RateLimitConfig struct {
 // DefaultRateLimitConfig returns sensible defaults.
 func DefaultRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
-		QueriesPerSecond: 100,             // 100 QPS per IP
-		BurstSize:        200,             // Allow burst of 200
-		CleanupInterval:  1 * time.Minute, // Clean up every minute
-		BucketTTL:        5 * time.Minute, // Keep buckets for 5 minutes
-		Enabled:          true,            // Enabled by default
-		WhitelistedIPs:   []string{},      // No whitelist by default
+		QueriesPerSecond: defaultQueriesPerSecond,                   // 100 QPS per IP
+		BurstSize:        defaultBurstSize,                          // Allow burst of 200
+		CleanupInterval:  1 * time.Minute,                           // Clean up every minute
+		BucketTTL:        defaultBucketTTLMinutes * time.Minute,     // Keep buckets for 5 minutes
+		Enabled:          true,                                      // Enabled by default
+		WhitelistedIPs:   []string{},                                // No whitelist by default
 	}
 }
 

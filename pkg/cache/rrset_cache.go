@@ -9,6 +9,16 @@ import (
 	"github.com/miekg/dns"
 )
 
+// RRset cache configuration constants.
+const (
+	defaultRRsetCacheShards    = 128 // More shards due to higher contention
+	defaultRRsetCacheSizeMB    = 256 // 256 MB (2x message cache per Unbound recommendation)
+	defaultRRsetCacheMinTTLSec = 60  // 60 seconds
+	defaultRRsetCacheMaxTTLHr  = 24  // 24 hours
+	rrsetKeyBufferSize         = 128 // Buffer size for RRset cache key generation
+	estimatedBytesPerRR        = 100 // Estimated bytes per resource record
+)
+
 // RRsetCacheEntry represents a cached resource record set
 // Unlike MessageCache which stores complete responses, RRset cache stores
 // individual resource records that can be assembled into responses.
@@ -84,10 +94,10 @@ type RRsetCacheConfig struct {
 // Note: RRset cache is typically 2x size of message cache (Unbound recommendation).
 func DefaultRRsetCacheConfig() RRsetCacheConfig {
 	return RRsetCacheConfig{
-		NumShards:    128,               // More shards due to higher contention
-		MaxSizeBytes: 256 * 1024 * 1024, // 256 MB (2x message cache)
-		MinTTL:       60 * time.Second,
-		MaxTTL:       24 * time.Hour,
+		NumShards:    defaultRRsetCacheShards,
+		MaxSizeBytes: defaultRRsetCacheSizeMB * bytesPerMegabyte,
+		MinTTL:       defaultRRsetCacheMinTTLSec * time.Second,
+		MaxTTL:       defaultRRsetCacheMaxTTLHr * time.Hour,
 	}
 }
 
@@ -298,7 +308,7 @@ func (rc *RRsetCache) getShard(key string) *RRsetCacheShard {
 // Format: "name:type".
 func MakeRRsetKey(name string, qtype uint16) string {
 	// Pre-allocate buffer
-	buf := make([]byte, 0, 128)
+	buf := make([]byte, 0, rrsetKeyBufferSize)
 	buf = append(buf, name...)
 	buf = append(buf, ':')
 	buf = appendUint16(buf, qtype)
@@ -313,9 +323,9 @@ func estimateRRsetSize(rrs []dns.RR) int {
 		return 0
 	}
 
-	// Rough estimate: 100 bytes per RR (header + average data size)
+	// Rough estimate: header + average data size per RR
 	// This is conservative but avoids the cost of serializing every RR
-	return len(rrs) * 100
+	return len(rrs) * estimatedBytesPerRR
 }
 
 // BuildResponse constructs a DNS response from cached RRsets

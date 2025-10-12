@@ -12,6 +12,13 @@ import (
 	"github.com/piwi3910/dns-go/pkg/dnssec"
 )
 
+// Package-level errors.
+var (
+	ErrQueryNoQuestions          = errors.New("query has no questions")
+	ErrUnknownRecursionMode      = errors.New("unknown recursion mode")
+	ErrIterativeResolverNotInit  = errors.New("iterative resolver not initialized")
+)
+
 // RecursionMode defines how the resolver operates.
 type RecursionMode int
 
@@ -22,12 +29,19 @@ const (
 	RecursiveMode
 )
 
+// Resolver configuration defaults.
+const (
+	defaultWorkerPoolSize   = 1000 // Default worker pool size for concurrent queries
+	defaultMaxRetries       = 2    // Default maximum number of retry attempts
+	// Note: defaultQueryTimeoutSec is defined in iterative.go.
+)
+
 // Resolver handles DNS query resolution
 // Uses a worker pool to handle concurrent queries efficiently.
 type Resolver struct {
 	upstream  *UpstreamPool
 	iterative *IterativeResolver
-	config    ResolverConfig
+	config    Config
 
 	// DNSSEC validation
 	dnssecValidator *dnssec.Validator
@@ -38,8 +52,8 @@ type Resolver struct {
 	mu       sync.Mutex
 }
 
-// ResolverConfig holds configuration for the resolver.
-type ResolverConfig struct {
+// Config holds configuration for the resolver.
+type Config struct {
 	// Mode determines resolution strategy (Forwarding or Recursive)
 	Mode RecursionMode
 
@@ -62,24 +76,24 @@ type ResolverConfig struct {
 	DNSSECConfig dnssec.ValidatorConfig
 }
 
-// DefaultResolverConfig returns configuration with sensible defaults
+// DefaultConfig returns configuration with sensible defaults
 // Uses RecursiveMode for true local recursion from root servers.
-func DefaultResolverConfig() ResolverConfig {
-	return ResolverConfig{
-		Mode:             RecursiveMode, // True recursive resolution
-		WorkerPoolSize:   1000,
-		MaxRetries:       2,
-		QueryTimeout:     5 * time.Second,
-		EnableCoalescing: true,
-		EnableDNSSEC:     true, // DNSSEC validation enabled by default
+func DefaultConfig() Config {
+	return Config{
+		Mode:             RecursiveMode,                          // True recursive resolution
+		WorkerPoolSize:   defaultWorkerPoolSize,                 // 1000 concurrent queries
+		MaxRetries:       defaultMaxRetries,                     // 2 retry attempts
+		QueryTimeout:     defaultQueryTimeoutSec * time.Second,  // 5 second timeout
+		EnableCoalescing: true,                                  // Request deduplication enabled
+		EnableDNSSEC:     true,                                  // DNSSEC validation enabled by default
 		DNSSECConfig:     dnssec.DefaultValidatorConfig(),
 	}
 }
 
 // DefaultForwardingConfig returns configuration for forwarding mode
 // Useful for testing or when you want to use upstream resolvers.
-func DefaultForwardingConfig() ResolverConfig {
-	config := DefaultResolverConfig()
+func DefaultForwardingConfig() Config {
+	config := DefaultConfig()
 	config.Mode = ForwardingMode
 
 	return config
@@ -96,7 +110,7 @@ type inflightRequest struct {
 }
 
 // NewResolver creates a new DNS resolver.
-func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
+func NewResolver(config Config, upstream *UpstreamPool) *Resolver {
 	r := &Resolver{
 		upstream:        upstream,
 		iterative:       nil,
@@ -124,7 +138,7 @@ func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
 // If coalescing is enabled, duplicate queries will wait for the first one.
 func (r *Resolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	if len(query.Question) == 0 {
-		return nil, errors.New("query has no questions")
+		return nil, ErrQueryNoQuestions
 	}
 
 	q := query.Question[0]
@@ -140,12 +154,12 @@ func (r *Resolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error
 }
 
 // GetStats returns current resolver statistics.
-func (r *Resolver) GetStats() ResolverStats {
+func (r *Resolver) GetStats() Stats {
 	r.mu.Lock()
 	inFlight := len(r.inFlight)
 	r.mu.Unlock()
 
-	return ResolverStats{
+	return Stats{
 		InFlightQueries: inFlight,
 		Upstreams:       r.upstream.GetStats(),
 	}
@@ -219,18 +233,18 @@ func (r *Resolver) doResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, err
 		return r.doForwardingResolve(queryCtx, query)
 
 	default:
-		return nil, fmt.Errorf("unknown recursion mode: %d", r.config.Mode)
+		return nil, fmt.Errorf("%w: %d", ErrUnknownRecursionMode, r.config.Mode)
 	}
 }
 
 // doRecursiveResolve performs true recursive resolution from root servers.
 func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
 	if r.iterative == nil {
-		return nil, errors.New("iterative resolver not initialized")
+		return nil, ErrIterativeResolverNotInit
 	}
 
 	if len(query.Question) == 0 {
-		return nil, errors.New("query has no questions")
+		return nil, ErrQueryNoQuestions
 	}
 
 	q := query.Question[0]
@@ -280,7 +294,7 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 
 	// Validate response
 	if response == nil {
-		return nil, errors.New("nil response from upstream")
+		return nil, ErrNilResponse
 	}
 
 	// DNSSEC validation if enabled
@@ -308,8 +322,8 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 	return response, nil
 }
 
-// ResolverStats represents statistical metrics for DNS resolution operations.
-type ResolverStats struct {
+// Stats represents statistical metrics for DNS resolution operations.
+type Stats struct {
 	InFlightQueries int
 	Upstreams       []cache.UpstreamSnapshot
 }

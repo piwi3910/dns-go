@@ -10,6 +10,26 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Package-level errors for NSEC3 validation.
+var (
+	ErrNoNSEC3ForNXDOMAIN       = errors.New("no NSEC3 records provided for NXDOMAIN proof")
+	ErrNoNSEC3ForNODATA         = errors.New("no NSEC3 records provided for NODATA proof")
+	ErrNSEC3TypeInconsistent    = errors.New("NSEC3 shows name has type, inconsistent with NODATA")
+	ErrNoMatchingNSEC3Found     = errors.New("no matching NSEC3 record found")
+	ErrNoNSEC3CoversHash        = errors.New("no NSEC3 covers hashed name")
+	ErrNoClosestEncloserFound   = errors.New("no closest encloser found")
+	ErrUnsupportedNSEC3HashAlg  = errors.New("unsupported NSEC3 hash algorithm")
+	ErrNSEC3IterationCountHigh  = errors.New("NSEC3 iteration count too high")
+	ErrNSEC3SaltTooLong         = errors.New("NSEC3 salt too long")
+)
+
+// NSEC3 validation constants (RFC 5155).
+const (
+	nsec3OwnerHashParts   = 2     // Number of parts when splitting NSEC3 owner name
+	nsec3OptOutFlagBit    = 0x01  // Bit 0 of flags is opt-out flag (RFC 5155 §3.1.2)
+	nsec3MaxIterations    = 150   // Maximum NSEC3 iteration count to prevent DoS
+)
+
 // NSEC3Validator validates NSEC3 records for authenticated denial of existence.
 type NSEC3Validator struct {
 	validator *Validator
@@ -26,7 +46,7 @@ func NewNSEC3Validator(validator *Validator) *NSEC3Validator {
 // RFC 5155 §8.4: Closest Encloser Proof.
 func (n3v *NSEC3Validator) ValidateNXDOMAIN(qname string, nsec3Records []*dns.NSEC3) error {
 	if len(nsec3Records) == 0 {
-		return errors.New("no NSEC3 records provided for NXDOMAIN proof")
+		return ErrNoNSEC3ForNXDOMAIN
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -65,7 +85,7 @@ func (n3v *NSEC3Validator) ValidateNXDOMAIN(qname string, nsec3Records []*dns.NS
 // RFC 5155 §8.5-8.7: NODATA proofs.
 func (n3v *NSEC3Validator) ValidateNODATA(qname string, qtype uint16, nsec3Records []*dns.NSEC3) error {
 	if len(nsec3Records) == 0 {
-		return errors.New("no NSEC3 records provided for NODATA proof")
+		return ErrNoNSEC3ForNODATA
 	}
 
 	qname = dns.Fqdn(strings.ToLower(qname))
@@ -80,7 +100,7 @@ func (n3v *NSEC3Validator) ValidateNODATA(qname string, qtype uint16, nsec3Recor
 		if owner == hashedName {
 			// Exact match - check type bitmap
 			if hasType(nsec3.TypeBitMap, qtype) {
-				return fmt.Errorf("NSEC3 shows %s has type %d, inconsistent with NODATA", qname, qtype)
+				return fmt.Errorf("%w: %s has type %d", ErrNSEC3TypeInconsistent, qname, qtype)
 			}
 
 			// NSEC3 proves the name exists but doesn't have this type
@@ -88,7 +108,7 @@ func (n3v *NSEC3Validator) ValidateNODATA(qname string, qtype uint16, nsec3Recor
 		}
 	}
 
-	return fmt.Errorf("no matching NSEC3 record found for %s (hash: %s)", qname, hashedName)
+	return fmt.Errorf("%w: %s (hash: %s)", ErrNoMatchingNSEC3Found, qname, hashedName)
 }
 
 // proveNameDoesNotExist proves a name doesn't exist using NSEC3.
@@ -107,7 +127,7 @@ func (n3v *NSEC3Validator) proveNameDoesNotExist(name string, nsec3Records []*dn
 		}
 	}
 
-	return fmt.Errorf("no NSEC3 covers hashed name %s", hashedName)
+	return fmt.Errorf("%w: %s", ErrNoNSEC3CoversHash, hashedName)
 }
 
 // findClosestEncloser finds the closest enclosing name that exists.
@@ -135,7 +155,7 @@ func (n3v *NSEC3Validator) findClosestEncloser(
 		}
 	}
 
-	return "", fmt.Errorf("no closest encloser found for %s", qname)
+	return "", fmt.Errorf("%w: %s", ErrNoClosestEncloserFound, qname)
 }
 
 // getNextCloser returns the next closer name to the closest encloser.
@@ -258,7 +278,7 @@ func base32Encode(data []byte) string {
 // NSEC3 owner format: <hash>.<zone>.
 func extractHashFromNSEC3Owner(owner string) string {
 	owner = dns.Fqdn(strings.ToLower(owner))
-	parts := strings.SplitN(owner, ".", 2)
+	parts := strings.SplitN(owner, ".", nsec3OwnerHashParts)
 	if len(parts) < 1 {
 		return ""
 	}
@@ -289,27 +309,26 @@ func ExtractNSEC3Records(msg *dns.Msg) []*dns.NSEC3 {
 
 // IsOptOut checks if NSEC3 opt-out is enabled.
 func IsOptOut(nsec3 *dns.NSEC3) bool {
-	// Bit 0 of flags is opt-out flag
-	return nsec3.Flags&0x01 == 0x01
+	// Bit 0 of flags is opt-out flag (RFC 5155 §3.1.2)
+	return nsec3.Flags&nsec3OptOutFlagBit == nsec3OptOutFlagBit
 }
 
 // ValidateNSEC3Params validates NSEC3 parameters are acceptable.
 func ValidateNSEC3Params(nsec3 *dns.NSEC3) error {
 	// Check hash algorithm (only SHA-1 is defined)
 	if nsec3.Hash != dns.SHA1 {
-		return fmt.Errorf("unsupported NSEC3 hash algorithm: %d", nsec3.Hash)
+		return fmt.Errorf("%w: %d", ErrUnsupportedNSEC3HashAlg, nsec3.Hash)
 	}
 
 	// Check iteration count (should be reasonable to prevent DoS)
-	maxIterations := uint16(150) // Common limit
-	if nsec3.Iterations > maxIterations {
-		return fmt.Errorf("NSEC3 iteration count too high: %d > %d", nsec3.Iterations, maxIterations)
+	if nsec3.Iterations > nsec3MaxIterations {
+		return fmt.Errorf("%w: %d > %d", ErrNSEC3IterationCountHigh, nsec3.Iterations, nsec3MaxIterations)
 	}
 
 	// Salt length should be reasonable
 	maxSaltLen := 255
 	if len(nsec3.Salt) > maxSaltLen {
-		return fmt.Errorf("NSEC3 salt too long: %d > %d", len(nsec3.Salt), maxSaltLen)
+		return fmt.Errorf("%w: %d > %d", ErrNSEC3SaltTooLong, len(nsec3.Salt), maxSaltLen)
 	}
 
 	return nil
