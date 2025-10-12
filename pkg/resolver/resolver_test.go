@@ -163,14 +163,20 @@ func TestResolve_NoQuestions(t *testing.T) {
 func TestGetStats(t *testing.T) {
 	t.Parallel()
 	config := resolver.DefaultForwardingConfig()
-	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
-	resolver := resolver.NewResolver(config, upstream)
+	infraCache := cache.NewInfraCache()
 
-	// Note: Further validation requires getter methods for unexported fields
-	_ = resolver
-	// Record some upstream stats so they appear in GetStats()
-	// upstreamStats := resolver.upstream.infraCache.GetOrCreate("8.8.8.8:53")
-	// upstreamStats.RecordSuccess(25 * time.Millisecond)
+	// Pre-populate infra cache with upstream stats
+	upstreamStats := infraCache.GetOrCreate("8.8.8.8:53")
+	upstreamStats.RecordSuccess(25 * time.Millisecond)
+
+	upstreamConfig := resolver.UpstreamConfig{
+		Upstreams:              []string{"8.8.8.8:53"},
+		Timeout:                5 * time.Second,
+		MaxRetries:             2,
+		ConnectionsPerUpstream: 4,
+	}
+	upstream := resolver.NewUpstreamPool(upstreamConfig, infraCache)
+	resolver := resolver.NewResolver(config, upstream)
 
 	stats := resolver.GetStats()
 
@@ -180,6 +186,10 @@ func TestGetStats(t *testing.T) {
 
 	if len(stats.Upstreams) == 0 {
 		t.Error("Expected upstream stats")
+	}
+
+	if len(stats.Upstreams) != 1 {
+		t.Errorf("Expected 1 upstream, got %d", len(stats.Upstreams))
 	}
 }
 
