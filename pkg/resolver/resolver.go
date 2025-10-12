@@ -229,26 +229,30 @@ func (r *Resolver) doRecursiveResolve(ctx context.Context, query *dns.Msg) (*dns
 		return nil, err
 	}
 
-	// Copy query ID and flags to response
-	if response != nil {
-		response.Id = query.Id
-		response.RecursionDesired = query.RecursionDesired
-		response.RecursionAvailable = true
+	if response == nil {
+		return response, nil
+	}
 
-		// DNSSEC validation if enabled and CheckingDisabled is not set
-		if r.dnssecEnabled && r.dnssecValidator != nil && !query.CheckingDisabled {
-			validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
-			// Handle validation error first
-			if err != nil {
-				if r.config.DNSSECConfig.RequireValidation {
-					return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
-				}
-				response.AuthenticatedData = false
-			} else {
-				// Set AD bit based on validation result
-				response.AuthenticatedData = validationResult.Secure
-			}
+	// Copy query ID and flags to response
+	response.Id = query.Id
+	response.RecursionDesired = query.RecursionDesired
+	response.RecursionAvailable = true
+
+	// DNSSEC validation if enabled and CheckingDisabled is not set
+	if !r.dnssecEnabled || r.dnssecValidator == nil || query.CheckingDisabled {
+		return response, nil
+	}
+
+	validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+	// Handle validation error first
+	if err != nil {
+		if r.config.DNSSECConfig.RequireValidation {
+			return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
 		}
+		response.AuthenticatedData = false
+	} else {
+		// Set AD bit based on validation result
+		response.AuthenticatedData = validationResult.Secure
 	}
 
 	return response, nil

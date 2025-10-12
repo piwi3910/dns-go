@@ -177,42 +177,7 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 	// Check message cache (L1)
 	cacheKey := cache.MakeKey(fpq.Name, fpq.Type, fpq.Class)
 	if cachedResponse := h.messageCache.Get(cacheKey); cachedResponse != nil {
-		// Cache hit! Need to add EDNS0 if query has it
-		// Check ARCOUNT to see if query has EDNS0
-		arcount := uint16(query[10])<<8 | uint16(query[11])
-
-		if arcount > 0 {
-			// Query has EDNS0, need to add OPT to response
-			queryMsg := h.msgPool.Get()
-			defer h.msgPool.Put(queryMsg)
-
-			if err := queryMsg.Unpack(query); err == nil {
-				responseMsg := h.msgPool.Get()
-				defer h.msgPool.Put(responseMsg)
-
-				if err := responseMsg.Unpack(cachedResponse); err == nil {
-					// Add EDNS0 to response
-					h.applyEDNS0(queryMsg, responseMsg)
-
-					// Pack with EDNS0
-					if finalBytes, err := responseMsg.Pack(); err == nil {
-						// Update message ID
-						finalBytes[0] = query[0]
-						finalBytes[1] = query[1]
-
-						return finalBytes, nil
-					}
-				}
-			}
-		}
-
-		// No EDNS0 or fallback: use optimized path
-		result := make([]byte, len(cachedResponse))
-		result[0] = query[0]
-		result[1] = query[1]
-		copy(result[2:], cachedResponse[2:])
-
-		return result, nil
+		return h.serveCachedResponse(query, cachedResponse)
 	}
 
 	// Check RRset cache (L2)
@@ -272,56 +237,8 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 
 	// Check caches even in slow path
 	if h.config.EnableCache {
-		// Try message cache
-		cacheKey := cache.MakeKey(q.Name, q.Qtype, q.Qclass)
-		if cachedResponse := h.messageCache.Get(cacheKey); cachedResponse != nil {
-			// Parse cached response to add EDNS0
-			responseMsg := h.msgPool.Get()
-			defer h.msgPool.Put(responseMsg)
-
-			if err := responseMsg.Unpack(cachedResponse); err == nil {
-				// Apply EDNS0 from query
-				h.applyEDNS0(msg, responseMsg)
-
-				// Pack with EDNS0
-				if finalBytes, err := responseMsg.Pack(); err == nil {
-					// Update message ID from query
-					finalBytes[0] = query[0]
-					finalBytes[1] = query[1]
-
-					return h.handleResponseSize(msg, finalBytes)
-				}
-			}
-
-			// Fallback: use cached response as-is with ID replacement
-			result := make([]byte, len(cachedResponse))
-			result[0] = query[0]
-			result[1] = query[1]
-			copy(result[2:], cachedResponse[2:])
-
-			return h.handleResponseSize(msg, result)
-		}
-
-		// Try RRset cache
-		if rrs := h.rrsetCache.Get(q.Name, q.Qtype); rrs != nil {
-			response := cache.BuildResponse(msg, rrs)
-
-			// Apply EDNS0
-			h.applyEDNS0(msg, response)
-
-			responseBytes, err := response.Pack()
-			if err != nil {
-				return h.buildErrorResponse(query, dns.RcodeServerFailure)
-			}
-
-			// Cache complete response
-			ttl := cache.GetMinTTL(rrs)
-			if ttl == 0 {
-				ttl = h.config.DefaultTTL
-			}
-			h.messageCache.Set(cacheKey, responseBytes, ttl)
-
-			return h.handleResponseSize(msg, responseBytes)
+		if result, err := h.checkSlowPathCaches(msg, query, q.Name, q.Qtype, q.Qclass); result != nil || err != nil {
+			return result, err
 		}
 	}
 
@@ -547,4 +464,128 @@ func (h *Handler) handleResponseSize(queryMsg *dns.Msg, responseBytes []byte) ([
 	}
 
 	return responseBytes, nil
+}
+
+// serveCachedResponse serves a cached response, adding EDNS0 if needed.
+func (h *Handler) serveCachedResponse(query, cachedResponse []byte) ([]byte, error) {
+	// Check ARCOUNT to see if query has EDNS0
+	arcount := uint16(query[10])<<8 | uint16(query[11])
+
+	if arcount > 0 {
+		// Query has EDNS0, need to add OPT to response
+		return h.serveCachedWithEDNS0(query, cachedResponse)
+	}
+
+	// No EDNS0: use optimized path
+	result := make([]byte, len(cachedResponse))
+	result[0] = query[0]
+	result[1] = query[1]
+	copy(result[2:], cachedResponse[2:])
+
+	return result, nil
+}
+
+// serveCachedWithEDNS0 adds EDNS0 to cached response.
+func (h *Handler) serveCachedWithEDNS0(query, cachedResponse []byte) ([]byte, error) {
+	queryMsg := h.msgPool.Get()
+	defer h.msgPool.Put(queryMsg)
+
+	if err := queryMsg.Unpack(query); err != nil {
+		// Fallback to simple copy on error
+		return h.serveResponseWithIDReplacement(query, cachedResponse)
+	}
+
+	responseMsg := h.msgPool.Get()
+	defer h.msgPool.Put(responseMsg)
+
+	if err := responseMsg.Unpack(cachedResponse); err != nil {
+		// Fallback to simple copy on error
+		return h.serveResponseWithIDReplacement(query, cachedResponse)
+	}
+
+	// Add EDNS0 to response
+	h.applyEDNS0(queryMsg, responseMsg)
+
+	// Pack with EDNS0
+	finalBytes, err := responseMsg.Pack()
+	if err != nil {
+		// Fallback to simple copy on error
+		return h.serveResponseWithIDReplacement(query, cachedResponse)
+	}
+
+	// Update message ID
+	finalBytes[0] = query[0]
+	finalBytes[1] = query[1]
+
+	return finalBytes, nil
+}
+
+// serveResponseWithIDReplacement returns response with query ID.
+func (h *Handler) serveResponseWithIDReplacement(query, cachedResponse []byte) ([]byte, error) {
+	result := make([]byte, len(cachedResponse))
+	result[0] = query[0]
+	result[1] = query[1]
+	copy(result[2:], cachedResponse[2:])
+
+	return result, nil
+}
+
+// checkSlowPathCaches checks both message and RRset caches in slow path.
+// Returns (response, nil) if found, (nil, nil) if not found, or (nil, error) on error.
+func (h *Handler) checkSlowPathCaches(msg *dns.Msg, query []byte, name string, qtype, qclass uint16) ([]byte, error) {
+	cacheKey := cache.MakeKey(name, qtype, qclass)
+
+	// Try message cache
+	if cachedResponse := h.messageCache.Get(cacheKey); cachedResponse != nil {
+		// Parse cached response to add EDNS0
+		responseMsg := h.msgPool.Get()
+		defer h.msgPool.Put(responseMsg)
+
+		if err := responseMsg.Unpack(cachedResponse); err == nil {
+			// Apply EDNS0 from query
+			h.applyEDNS0(msg, responseMsg)
+
+			// Pack with EDNS0
+			if finalBytes, err := responseMsg.Pack(); err == nil {
+				// Update message ID from query
+				finalBytes[0] = query[0]
+				finalBytes[1] = query[1]
+
+				return h.handleResponseSize(msg, finalBytes)
+			}
+		}
+
+		// Fallback: use cached response as-is with ID replacement
+		result := make([]byte, len(cachedResponse))
+		result[0] = query[0]
+		result[1] = query[1]
+		copy(result[2:], cachedResponse[2:])
+
+		return h.handleResponseSize(msg, result)
+	}
+
+	// Try RRset cache
+	if rrs := h.rrsetCache.Get(name, qtype); rrs != nil {
+		response := cache.BuildResponse(msg, rrs)
+
+		// Apply EDNS0
+		h.applyEDNS0(msg, response)
+
+		responseBytes, err := response.Pack()
+		if err != nil {
+			return nil, err
+		}
+
+		// Cache complete response
+		ttl := cache.GetMinTTL(rrs)
+		if ttl == 0 {
+			ttl = h.config.DefaultTTL
+		}
+		h.messageCache.Set(cacheKey, responseBytes, ttl)
+
+		return h.handleResponseSize(msg, responseBytes)
+	}
+
+	// Not found in either cache
+	return nil, nil
 }

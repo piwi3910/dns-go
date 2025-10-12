@@ -429,22 +429,19 @@ func TestRFC1035_MessageSizeLimits(t *testing.T) {
 	responseSize := len(response)
 	maxUdpSize := 512 // RFC 1035 limit without EDNS0
 
-	if responseSize > maxUdpSize {
-		// If response is larger than 512 bytes, truncation flag should be set
-		// OR EDNS0 should be used
-		if !respMsg.Truncated {
-			// Check if EDNS0 is present
-			hasEdns := false
-			for _, rr := range respMsg.Extra {
-				if _, ok := rr.(*dns.OPT); ok {
-					hasEdns = true
+	// If response is larger than 512 bytes, truncation flag should be set OR EDNS0 should be used
+	if responseSize > maxUdpSize && !respMsg.Truncated {
+		// Check if EDNS0 is present
+		hasEdns := false
+		for _, rr := range respMsg.Extra {
+			if _, ok := rr.(*dns.OPT); ok {
+				hasEdns = true
 
-					break
-				}
+				break
 			}
-			if !hasEdns {
-				t.Logf("⚠ RFC 1035: Response size %d > 512 bytes but TC flag not set and no EDNS0", responseSize)
-			}
+		}
+		if !hasEdns {
+			t.Logf("⚠ RFC 1035: Response size %d > 512 bytes but TC flag not set and no EDNS0", responseSize)
 		}
 	}
 
@@ -766,19 +763,23 @@ func TestRFC1035_InvalidQueries(t *testing.T) {
 				return
 			}
 
-			if response != nil {
-				respMsg := new(dns.Msg)
-				if respMsg.Unpack(response) == nil {
-					// Should return FORMERR
-					if respMsg.Rcode == dns.RcodeFormatError {
-						t.Logf("✓ Invalid query returned FORMERR (correct)")
-					} else {
-						t.Logf("⚠ Invalid query returned %s (should be FORMERR)",
-							dns.RcodeToString[respMsg.Rcode])
-					}
-				} else {
-					t.Logf("✓ Invalid response to invalid query (safe)")
-				}
+			if response == nil {
+				return
+			}
+
+			respMsg := new(dns.Msg)
+			if respMsg.Unpack(response) != nil {
+				t.Logf("✓ Invalid response to invalid query (safe)")
+
+				return
+			}
+
+			// Should return FORMERR
+			if respMsg.Rcode == dns.RcodeFormatError {
+				t.Logf("✓ Invalid query returned FORMERR (correct)")
+			} else {
+				t.Logf("⚠ Invalid query returned %s (should be FORMERR)",
+					dns.RcodeToString[respMsg.Rcode])
 			}
 		})
 	}

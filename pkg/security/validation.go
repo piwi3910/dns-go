@@ -224,22 +224,8 @@ func (cpp *CachePoisoningProtector) ValidateResponse(query, response *dns.Msg) e
 		}
 
 		if len(query.Question) > 0 && len(response.Question) > 0 {
-			q1 := &query.Question[0]
-			q2 := &response.Question[0]
-
-			if !strings.EqualFold(q1.Name, q2.Name) {
-				return fmt.Errorf("question name mismatch: query=%s, response=%s",
-					q1.Name, q2.Name)
-			}
-
-			if q1.Qtype != q2.Qtype {
-				return fmt.Errorf("question type mismatch: query=%d, response=%d",
-					q1.Qtype, q2.Qtype)
-			}
-
-			if q1.Qclass != q2.Qclass {
-				return fmt.Errorf("question class mismatch: query=%d, response=%d",
-					q1.Qclass, q2.Qclass)
+			if err := cpp.validateQuestionMatch(&query.Question[0], &response.Question[0]); err != nil {
+				return err
 			}
 		}
 	}
@@ -249,6 +235,26 @@ func (cpp *CachePoisoningProtector) ValidateResponse(query, response *dns.Msg) e
 		if err := cpp.validateBailiwick(&query.Question[0], response); err != nil {
 			return fmt.Errorf("bailiwick validation failed: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// validateQuestionMatch validates that query and response questions match.
+func (cpp *CachePoisoningProtector) validateQuestionMatch(q1, q2 *dns.Question) error {
+	if !strings.EqualFold(q1.Name, q2.Name) {
+		return fmt.Errorf("question name mismatch: query=%s, response=%s",
+			q1.Name, q2.Name)
+	}
+
+	if q1.Qtype != q2.Qtype {
+		return fmt.Errorf("question type mismatch: query=%d, response=%d",
+			q1.Qtype, q2.Qtype)
+	}
+
+	if q1.Qclass != q2.Qclass {
+		return fmt.Errorf("question class mismatch: query=%d, response=%d",
+			q1.Qclass, q2.Qclass)
 	}
 
 	return nil
