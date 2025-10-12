@@ -56,38 +56,38 @@ go test -bench=. -benchmem ./...
 ### Start the DNS Server
 
 ```bash
-# Start on default port (5353) with auto-detected CPU count
+# Start on default port (8083) with auto-detected CPU count
 ./dns-server
 
 # Start on standard DNS port (requires sudo)
 sudo ./dns-server -listen :53
 
 # Start with custom worker count
-./dns-server -listen :5353 -workers 8
+./dns-server -listen :8083 -workers 8
 ```
 
 ### Test with Client
 
 ```bash
 # Simple query
-./dns-test-client -server 127.0.0.1:5353 -domain example.com -type A
+./dns-test-client -server 127.0.0.1:8083 -domain example.com -type A
 
 # Multiple queries for testing cache
-./dns-test-client -server 127.0.0.1:5353 -domain example.com -type A -count 1000
+./dns-test-client -server 127.0.0.1:8083 -domain example.com -type A -count 1000
 
 # Test different record types
-./dns-test-client -server 127.0.0.1:5353 -domain example.com -type AAAA
-./dns-test-client -server 127.0.0.1:5353 -domain example.com -type MX
+./dns-test-client -server 127.0.0.1:8083 -domain example.com -type AAAA
+./dns-test-client -server 127.0.0.1:8083 -domain example.com -type MX
 ```
 
 ### Using dig
 
 ```bash
 # Query the server
-dig @127.0.0.1 -p 5353 example.com A
+dig @127.0.0.1 -p 8083 example.com A
 
 # Query with statistics
-dig @127.0.0.1 -p 5353 example.com A +stats
+dig @127.0.0.1 -p 8083 example.com A +stats
 ```
 
 ## 📊 Performance Targets
@@ -172,14 +172,14 @@ go tool pprof cpu.out
 
 ```bash
 # Using dnsperf (requires dnsperf tool)
-dnsperf -d queries.txt -s 127.0.0.1 -p 5353 -Q 100000
+dnsperf -d queries.txt -s 127.0.0.1 -p 8083 -Q 100000
 
 # Using our test client
-./dns-test-client -server 127.0.0.1:5353 -count 10000
+./dns-test-client -server 127.0.0.1:8083 -count 10000
 
 # Parallel testing with multiple clients
 for i in {1..8}; do
-  ./dns-test-client -server 127.0.0.1:5353 -count 10000 &
+  ./dns-test-client -server 127.0.0.1:8083 -count 10000 &
 done
 wait
 ```
