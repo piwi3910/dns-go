@@ -38,7 +38,13 @@ func NewBufferPool(size int) *BufferPool {
 // Get retrieves a buffer from the pool
 // CRITICAL: Caller MUST call Put() to return buffer to pool.
 func (bp *BufferPool) Get() []byte {
-	bufPtr := bp.pool.Get().(*[]byte)
+	obj := bp.pool.Get()
+	bufPtr, ok := obj.(*[]byte)
+	if !ok {
+		// Type assertion failed - create new buffer (should never happen with proper pool usage)
+		buf := make([]byte, bp.size)
+		return buf
+	}
 
 	return (*bufPtr)[:bp.size]
 }
@@ -67,7 +73,13 @@ func NewMessagePool() *MessagePool {
 // Get retrieves a DNS message from the pool
 // CRITICAL: Caller MUST call Put() to return message to pool.
 func (mp *MessagePool) Get() *dns.Msg {
-	msg := mp.pool.Get().(*dns.Msg)
+	obj := mp.pool.Get()
+	msg, ok := obj.(*dns.Msg)
+	if !ok {
+		// Type assertion failed - create new message (should never happen with proper pool usage)
+		msg = new(dns.Msg)
+	}
+
 	// Reset message to clean state
 	msg.Id = 0
 	msg.Response = false

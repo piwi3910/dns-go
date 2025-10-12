@@ -180,7 +180,11 @@ func (h *IXFRHandler) createSOAWithSerial(serial uint32) *dns.SOA {
 		return nil
 	}
 
-	soa := dns.Copy(h.zone.SOA).(*dns.SOA)
+	soa, ok := dns.Copy(h.zone.SOA).(*dns.SOA)
+	if !ok {
+		// Type assertion failed - return nil
+		return nil
+	}
 	soa.Serial = serial
 
 	return soa

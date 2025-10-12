@@ -83,7 +83,12 @@ func NewInfraCache() *InfraCache {
 func (ic *InfraCache) GetOrCreate(address string) *UpstreamStats {
 	// Try to load existing stats
 	if stats, ok := ic.servers.Load(address); ok {
-		return stats.(*UpstreamStats)
+		if upstreamStats, ok := stats.(*UpstreamStats); ok {
+			return upstreamStats
+		}
+		// Type assertion failed - should never happen, but handle gracefully
+		// Delete invalid entry and fall through to create new one
+		ic.servers.Delete(address)
 	}
 
 	// Create new stats
@@ -102,14 +107,24 @@ func (ic *InfraCache) GetOrCreate(address string) *UpstreamStats {
 	// Store and return (may race, but that's OK)
 	actual, _ := ic.servers.LoadOrStore(address, newStats)
 
-	return actual.(*UpstreamStats)
+	if upstreamStats, ok := actual.(*UpstreamStats); ok {
+		return upstreamStats
+	}
+
+	// Type assertion failed on LoadOrStore (should never happen)
+	// Return the newly created stats as fallback
+	return newStats
 }
 
 // Get retrieves stats for an upstream server
 // Returns nil if not found.
 func (ic *InfraCache) Get(address string) *UpstreamStats {
 	if stats, ok := ic.servers.Load(address); ok {
-		return stats.(*UpstreamStats)
+		if upstreamStats, ok := stats.(*UpstreamStats); ok {
+			return upstreamStats
+		}
+		// Type assertion failed - delete invalid entry and return nil
+		ic.servers.Delete(address)
 	}
 
 	return nil
@@ -165,10 +180,14 @@ func (stats *UpstreamStats) RecordQueryEnd() {
 // GetRTT returns the current round-trip time in milliseconds.
 func (stats *UpstreamStats) GetRTT() float64 {
 	if rtt := stats.rtt.Load(); rtt != nil {
-		return rtt.(float64)
+		if rttFloat, ok := rtt.(float64); ok {
+			return rttFloat
+		}
+		// Type assertion failed - return default (should never happen with proper usage)
+		return DefaultRTTMs
 	}
 
-	return 100.0 // Default RTT
+	return DefaultRTTMs // Default RTT
 }
 
 // GetFailures returns the recent failure count.
@@ -286,7 +305,11 @@ func (ic *InfraCache) GetAllStats() []UpstreamSnapshot {
 	var snapshots []UpstreamSnapshot
 
 	ic.servers.Range(func(key, value interface{}) bool {
-		stats := value.(*UpstreamStats)
+		stats, ok := value.(*UpstreamStats)
+		if !ok {
+			// Type assertion failed - skip invalid entry
+			return true
+		}
 		snapshots = append(snapshots, stats.GetSnapshot())
 
 		return true
@@ -311,7 +334,12 @@ func (ic *InfraCache) Prune(maxAge time.Duration) int {
 	cutoff := time.Now().Add(-maxAge).Unix()
 
 	ic.servers.Range(func(key, value interface{}) bool {
-		stats := value.(*UpstreamStats)
+		stats, ok := value.(*UpstreamStats)
+		if !ok {
+			// Type assertion failed - delete invalid entry
+			ic.servers.Delete(key)
+			return true
+		}
 
 		lastUse := stats.lastSuccess.Load()
 		if lastFailure := stats.lastFailure.Load(); lastFailure > lastUse {

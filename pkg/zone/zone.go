@@ -262,7 +262,9 @@ func (z *Zone) Clone() *Zone {
 
 	// Copy SOA
 	if z.SOA != nil {
-		newZone.SOA = dns.Copy(z.SOA).(*dns.SOA)
+		if copiedSOA, ok := dns.Copy(z.SOA).(*dns.SOA); ok {
+			newZone.SOA = copiedSOA
+		}
 	}
 	newZone.Serial.Store(z.Serial.Load())
 

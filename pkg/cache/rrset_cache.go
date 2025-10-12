@@ -139,7 +139,14 @@ func (rc *RRsetCache) Get(name string, qtype uint16) []dns.RR {
 		return nil
 	}
 
-	entry := value.(*RRsetCacheEntry)
+	entry, ok := value.(*RRsetCacheEntry)
+	if !ok {
+		// Type assertion failed - invalid cache entry, remove it
+		shard.data.Delete(key)
+		rc.misses.Add(1)
+
+		return nil
+	}
 
 	// Check expiry
 	if entry.IsExpired() {
@@ -169,7 +176,13 @@ func (rc *RRsetCache) GetEntryForPrefetch(key string) *RRsetCacheEntry {
 		return nil
 	}
 
-	return value.(*RRsetCacheEntry)
+	entry, ok := value.(*RRsetCacheEntry)
+	if !ok {
+		// Type assertion failed - invalid cache entry
+		return nil
+	}
+
+	return entry
 }
 
 // Set stores an RRset in the cache.
@@ -205,9 +218,13 @@ func (rc *RRsetCache) Set(name string, qtype uint16, rrs []dns.RR, ttl time.Dura
 
 	// Check if we need to account for old entry
 	if oldValue, loaded := shard.data.LoadOrStore(key, entry); loaded {
-		oldEntry := oldValue.(*RRsetCacheEntry)
-		oldSize := int64(estimateRRsetSize(oldEntry.RRs))
-		shard.size.Add(newSize - oldSize)
+		if oldEntry, ok := oldValue.(*RRsetCacheEntry); ok {
+			oldSize := int64(estimateRRsetSize(oldEntry.RRs))
+			shard.size.Add(newSize - oldSize)
+		} else {
+			// Type assertion failed - just add new size
+			shard.size.Add(newSize)
+		}
 	} else {
 		shard.size.Add(newSize)
 	}
@@ -219,8 +236,9 @@ func (rc *RRsetCache) Delete(name string, qtype uint16) {
 	shard := rc.getShard(key)
 
 	if value, ok := shard.data.LoadAndDelete(key); ok {
-		entry := value.(*RRsetCacheEntry)
-		shard.size.Add(-int64(estimateRRsetSize(entry.RRs)))
+		if entry, ok := value.(*RRsetCacheEntry); ok {
+			shard.size.Add(-int64(estimateRRsetSize(entry.RRs)))
+		}
 		rc.evicts.Add(1)
 	}
 }

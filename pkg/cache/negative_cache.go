@@ -124,7 +124,14 @@ func (nc *NegativeCache) Get(key string) *NegativeCacheEntry {
 		return nil
 	}
 
-	entry := value.(*NegativeCacheEntry)
+	entry, ok := value.(*NegativeCacheEntry)
+	if !ok {
+		// Type assertion failed - invalid cache entry, remove it
+		shard.data.Delete(key)
+		nc.misses.Add(1)
+
+		return nil
+	}
 
 	// Check expiry
 	if entry.IsExpired() {
@@ -311,8 +318,9 @@ func CreateNegativeResponse(query *dns.Msg, negType NegativeType, soa *dns.SOA) 
 	// Add SOA to authority section if available
 	if soa != nil {
 		// Clone SOA to avoid modifying the cached version
-		soaCopy := dns.Copy(soa).(*dns.SOA)
-		response.Ns = append(response.Ns, soaCopy)
+		if soaCopy, ok := dns.Copy(soa).(*dns.SOA); ok {
+			response.Ns = append(response.Ns, soaCopy)
+		}
 	}
 
 	return response

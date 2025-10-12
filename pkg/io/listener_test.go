@@ -195,7 +195,10 @@ func TestUDPListenerQuery(t *testing.T) {
 	}
 	defer func() { _ = listener.Stop() }()
 
-	addr := listener.Addr().(*net.UDPAddr)
+	addr, ok := listener.Addr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("Failed to cast listener address to *net.UDPAddr")
+	}
 
 	// Give listener time to start
 	time.Sleep(100 * time.Millisecond)
@@ -257,7 +260,10 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 	}
 	defer func() { _ = listener.Stop() }()
 
-	addr := listener.Addr().(*net.UDPAddr)
+	addr, ok := listener.Addr().(*net.UDPAddr)
+	if !ok {
+		t.Fatal("Failed to cast listener address to *net.UDPAddr")
+	}
 	time.Sleep(100 * time.Millisecond)
 
 	// Send multiple queries concurrently

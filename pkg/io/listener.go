@@ -160,7 +160,13 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 		return nil, err
 	}
 
-	return packetConn.(*net.UDPConn), nil
+	// Type assert to *net.UDPConn with safety check
+	udpConn, ok := packetConn.(*net.UDPConn)
+	if !ok {
+		return nil, fmt.Errorf("ListenPacket did not return *net.UDPConn (got %T)", packetConn)
+	}
+
+	return udpConn, nil
 }
 
 // worker is the main processing loop for a single UDP socket

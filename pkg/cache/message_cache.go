@@ -156,7 +156,14 @@ func (mc *MessageCache) Get(key string) []byte {
 		return nil
 	}
 
-	entry := value.(*MessageCacheEntry)
+	entry, ok := value.(*MessageCacheEntry)
+	if !ok {
+		// Type assertion failed - invalid cache entry, remove it
+		shard.data.Delete(key)
+		mc.misses.Add(1)
+
+		return nil
+	}
 
 	// Check expiry
 	if entry.IsExpired() {
@@ -186,7 +193,13 @@ func (mc *MessageCache) GetEntryForPrefetch(key string) *MessageCacheEntry {
 		return nil
 	}
 
-	return value.(*MessageCacheEntry)
+	entry, ok := value.(*MessageCacheEntry)
+	if !ok {
+		// Type assertion failed - invalid cache entry
+		return nil
+	}
+
+	return entry
 }
 
 // Set stores a response in the cache.
@@ -212,8 +225,12 @@ func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 
 	// Check if we need to evict old entry
 	if oldValue, loaded := shard.data.LoadOrStore(key, entry); loaded {
-		oldEntry := oldValue.(*MessageCacheEntry)
-		shard.size.Add(int64(len(response) - len(oldEntry.ResponseBytes)))
+		if oldEntry, ok := oldValue.(*MessageCacheEntry); ok {
+			shard.size.Add(int64(len(response) - len(oldEntry.ResponseBytes)))
+		} else {
+			// Type assertion failed - just add new size
+			shard.size.Add(int64(len(response)))
+		}
 	} else {
 		shard.size.Add(int64(len(response)))
 	}
@@ -226,8 +243,9 @@ func (mc *MessageCache) Delete(key string) {
 	shard := mc.getShard(key)
 
 	if value, ok := shard.data.LoadAndDelete(key); ok {
-		entry := value.(*MessageCacheEntry)
-		shard.size.Add(-int64(len(entry.ResponseBytes)))
+		if entry, ok := value.(*MessageCacheEntry); ok {
+			shard.size.Add(-int64(len(entry.ResponseBytes)))
+		}
 		mc.evicts.Add(1)
 	}
 }

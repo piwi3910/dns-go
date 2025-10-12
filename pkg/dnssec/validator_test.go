@@ -675,7 +675,11 @@ func TestNSECValidator_ValidateNXDOMAIN(t *testing.T) {
 
 	// Create NSEC records that prove non-existence
 	nsec1, _ := dns.NewRR("a.example.com. 3600 IN NSEC c.example.com. A RRSIG NSEC")
-	nsecs := []*dns.NSEC{nsec1.(*dns.NSEC)}
+	nsec1NSEC, ok := nsec1.(*dns.NSEC)
+	if !ok {
+		t.Fatal("Failed to cast to *dns.NSEC")
+	}
+	nsecs := []*dns.NSEC{nsec1NSEC}
 
 	// Test name that falls between a and c
 	err := validator.ValidateNXDOMAIN("b.example.com.", nsecs)
@@ -694,7 +698,11 @@ func TestNSECValidator_ValidateNODATA(t *testing.T) {
 
 	// Create NSEC record that doesn't include the queried type
 	nsec, _ := dns.NewRR("example.com. 3600 IN NSEC next.example.com. A RRSIG NSEC")
-	nsecs := []*dns.NSEC{nsec.(*dns.NSEC)}
+	nsecNSEC, ok := nsec.(*dns.NSEC)
+	if !ok {
+		t.Fatal("Failed to cast to *dns.NSEC")
+	}
+	nsecs := []*dns.NSEC{nsecNSEC}
 
 	// Query for AAAA, but NSEC only shows A
 	err := validator.ValidateNODATA("example.com.", dns.TypeAAAA, nsecs)
