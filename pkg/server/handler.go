@@ -287,7 +287,7 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 			response.AuthenticatedData = true
 		}
 		// Note: If validationResult.Bogus is true, we currently serve the response anyway
-		// TODO: Consider returning SERVFAIL for bogus responses in strict mode
+		// Future enhancement: Consider adding strict mode that returns SERVFAIL for bogus responses
 	}
 
 	// Apply EDNS0 if query had it
