@@ -21,7 +21,12 @@ type MockPrefetchResolver struct {
 
 func NewMockPrefetchResolver() *MockPrefetchResolver {
 	return &MockPrefetchResolver{
-		resolveCalls: make([]string, 0),
+		mu:            sync.Mutex{},
+		resolveCount:  0,
+		resolveCalls:  make([]string, 0),
+		resolveDelay:  0,
+		resolveError:  nil,
+		resolveResult: nil,
 	}
 }
 
@@ -351,11 +356,13 @@ func TestPrefetchEngine_ShouldPrefetch_MessageCache(t *testing.T) {
 
 	// Create candidate
 	candidate := &prefetchCandidate{
-		key:    key,
-		name:   "example.com.",
-		qtype:  dns.TypeA,
-		qclass: dns.ClassINET,
-		hits:   10,
+		key:         key,
+		name:        "example.com.",
+		qtype:       dns.TypeA,
+		qclass:      dns.ClassINET,
+		hits:        10,
+		lastCheck:   time.Time{},
+		prefetching: false,
 	}
 
 	// Should prefetch because TTL is low (15% remaining < 20% threshold)
@@ -380,10 +387,11 @@ func TestPrefetchEngine_ShouldPrefetch_RRsetCache(t *testing.T) {
 	rrs := []dns.RR{
 		&dns.A{
 			Hdr: dns.RR_Header{
-				Name:   "example.com.",
-				Rrtype: dns.TypeA,
-				Class:  dns.ClassINET,
-				Ttl:    100, // 100 second TTL
+				Name:     "example.com.",
+				Rrtype:   dns.TypeA,
+				Class:    dns.ClassINET,
+				Ttl:      100, // 100 second TTL
+				Rdlength: 0,
 			},
 			A: []byte{192, 0, 2, 1},
 		},
@@ -402,11 +410,13 @@ func TestPrefetchEngine_ShouldPrefetch_RRsetCache(t *testing.T) {
 
 	// Create candidate
 	candidate := &prefetchCandidate{
-		key:    "example.com.|1", // Different format but same domain
-		name:   "example.com.",
-		qtype:  dns.TypeA,
-		qclass: dns.ClassINET,
-		hits:   10,
+		key:         "example.com.|1", // Different format but same domain
+		name:        "example.com.",
+		qtype:       dns.TypeA,
+		qclass:      dns.ClassINET,
+		hits:        10,
+		lastCheck:   time.Time{},
+		prefetching: false,
 	}
 
 	// Should prefetch because TTL is low
@@ -427,11 +437,13 @@ func TestPrefetchEngine_ShouldPrefetch_NoEntry(t *testing.T) {
 
 	// Create candidate for non-existent entry
 	candidate := &prefetchCandidate{
-		key:    "nonexistent",
-		name:   "nonexistent.com.",
-		qtype:  dns.TypeA,
-		qclass: dns.ClassINET,
-		hits:   10,
+		key:         "nonexistent",
+		name:        "nonexistent.com.",
+		qtype:       dns.TypeA,
+		qclass:      dns.ClassINET,
+		hits:        10,
+		lastCheck:   time.Time{},
+		prefetching: false,
 	}
 
 	// Should not prefetch - entry doesn't exist
@@ -452,11 +464,13 @@ func TestPrefetchEngine_Prefetch(t *testing.T) {
 
 	// Create candidate
 	candidate := &prefetchCandidate{
-		key:    "key1",
-		name:   "example.com.",
-		qtype:  dns.TypeA,
-		qclass: dns.ClassINET,
-		hits:   5,
+		key:         "key1",
+		name:        "example.com.",
+		qtype:       dns.TypeA,
+		qclass:      dns.ClassINET,
+		hits:        5,
+		lastCheck:   time.Time{},
+		prefetching: false,
 	}
 
 	// Add to candidates map and mark as prefetching
@@ -678,11 +692,13 @@ func TestPrefetchEngine_QueueFull(t *testing.T) {
 	// Fill the prefetch queue
 	for range 1000 {
 		candidate := &prefetchCandidate{
-			key:    MakeKey("example.com.", dns.TypeA, dns.ClassINET),
-			name:   "example.com.",
-			qtype:  dns.TypeA,
-			qclass: dns.ClassINET,
-			hits:   5,
+			key:         MakeKey("example.com.", dns.TypeA, dns.ClassINET),
+			name:        "example.com.",
+			qtype:       dns.TypeA,
+			qclass:      dns.ClassINET,
+			hits:        5,
+			lastCheck:   time.Time{},
+			prefetching: false,
 		}
 		engine.prefetchQueue <- candidate
 	}
