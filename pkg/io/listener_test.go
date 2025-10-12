@@ -274,6 +274,7 @@ func TestUDPListenerMultipleQueries(t *testing.T) {
 	for i := range numQueries {
 		go func(id int) {
 			defer wg.Done()
+			_ = id // Not used in test goroutine
 
 			conn, err := net.DialUDP("udp", nil, addr)
 			if err != nil {

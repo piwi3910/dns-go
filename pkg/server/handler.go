@@ -220,6 +220,7 @@ func (h *Handler) handleFastPath(ctx context.Context, query []byte, addr net.Add
 // handleSlowPath processes queries that require full processing
 // This handles EDNS0, DNSSEC, zone transfers, unusual query types, etc.
 func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
+	_ = addr // Reserved for future ACL/logging features
 	msg := h.msgPool.Get()
 	defer h.msgPool.Put(msg)
 
@@ -252,6 +253,7 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 
 // handleCacheMiss handles queries that are not in cache.
 func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.FastPathQuery) ([]byte, error) {
+	_ = fpq // Reserved for future optimizations
 	// Parse query
 	msg := h.msgPool.Get()
 	defer h.msgPool.Put(msg)
@@ -492,7 +494,7 @@ func (h *Handler) serveCachedWithEDNS0(query, cachedResponse []byte) ([]byte, er
 
 	if err := queryMsg.Unpack(query); err != nil {
 		// Fallback to simple copy on error
-		return h.serveResponseWithIDReplacement(query, cachedResponse)
+		return h.serveResponseWithIDReplacement(query, cachedResponse), nil
 	}
 
 	responseMsg := h.msgPool.Get()
@@ -500,7 +502,7 @@ func (h *Handler) serveCachedWithEDNS0(query, cachedResponse []byte) ([]byte, er
 
 	if err := responseMsg.Unpack(cachedResponse); err != nil {
 		// Fallback to simple copy on error
-		return h.serveResponseWithIDReplacement(query, cachedResponse)
+		return h.serveResponseWithIDReplacement(query, cachedResponse), nil
 	}
 
 	// Add EDNS0 to response
@@ -510,7 +512,7 @@ func (h *Handler) serveCachedWithEDNS0(query, cachedResponse []byte) ([]byte, er
 	finalBytes, err := responseMsg.Pack()
 	if err != nil {
 		// Fallback to simple copy on error
-		return h.serveResponseWithIDReplacement(query, cachedResponse)
+		return h.serveResponseWithIDReplacement(query, cachedResponse), nil
 	}
 
 	// Update message ID
@@ -521,13 +523,13 @@ func (h *Handler) serveCachedWithEDNS0(query, cachedResponse []byte) ([]byte, er
 }
 
 // serveResponseWithIDReplacement returns response with query ID.
-func (h *Handler) serveResponseWithIDReplacement(query, cachedResponse []byte) ([]byte, error) {
+func (h *Handler) serveResponseWithIDReplacement(query, cachedResponse []byte) []byte {
 	result := make([]byte, len(cachedResponse))
 	result[0] = query[0]
 	result[1] = query[1]
 	copy(result[2:], cachedResponse[2:])
 
-	return result, nil
+	return result
 }
 
 // checkSlowPathCaches checks both message and RRset caches in slow path.

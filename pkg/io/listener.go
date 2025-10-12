@@ -173,6 +173,7 @@ func (ul *UDPListener) createUDPSocket(addr *net.UDPAddr) (*net.UDPConn, error) 
 // This runs in its own goroutine, pinned to an OS thread for optimal performance.
 func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 	defer ul.wg.Done()
+	_ = id // Reserved for future logging/debugging
 
 	// Pin this goroutine to an OS thread for consistent performance
 	runtime.LockOSThread()
