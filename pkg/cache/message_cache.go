@@ -111,12 +111,18 @@ func DefaultMessageCacheConfig() MessageCacheConfig {
 func NewMessageCache(config MessageCacheConfig) *MessageCache {
 	shards := make([]*MessageCacheShard, config.NumShards)
 	for i := range config.NumShards {
-		shards[i] = &MessageCacheShard{}
+		shards[i] = &MessageCacheShard{
+			data: sync.Map{},
+			size: atomic.Int64{},
+		}
 	}
 
 	return &MessageCache{
 		shards: shards,
 		config: config,
+		hits:   atomic.Int64{},
+		misses: atomic.Int64{},
+		evicts: atomic.Int64{},
 	}
 }
 
@@ -193,11 +199,14 @@ func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 		ttl = mc.config.MaxTTL
 	}
 
+	now := time.Now()
 	entry := &MessageCacheEntry{
 		ResponseBytes: response,
-		Expiry:        time.Now().Add(ttl),
+		Expiry:        now.Add(ttl),
+		HitCount:      atomic.Int64{},
+		LastHit:       atomic.Int64{},
 	}
-	entry.LastHit.Store(time.Now().Unix())
+	entry.LastHit.Store(now.Unix())
 
 	shard := mc.getShard(key)
 

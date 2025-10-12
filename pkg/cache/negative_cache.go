@@ -96,12 +96,16 @@ func DefaultNegativeCacheConfig() NegativeCacheConfig {
 func NewNegativeCache(config NegativeCacheConfig) *NegativeCache {
 	shards := make([]*NegativeCacheShard, config.NumShards)
 	for i := range config.NumShards {
-		shards[i] = &NegativeCacheShard{}
+		shards[i] = &NegativeCacheShard{
+			data: sync.Map{},
+		}
 	}
 
 	return &NegativeCache{
 		shards: shards,
 		config: config,
+		hits:   atomic.Int64{},
+		misses: atomic.Int64{},
 	}
 }
 
@@ -148,10 +152,11 @@ func (nc *NegativeCache) Set(key string, negType NegativeType, soa *dns.SOA) {
 	ttl := nc.calculateNegativeTTL(soa)
 
 	entry := &NegativeCacheEntry{
-		Type:   negType,
-		Expiry: time.Now().Add(ttl),
-		TTL:    ttl,
-		SOA:    soa,
+		Type:     negType,
+		Expiry:   time.Now().Add(ttl),
+		TTL:      ttl,
+		HitCount: atomic.Int64{},
+		SOA:      soa,
 	}
 
 	shard := nc.getShard(key)
@@ -270,7 +275,26 @@ func IsNegativeResponse(msg *dns.Msg) (bool, NegativeType, *dns.SOA) {
 // CreateNegativeResponse creates a negative response message
 // Used for serving from negative cache.
 func CreateNegativeResponse(query *dns.Msg, negType NegativeType, soa *dns.SOA) *dns.Msg {
-	response := &dns.Msg{}
+	response := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	response.SetReply(query)
 	response.Authoritative = false // Cached response, not authoritative
 	response.RecursionAvailable = true

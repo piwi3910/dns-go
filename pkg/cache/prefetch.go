@@ -75,9 +75,11 @@ func NewPrefetchEngine(config PrefetchConfig, messageCache *MessageCache, rrsetC
 		prefetchThresh: config.PrefetchThresh,
 		minHits:        config.MinHits,
 		maxConcurrent:  config.MaxConcurrent,
+		mu:             sync.RWMutex{},
 		candidates:     make(map[string]*prefetchCandidate),
 		prefetchQueue:  make(chan *prefetchCandidate, 1000),
 		stopCh:         make(chan struct{}),
+		wg:             sync.WaitGroup{},
 	}
 }
 
@@ -122,12 +124,13 @@ func (pe *PrefetchEngine) RecordAccess(key string, name string, qtype uint16, qc
 		candidate.lastCheck = time.Now()
 	} else {
 		pe.candidates[key] = &prefetchCandidate{
-			key:       key,
-			name:      name,
-			qtype:     qtype,
-			qclass:    qclass,
-			hits:      1,
-			lastCheck: time.Now(),
+			key:         key,
+			name:        name,
+			qtype:       qtype,
+			qclass:      qclass,
+			hits:        1,
+			lastCheck:   time.Now(),
+			prefetching: false,
 		}
 	}
 }
@@ -268,7 +271,12 @@ type PrefetchStats struct {
 // GetStats returns current prefetch statistics.
 func (pe *PrefetchEngine) GetStats() PrefetchStats {
 	if !pe.enabled {
-		return PrefetchStats{Enabled: false}
+		return PrefetchStats{
+			Enabled:     false,
+			Candidates:  0,
+			QueueSize:   0,
+			Prefetching: 0,
+		}
 	}
 
 	pe.mu.RLock()

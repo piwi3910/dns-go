@@ -74,7 +74,9 @@ type UpstreamStats struct {
 
 // NewInfraCache creates a new infrastructure cache.
 func NewInfraCache() *InfraCache {
-	return &InfraCache{}
+	return &InfraCache{
+		servers: sync.Map{},
+	}
 }
 
 // GetOrCreate gets or creates stats for an upstream server.
@@ -86,7 +88,14 @@ func (ic *InfraCache) GetOrCreate(address string) *UpstreamStats {
 
 	// Create new stats
 	newStats := &UpstreamStats{
-		Address: address,
+		Address:       address,
+		rtt:           atomic.Value{},
+		failures:      atomic.Int32{},
+		lastSuccess:   atomic.Int64{},
+		lastFailure:   atomic.Int64{},
+		inFlight:      atomic.Int32{},
+		totalQueries:  atomic.Int64{},
+		totalFailures: atomic.Int64{},
 	}
 	newStats.rtt.Store(DefaultRTTMs)
 

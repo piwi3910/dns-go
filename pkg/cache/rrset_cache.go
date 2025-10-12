@@ -95,12 +95,18 @@ func DefaultRRsetCacheConfig() RRsetCacheConfig {
 func NewRRsetCache(config RRsetCacheConfig) *RRsetCache {
 	shards := make([]*RRsetCacheShard, config.NumShards)
 	for i := range config.NumShards {
-		shards[i] = &RRsetCacheShard{}
+		shards[i] = &RRsetCacheShard{
+			data: sync.Map{},
+			size: atomic.Int64{},
+		}
 	}
 
 	return &RRsetCache{
 		shards: shards,
 		config: config,
+		hits:   atomic.Int64{},
+		misses: atomic.Int64{},
+		evicts: atomic.Int64{},
 	}
 }
 
@@ -186,6 +192,8 @@ func (rc *RRsetCache) Set(name string, qtype uint16, rrs []dns.RR, ttl time.Dura
 		Expiry:     now.Add(ttl),
 		InsertedAt: now,
 		ExpiresAt:  now.Add(ttl),
+		HitCount:   atomic.Int64{},
+		LastHit:    atomic.Int64{},
 	}
 	entry.LastHit.Store(now.Unix())
 

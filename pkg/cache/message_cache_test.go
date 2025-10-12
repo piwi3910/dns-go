@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -316,6 +317,8 @@ func TestShouldPrefetch(t *testing.T) {
 	entry := &MessageCacheEntry{
 		ResponseBytes: []byte{1, 2, 3},
 		Expiry:        time.Now().Add(1 * time.Second),
+		HitCount:      atomic.Int64{},
+		LastHit:       atomic.Int64{},
 	}
 	entry.HitCount.Store(200) // Popular entry
 	entry.LastHit.Store(time.Now().Add(-10 * time.Second).Unix())
@@ -335,6 +338,8 @@ func TestShouldPrefetch(t *testing.T) {
 	expiredEntry := &MessageCacheEntry{
 		ResponseBytes: []byte{1, 2, 3},
 		Expiry:        time.Now().Add(-1 * time.Second),
+		HitCount:      atomic.Int64{},
+		LastHit:       atomic.Int64{},
 	}
 	expiredEntry.HitCount.Store(200)
 	if expiredEntry.ShouldPrefetch(100, 0.1) {
