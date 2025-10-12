@@ -48,8 +48,7 @@ type UDPListener struct {
 	conns   []*net.UDPConn
 	handler QueryHandler
 	wg      sync.WaitGroup
-	ctx     context.Context
-	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
 // QueryHandler processes DNS queries
@@ -64,14 +63,11 @@ func NewUDPListener(config *ListenerConfig, handler QueryHandler) (*UDPListener,
 		config = DefaultListenerConfig(":53")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	listener := &UDPListener{
 		config:  config,
 		conns:   make([]*net.UDPConn, 0, config.NumWorkers),
 		handler: handler,
-		ctx:     ctx,
-		cancel:  cancel,
+		done:    make(chan struct{}),
 	}
 
 	return listener, nil
@@ -167,7 +163,7 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 
 	for {
 		select {
-		case <-ul.ctx.Done():
+		case <-ul.done:
 			return
 		default:
 		}
@@ -179,16 +175,18 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			bufferPool.Put(buf)
-			if ul.ctx.Err() != nil {
-				// Context cancelled, shutting down
+			select {
+			case <-ul.done:
+				// Shutting down
 				return
+			default:
 			}
 			// Log error but continue processing
 			continue
 		}
 
 		// Process query
-		response, err := ul.handler.HandleQuery(ul.ctx, buf[:n], addr)
+		response, err := ul.handler.HandleQuery(context.Background(), buf[:n], addr)
 		if err != nil {
 			bufferPool.Put(buf)
 			// Log error but continue
@@ -210,7 +208,7 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 
 // Stop gracefully stops all listeners.
 func (ul *UDPListener) Stop() error {
-	ul.cancel()
+	close(ul.done)
 
 	// Close all connections
 	for _, conn := range ul.conns {
@@ -241,8 +239,7 @@ type TCPListener struct {
 	listener net.Listener
 	handler  QueryHandler
 	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
+	done     chan struct{}
 
 	// Connection management
 	maxConnections int
@@ -256,13 +253,10 @@ func NewTCPListener(config *ListenerConfig, handler QueryHandler) (*TCPListener,
 		config = DefaultListenerConfig(":53")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	listener := &TCPListener{
 		config:         config,
 		handler:        handler,
-		ctx:            ctx,
-		cancel:         cancel,
+		done:           make(chan struct{}),
 		maxConnections: 1000, // RFC 7766 recommendation
 		activeConns:    0,
 	}
@@ -333,16 +327,18 @@ func (tl *TCPListener) acceptLoop() {
 
 	for {
 		select {
-		case <-tl.ctx.Done():
+		case <-tl.done:
 			return
 		default:
 		}
 
 		conn, err := tl.listener.Accept()
 		if err != nil {
-			if tl.ctx.Err() != nil {
-				// Context cancelled, shutting down
+			select {
+			case <-tl.done:
+				// Shutting down
 				return
+			default:
 			}
 			// Log error but continue
 			continue
@@ -387,7 +383,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 	for {
 		select {
-		case <-tl.ctx.Done():
+		case <-tl.done:
 			return
 		default:
 		}
@@ -426,7 +422,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		}
 
 		// Process query
-		response, err := tl.handler.HandleQuery(tl.ctx, queryBuf[:messageLen], conn.RemoteAddr())
+		response, err := tl.handler.HandleQuery(context.Background(), queryBuf[:messageLen], conn.RemoteAddr())
 		if err != nil {
 			bufferPool.Put(queryBuf)
 
@@ -461,7 +457,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 // Stop gracefully stops the TCP listener.
 func (tl *TCPListener) Stop() error {
-	tl.cancel()
+	close(tl.done)
 
 	// Close listener (stops accepting new connections)
 	if tl.listener != nil {
