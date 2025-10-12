@@ -215,10 +215,8 @@ func (ul *UDPListener) worker(id int, conn *net.UDPConn) {
 
 		// Send response
 		if response != nil {
-			_, err = conn.WriteToUDP(response, addr)
-			if err != nil {
-				// Log error but continue
-			}
+			// Ignore write errors - log in production
+			_, _ = conn.WriteToUDP(response, addr)
 		}
 
 		// Return buffer to pool

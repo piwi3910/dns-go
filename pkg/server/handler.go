@@ -366,13 +366,9 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 		if err == nil && validationResult.Secure {
 			// Set AD (Authenticated Data) bit
 			response.AuthenticatedData = true
-		} else if validationResult != nil && validationResult.Bogus {
-			// Validation failed - return SERVFAIL if required
-			if h.dnssecValidator != nil {
-				// For now, just log and continue
-				// In production, might want to return SERVFAIL
-			}
 		}
+		// Note: If validationResult.Bogus is true, we currently serve the response anyway
+		// TODO: Consider returning SERVFAIL for bogus responses in strict mode
 	}
 
 	// Apply EDNS0 if query had it

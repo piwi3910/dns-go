@@ -211,11 +211,8 @@ func ValidateEDNS0(msg *dns.Msg) error {
 
 	// Validate UDP payload size - RFC 6891 Section 6.2.3
 	// Values less than 512 MUST be treated as equal to 512
-	udpSize := opt.UDPSize()
-	if udpSize < MinimumUDPSize {
-		// This is informational - we'll clamp it in ParseEDNS0
-		// Not an error per RFC 6891
-	}
+	// We clamp this in ParseEDNS0, not an error per RFC 6891
+	_ = opt.UDPSize() // Validated during ParseEDNS0
 
 	// Unknown EDNS0 options are allowed and must be ignored per RFC 6891 Section 6.1.2
 	// The miekg/dns library handles this automatically
