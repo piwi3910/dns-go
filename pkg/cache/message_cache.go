@@ -139,6 +139,7 @@ func (mc *MessageCache) hashKey(key string) uint64 {
 func (mc *MessageCache) getShard(key string) *MessageCacheShard {
 	hash := mc.hashKey(key)
 	// Use bitwise AND for modulo (works because NumShards is power of 2)
+	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
 	shardIdx := hash & uint64(len(mc.shards)-1)
 
 	return mc.shards[shardIdx]

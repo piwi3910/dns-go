@@ -121,6 +121,7 @@ func (rc *RRsetCache) hashKey(key string) uint64 {
 // getShard returns the shard for a given key.
 func (rc *RRsetCache) getShard(key string) *RRsetCacheShard {
 	hash := rc.hashKey(key)
+	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
 	shardIdx := hash & uint64(len(rc.shards)-1)
 
 	return rc.shards[shardIdx]

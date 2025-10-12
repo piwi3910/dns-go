@@ -197,6 +197,7 @@ func (v *Validator) validateRRSIGs(msg *dns.Msg) error {
 func (v *Validator) validateRRSIG(rrsig *dns.RRSIG, rrset []dns.RR) error {
 	// Check signature expiration
 	if v.config.ValidateExpiration {
+		//nolint:gosec // G115: DNSSEC timestamps use uint32 seconds since epoch per RFC 4034; safe until year 2106
 		now := uint32(time.Now().Unix())
 		if now < rrsig.Inception || now > rrsig.Expiration {
 			return fmt.Errorf("signature expired or not yet valid (inception: %d, expiration: %d, now: %d)",
@@ -417,6 +418,7 @@ func canonicalizeRR(rr dns.RR, origTTL uint32, labels uint8) []byte {
 
 	// Pack RDATA
 	rdataWire := packRDATA(rrCopy)
+	//nolint:gosec // G115: DNS RDATA length limited to 65535 bytes per RFC 1035; packRDATA uses 512-byte buffer
 	rdataLen := uint16(len(rdataWire))
 	header[8] = byte(rdataLen >> 8)
 	header[9] = byte(rdataLen)

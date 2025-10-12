@@ -62,6 +62,7 @@ func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
 
 	// Extended RCODE is stored in TTL field (upper 8 bits)
 	// Lower 4 bits combine with message RCODE to form extended RCODE
+	//nolint:gosec // G115: uint32 >> 24 produces value 0-255, safe for uint8 conversion
 	info.ExtendedRcode = uint8(opt.Hdr.Ttl >> 24)
 
 	// Validate and clamp UDP size to reasonable limits
@@ -253,6 +254,7 @@ func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg 
 				Name:     ".",
 				Rrtype:   dns.TypeOPT,
 				Class:    DefaultUDPSize,
+				//nolint:gosec // G115: DNS RCODE (0-4095) >> 4 produces 0-255, safe for uint32 conversion and shift
 				Ttl:      uint32(rcode>>4) << 24, // Extended RCODE in upper 8 bits of TTL
 				Rdlength: 0,
 			},
@@ -275,6 +277,7 @@ func SetExtendedRcode(msg *dns.Msg, rcode int) {
 	opt := msg.IsEdns0()
 	if opt != nil {
 		// Extended RCODE goes in upper 8 bits of TTL field
+		//nolint:gosec // G115: DNS RCODE (0-4095) >> 4 produces 0-255, safe for uint32 conversion and shift
 		extendedBits := uint32(rcode>>4) << 24
 		opt.Hdr.Ttl = (opt.Hdr.Ttl & 0x00FFFFFF) | extendedBits
 	}

@@ -1026,6 +1026,7 @@ func TestDNSKEYCacheEviction(t *testing.T) {
 				Name:   "example.com.",
 				Rrtype: dns.TypeDNSKEY,
 				Class:  dns.ClassINET,
+				//nolint:gosec // G115: Test code, i is range 0-4, safe for uint32 conversion
 				Ttl:    uint32(3600 + i), // Different TTLs
 			},
 			Flags:     257,

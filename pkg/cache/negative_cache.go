@@ -204,6 +204,7 @@ func (nc *NegativeCache) calculateNegativeTTL(soa *dns.SOA) time.Duration {
 // getShard returns the shard for a given key.
 func (nc *NegativeCache) getShard(key string) *NegativeCacheShard {
 	hash := fnvHash(key)
+	//nolint:gosec // G115: len(shards) is bounded by config (max 256), safe for uint64 conversion
 	shardIdx := hash & uint64(len(nc.shards)-1)
 
 	return nc.shards[shardIdx]

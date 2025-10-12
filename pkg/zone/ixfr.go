@@ -253,6 +253,7 @@ func (h *IXFRHandler) PruneDeltaLog(keepCount int) {
 
 	// Find serials to keep (most recent N)
 	currentSerial := h.zone.GetSerial()
+	//nolint:gosec // G115: keepCount is expected to be small positive value (10-100), safe for uint32 serial arithmetic
 	minSerial := currentSerial - uint32(keepCount) + 1
 
 	// Remove old deltas

@@ -67,6 +67,7 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 
 	// Send query with 2-byte length prefix (RFC 7766)
 	lengthPrefix := make([]byte, 2)
+	//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 
 	if _, err := conn.Write(lengthPrefix); err != nil {
@@ -166,6 +167,7 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 
 		// Send with length prefix
 		lengthPrefix := make([]byte, 2)
+		//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 		binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 
 		if _, err := conn.Write(lengthPrefix); err != nil {
@@ -250,6 +252,7 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	msg.SetQuestion("google.com.", dns.TypeA)
 	queryBytes, _ := msg.Pack()
 	lengthPrefix := make([]byte, 2)
+	//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 	_, _ = conn.Write(lengthPrefix)
 	_, _ = conn.Write(queryBytes)
@@ -271,6 +274,7 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	msg2.SetQuestion("cloudflare.com.", dns.TypeA)
 	queryBytes2, _ := msg2.Pack()
 	lengthPrefix2 := make([]byte, 2)
+	//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 	binary.BigEndian.PutUint16(lengthPrefix2, uint16(len(queryBytes2)))
 
 	if _, err := conn.Write(lengthPrefix2); err != nil {
@@ -342,6 +346,7 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	queryBytes, _ := msg.Pack()
 
 	lengthPrefix := make([]byte, 2)
+	//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 	_, _ = conn.Write(lengthPrefix)
 	_, _ = conn.Write(queryBytes)
@@ -462,6 +467,7 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	msg.SetQuestion("google.com.", dns.TypeA)
 	queryBytes, _ := msg.Pack()
 	lengthPrefix := make([]byte, 2)
+	//nolint:gosec // G115: Test query messages are small (<512 bytes), safe for uint16 conversion
 	binary.BigEndian.PutUint16(lengthPrefix, uint16(len(queryBytes)))
 
 	_ = conn6.SetDeadline(time.Now().Add(1 * time.Second))
