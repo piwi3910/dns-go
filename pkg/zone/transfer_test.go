@@ -1,8 +1,11 @@
 package zone_test
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/piwi3910/dns-go/pkg/zone"
@@ -713,4 +716,184 @@ func TestIXFRHandler_FindDeltas(t *testing.T) {
 	// if ok {
 	// 	t.Error("Expected to fail with missing delta")
 	// }
+}
+
+// mockConn implements net.Conn for testing network writes.
+type mockConn struct {
+	data []byte
+	err  error
+}
+
+func (m *mockConn) Read(b []byte) (n int, err error) {
+	return 0, fmt.Errorf("not implemented")
+}
+
+func (m *mockConn) Write(p []byte) (n int, err error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	m.data = append(m.data, p...)
+	return len(p), nil
+}
+
+func (m *mockConn) Close() error {
+	return nil
+}
+
+func (m *mockConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 53, Zone: ""}
+}
+
+func (m *mockConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 12345, Zone: ""}
+}
+
+func (m *mockConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (m *mockConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (m *mockConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
+// TestAXFRHandler_ServeAXFR tests AXFR serving with mock connection.
+func TestAXFRHandler_ServeAXFR(t *testing.T) {
+	t.Parallel()
+	z := createTestZone()
+	handler := zone.NewAXFRHandler(z)
+
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 12345,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
+	query.SetQuestion("example.com.", dns.TypeAXFR)
+
+	conn := &mockConn{}
+	err := handler.ServeAXFR(context.Background(), query, conn)
+	if err != nil {
+		t.Fatalf("ServeAXFR failed: %v", err)
+	}
+
+	if len(conn.data) == 0 {
+		t.Error("Expected data to be written")
+	}
+
+	// Data should contain DNS wire format messages (with 2-byte length prefix for TCP)
+	if len(conn.data) < 12 {
+		t.Error("Written data too short to contain DNS message")
+	}
+}
+
+// TestIXFRHandler_ServeIXFR tests IXFR serving with mock connection.
+func TestIXFRHandler_ServeIXFR(t *testing.T) {
+	t.Parallel()
+	z := createTestZone()
+	ixfrHandler := zone.NewIXFRHandler(z)
+	axfrHandler := zone.NewAXFRHandler(z)
+
+	oldSerial := z.GetSerial()
+	z.IncrementSerial()
+	newSerial := z.GetSerial()
+
+	// Record a delta
+	added := []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300, Rdlength: 0},
+			A:   []byte{192, 0, 2, 20},
+		},
+	}
+	ixfrHandler.RecordDelta(oldSerial, newSerial, []dns.RR{}, added)
+
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 12345,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
+	query.SetQuestion("example.com.", dns.TypeIXFR)
+
+	conn := &mockConn{}
+	err := ixfrHandler.ServeIXFR(context.Background(), query, conn, oldSerial, axfrHandler)
+	if err != nil {
+		t.Fatalf("ServeIXFR failed: %v", err)
+	}
+
+	if len(conn.data) == 0 {
+		t.Error("Expected data to be written")
+	}
+
+	// Data should contain DNS wire format messages (with 2-byte length prefix for TCP)
+	if len(conn.data) < 12 {
+		t.Error("Written data too short to contain DNS message")
+	}
+}
+
+// TestAXFRHandler_ServeAXFR_WriteError tests error handling.
+func TestAXFRHandler_ServeAXFR_WriteError(t *testing.T) {
+	t.Parallel()
+	z := createTestZone()
+	handler := zone.NewAXFRHandler(z)
+
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 12345,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
+	query.SetQuestion("example.com.", dns.TypeAXFR)
+
+	// Connection that always errors on write
+	conn := &mockConn{err: fmt.Errorf("write error")}
+	err := handler.ServeAXFR(context.Background(), query, conn)
+	if err == nil {
+		t.Error("Expected error when connection write fails")
+	}
 }
