@@ -124,7 +124,26 @@ func TestResolve_NoQuestions(t *testing.T) {
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	// No questions
 
 	ctx := context.Background()
@@ -173,10 +192,48 @@ func TestGetStats(t *testing.T) {
 
 func TestResolveWithCoalescing_SameQuery(t *testing.T) {
 	t.Parallel()
-	query1 := &dns.Msg{}
+	query1 := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query1.SetQuestion("example.com.", dns.TypeA)
 
-	query2 := &dns.Msg{}
+	query2 := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query2.SetQuestion("example.com.", dns.TypeA)
 
 	// Both should use the same query key
@@ -195,7 +252,26 @@ func TestDoResolve_UnknownMode(t *testing.T) {
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	ctx := context.Background()
@@ -213,7 +289,26 @@ func TestResolveWithCoalescing_Disabled(t *testing.T) {
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	// With coalescing disabled, should go directly to doResolve
@@ -236,7 +331,26 @@ func TestDoRecursiveResolve_NoIterativeResolver(t *testing.T) {
 	resolver.config.Mode = RecursiveMode
 	resolver.iterative = nil
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	ctx := context.Background()
@@ -253,7 +367,26 @@ func TestDoRecursiveResolve_NoQuestions(t *testing.T) {
 	upstream := createTestUpstreamPool([]string{"8.8.8.8:53"})
 	resolver := NewResolver(config, upstream)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	// No questions
 
 	ctx := context.Background()
@@ -267,7 +400,11 @@ func TestDoRecursiveResolve_NoQuestions(t *testing.T) {
 func TestInflightRequest(t *testing.T) {
 	t.Parallel()
 	inflight := &inflightRequest{
-		done: make(chan struct{}),
+		mu:       sync.Mutex{},
+		response: nil,
+		err:      nil,
+		done:     make(chan struct{}),
+		waiters:  0,
 	}
 
 	// Test waiters count
@@ -352,7 +489,18 @@ func TestResolverStats(t *testing.T) {
 	t.Parallel()
 	stats := ResolverStats{
 		InFlightQueries: 5,
-		Upstreams:       []cache.UpstreamSnapshot{{Address: "8.8.8.8:53", TotalQueries: 100}},
+		Upstreams: []cache.UpstreamSnapshot{{
+			Address:       "8.8.8.8:53",
+			RTT:           0,
+			Failures:      0,
+			InFlight:      0,
+			LastSuccess:   time.Time{},
+			LastFailure:   time.Time{},
+			TotalQueries:  100,
+			TotalFailures: 0,
+			FailureRate:   0,
+			Score:         0,
+		}},
 	}
 
 	if stats.InFlightQueries != 5 {

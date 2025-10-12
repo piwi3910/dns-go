@@ -98,10 +98,13 @@ type inflightRequest struct {
 // NewResolver creates a new DNS resolver.
 func NewResolver(config ResolverConfig, upstream *UpstreamPool) *Resolver {
 	r := &Resolver{
-		upstream:      upstream,
-		config:        config,
-		inFlight:      make(map[string]*inflightRequest),
-		dnssecEnabled: config.EnableDNSSEC,
+		upstream:        upstream,
+		iterative:       nil,
+		config:          config,
+		dnssecValidator: nil,
+		dnssecEnabled:   config.EnableDNSSEC,
+		inFlight:        make(map[string]*inflightRequest),
+		mu:              sync.Mutex{},
 	}
 
 	// Initialize DNSSEC validator if enabled
@@ -160,7 +163,11 @@ func (r *Resolver) resolveWithCoalescing(ctx context.Context, query *dns.Msg, qu
 
 	// Create new in-flight request
 	inflight := &inflightRequest{
-		done: make(chan struct{}),
+		mu:       sync.Mutex{},
+		response: nil,
+		err:      nil,
+		done:     make(chan struct{}),
+		waiters:  0,
 	}
 	r.inFlight[queryKey] = inflight
 	r.mu.Unlock()

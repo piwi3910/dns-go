@@ -98,7 +98,10 @@ type RootServerPool struct {
 func NewRootServerPool() *RootServerPool {
 	pool := &RootServerPool{
 		servers: make([]string, 0, 26), // 13 servers * 2 (IPv4 + IPv6)
+		current: 0,
+		mu:      sync.RWMutex{},
 		rttMap:  make(map[string]time.Duration),
+		rttMu:   sync.RWMutex{},
 	}
 
 	// Flatten root servers into address list

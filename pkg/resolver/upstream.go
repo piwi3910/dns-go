@@ -80,7 +80,9 @@ func NewUpstreamPool(config UpstreamConfig, infraCache *cache.InfraCache) *Upstr
 		infraCache:          infraCache,
 		timeout:             timeout,
 		upstreams:           config.Upstreams,
+		mu:                  sync.RWMutex{},
 		udpPools:            make(map[string]*udpConnPool),
+		poolMu:              sync.RWMutex{},
 		maxConnsPerUpstream: maxConns,
 	}
 
@@ -99,7 +101,13 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 	up.mu.RUnlock()
 
 	if len(upstreams) == 0 {
-		return nil, &net.OpError{Op: "query", Err: net.ErrClosed}
+		return nil, &net.OpError{
+			Op:     "query",
+			Net:    "",
+			Source: nil,
+			Addr:   nil,
+			Err:    net.ErrClosed,
+		}
 	}
 
 	// Select best upstream server
@@ -150,8 +158,17 @@ func (up *UpstreamPool) Query(ctx context.Context, msg *dns.Msg) (*dns.Msg, erro
 // queryTCP performs a query over TCP (for truncated responses).
 func (up *UpstreamPool) queryTCP(ctx context.Context, msg *dns.Msg, addr string, stats *cache.UpstreamStats) (*dns.Msg, error) {
 	tcpClient := &dns.Client{
-		Net:     "tcp",
-		Timeout: up.timeout,
+		Net:            "tcp",
+		UDPSize:        0,
+		TLSConfig:      nil,
+		Dialer:         nil,
+		Timeout:        up.timeout,
+		DialTimeout:    0,
+		ReadTimeout:    0,
+		WriteTimeout:   0,
+		TsigSecret:     nil,
+		TsigProvider:   nil,
+		SingleInflight: false,
 	}
 
 	start := time.Now()
@@ -176,7 +193,13 @@ func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, max
 	up.mu.RUnlock()
 
 	if len(upstreams) == 0 {
-		return nil, &net.OpError{Op: "query", Err: net.ErrClosed}
+		return nil, &net.OpError{
+			Op:     "query",
+			Net:    "",
+			Source: nil,
+			Addr:   nil,
+			Err:    net.ErrClosed,
+		}
 	}
 
 	var lastErr error
@@ -373,6 +396,8 @@ func newUDPConnPool(addr string, size int, timeout time.Duration) *udpConnPool {
 		timeout: timeout,
 		size:    size,
 		conns:   make(chan *dns.Conn, size),
+		mu:      sync.Mutex{},
+		total:   0,
 	}
 }
 
@@ -475,7 +500,22 @@ func (p *udpConnPool) dial(ctx context.Context) (*dns.Conn, error) {
 	}
 
 	dialer := &net.Dialer{
-		Timeout: timeout,
+		Timeout:       timeout,
+		Deadline:      time.Time{},
+		LocalAddr:     nil,
+		DualStack:     false,
+		FallbackDelay: 0,
+		KeepAlive:     0,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   false,
+			Idle:     0,
+			Interval: 0,
+			Count:    0,
+		},
+		Resolver:       nil,
+		Cancel:         nil,
+		Control:        nil,
+		ControlContext: nil,
 	}
 
 	if deadline, ok := ctx.Deadline(); ok {
@@ -483,10 +523,17 @@ func (p *udpConnPool) dial(ctx context.Context) (*dns.Conn, error) {
 	}
 
 	client := &dns.Client{
-		Net:         "udp",
-		Timeout:     timeout,
-		DialTimeout: timeout,
-		Dialer:      dialer,
+		Net:            "udp",
+		UDPSize:        0,
+		TLSConfig:      nil,
+		Dialer:         dialer,
+		Timeout:        timeout,
+		DialTimeout:    timeout,
+		ReadTimeout:    0,
+		WriteTimeout:   0,
+		TsigSecret:     nil,
+		TsigProvider:   nil,
+		SingleInflight: false,
 	}
 
 	return client.DialContext(ctx, p.addr)

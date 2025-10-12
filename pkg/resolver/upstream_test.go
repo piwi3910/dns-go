@@ -116,7 +116,26 @@ func TestQuery_Timeout(t *testing.T) {
 	infraCache := cache.NewInfraCache()
 	pool := NewUpstreamPool(config, infraCache)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -141,7 +160,26 @@ func TestQueryWithFallback_AllFail(t *testing.T) {
 	infraCache := cache.NewInfraCache()
 	pool := NewUpstreamPool(config, infraCache)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
@@ -278,7 +316,26 @@ func TestUpstreamPool_EmptyPoolQuery(t *testing.T) {
 	infraCache := cache.NewInfraCache()
 	pool := NewUpstreamPool(config, infraCache)
 
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	ctx := context.Background()

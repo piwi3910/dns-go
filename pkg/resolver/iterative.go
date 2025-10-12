@@ -31,8 +31,17 @@ type iterativeCacheEntry struct {
 func NewIterativeResolver() *IterativeResolver {
 	return &IterativeResolver{
 		client: &dns.Client{
-			Net:     "udp",
-			Timeout: 5 * time.Second,
+			Net:            "udp",
+			UDPSize:        0,
+			TLSConfig:      nil,
+			Dialer:         nil,
+			Timeout:        5 * time.Second,
+			DialTimeout:    0,
+			ReadTimeout:    0,
+			WriteTimeout:   0,
+			TsigSecret:     nil,
+			TsigProvider:   nil,
+			SingleInflight: false,
 		},
 		rootPool:        NewRootServerPool(),
 		maxDepth:        16, // Reasonable depth limit
