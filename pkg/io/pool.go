@@ -43,6 +43,7 @@ func (bp *BufferPool) Get() []byte {
 	if !ok {
 		// Type assertion failed - create new buffer (should never happen with proper pool usage)
 		buf := make([]byte, bp.size)
+
 		return buf
 	}
 

@@ -338,6 +338,7 @@ func (ic *InfraCache) Prune(maxAge time.Duration) int {
 		if !ok {
 			// Type assertion failed - delete invalid entry
 			ic.servers.Delete(key)
+
 			return true
 		}
 
