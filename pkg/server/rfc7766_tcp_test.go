@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"net"
@@ -32,7 +33,8 @@ func TestRFC7766_TCPLengthPrefix(t *testing.T) {
 	t.Logf("TCP listener on %s", addr)
 
 	// Connect to TCP server
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect to TCP server: %v", err)
 	}
@@ -109,7 +111,8 @@ func TestRFC7766_PersistentConnections(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect once
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
@@ -184,7 +187,8 @@ func TestRFC7766_TCPIdleTimeout(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
@@ -257,7 +261,8 @@ func TestRFC7766_LargeResponse(t *testing.T) {
 	addr := tcpListener.Addr().String()
 
 	// Connect
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
@@ -325,7 +330,8 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	// Open connections up to the limit
 	var conns []net.Conn
 	for i := range 5 {
-		conn, err := net.Dial("tcp", addr)
+		dialer := &net.Dialer{}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to connect %d: %v", i, err)
 		}
@@ -339,7 +345,8 @@ func TestRFC7766_ConnectionLimit(t *testing.T) {
 	}()
 
 	// Try to open one more connection (should be rejected)
-	conn6, err := net.Dial("tcp", addr)
+	dialer6 := &net.Dialer{}
+	conn6, err := dialer6.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Logf("✓ RFC 7766 Connection Limit: 6th connection rejected as expected")
 

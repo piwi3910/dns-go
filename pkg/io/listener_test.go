@@ -404,7 +404,8 @@ func TestTCPListenerQuery(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect to TCP listener
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
@@ -477,7 +478,8 @@ func TestTCPListenerPersistentConnection(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Connect once
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
@@ -555,7 +557,8 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	// Create connections up to the limit
 	var conns []net.Conn
 	for i := range 2 {
-		conn, err := net.Dial("tcp", addr)
+		dialer := &net.Dialer{}
+		conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
 			t.Fatalf("Failed to dial connection %d: %v", i, err)
 		}
@@ -563,7 +566,8 @@ func TestTCPListenerMaxConnections(t *testing.T) {
 	}
 
 	// Try to create one more (should be rejected)
-	extraConn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	dialerWithTimeout := &net.Dialer{Timeout: 500 * time.Millisecond}
+	extraConn, err := dialerWithTimeout.DialContext(context.Background(), "tcp", addr)
 	if err == nil {
 		extraConn.Close()
 		// Connection was accepted, but might be closed immediately
@@ -604,7 +608,8 @@ func TestTCPListenerInvalidMessage(t *testing.T) {
 	addr := listener.Addr().String()
 	time.Sleep(100 * time.Millisecond)
 
-	conn, err := net.Dial("tcp", addr)
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		t.Fatalf("Failed to dial TCP: %v", err)
 	}
