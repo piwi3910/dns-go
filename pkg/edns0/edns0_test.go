@@ -9,7 +9,26 @@ import (
 
 func TestValidateEDNS0_NoOPT(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	err := ValidateEDNS0(msg)
@@ -20,7 +39,26 @@ func TestValidateEDNS0_NoOPT(t *testing.T) {
 
 func TestValidateEDNS0_SingleOPT(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	opt := &dns.OPT{
@@ -28,7 +66,10 @@ func TestValidateEDNS0_SingleOPT(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	opt.SetVersion(0)
 	msg.Extra = append(msg.Extra, opt)
@@ -41,7 +82,26 @@ func TestValidateEDNS0_SingleOPT(t *testing.T) {
 
 func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// Add two OPT records (invalid per RFC 6891)
@@ -50,14 +110,20 @@ func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	opt2 := &dns.OPT{
 		Hdr: dns.RR_Header{
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt1, opt2)
 
@@ -66,7 +132,10 @@ func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with multiple OPT records")
 	}
 
-	valErr := &ValidationError{}
+	valErr := &ValidationError{
+		Message:      "",
+		ExtendedCode: 0,
+	}
 	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
@@ -78,7 +147,26 @@ func TestValidateEDNS0_MultipleOPT(t *testing.T) {
 
 func TestValidateEDNS0_BadVersion(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	opt := &dns.OPT{
@@ -86,7 +174,10 @@ func TestValidateEDNS0_BadVersion(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	opt.SetVersion(1) // Unsupported version
 	msg.Extra = append(msg.Extra, opt)
@@ -96,7 +187,10 @@ func TestValidateEDNS0_BadVersion(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with unsupported version")
 	}
 
-	valErr := &ValidationError{}
+	valErr := &ValidationError{
+		Message:      "",
+		ExtendedCode: 0,
+	}
 	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
@@ -108,7 +202,26 @@ func TestValidateEDNS0_BadVersion(t *testing.T) {
 
 func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	opt := &dns.OPT{
@@ -116,7 +229,10 @@ func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 			Name:   "example.com.", // Invalid - must be "."
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt)
 
@@ -125,7 +241,10 @@ func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 		t.Error("ValidateEDNS0 should fail with non-root OPT name")
 	}
 
-	valErr := &ValidationError{}
+	valErr := &ValidationError{
+		Message:      "",
+		ExtendedCode: 0,
+	}
 	ok := errors.As(err, &valErr)
 	if !ok {
 		t.Errorf("Expected ValidationError, got %T", err)
@@ -137,7 +256,26 @@ func TestValidateEDNS0_InvalidOPTName(t *testing.T) {
 
 func TestSetExtendedRcode(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// Add OPT record
@@ -146,7 +284,10 @@ func TestSetExtendedRcode(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt)
 
@@ -167,7 +308,26 @@ func TestSetExtendedRcode(t *testing.T) {
 
 func TestGetExtendedRcode_NoEDNS(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 	msg.Rcode = dns.RcodeServerFailure
 
@@ -179,17 +339,38 @@ func TestGetExtendedRcode_NoEDNS(t *testing.T) {
 
 func TestGetExtendedRcode_WithEDNS(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// Add OPT with extended RCODE
 	opt := &dns.OPT{
 		Hdr: dns.RR_Header{
-			Name:   ".",
-			Rrtype: dns.TypeOPT,
-			Class:  4096,
-			Ttl:    uint32(1) << 24, // Extended RCODE 1 in upper 8 bits
+			Name:     ".",
+			Rrtype:   dns.TypeOPT,
+			Class:    4096,
+			Ttl:      uint32(1) << 24, // Extended RCODE 1 in upper 8 bits
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt)
 	msg.Rcode = 0 // Lower 4 bits
@@ -203,7 +384,26 @@ func TestGetExtendedRcode_WithEDNS(t *testing.T) {
 
 func TestCreateErrorResponse_BADVERS(t *testing.T) {
 	t.Parallel()
-	query := &dns.Msg{}
+	query := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	query.SetQuestion("example.com.", dns.TypeA)
 
 	// Query with EDNS version 1
@@ -212,7 +412,10 @@ func TestCreateErrorResponse_BADVERS(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	opt.SetVersion(1)
 	query.Extra = append(query.Extra, opt)
@@ -244,7 +447,10 @@ func TestHandleUnknownOptions(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 
 	// Add known option
@@ -296,11 +502,11 @@ func TestShouldTruncate(t *testing.T) {
 		ednsInfo     *EDNS0Info
 		shouldTrunc  bool
 	}{
-		{400, &EDNS0Info{Present: false}, false},                // < 512, no EDNS
-		{600, &EDNS0Info{Present: false}, true},                 // > 512, no EDNS
-		{600, &EDNS0Info{Present: true, UDPSize: 1024}, false},  // < EDNS limit
-		{1100, &EDNS0Info{Present: true, UDPSize: 1024}, true},  // > EDNS limit
-		{4000, &EDNS0Info{Present: true, UDPSize: 4096}, false}, // < large EDNS
+		{400, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, false},                             // < 512, no EDNS
+		{600, &EDNS0Info{Present: false, UDPSize: 0, DO: false, ExtendedRcode: 0, Version: 0}, true},                              // > 512, no EDNS
+		{600, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, false},                           // < EDNS limit
+		{1100, &EDNS0Info{Present: true, UDPSize: 1024, DO: false, ExtendedRcode: 0, Version: 0}, true},                           // > EDNS limit
+		{4000, &EDNS0Info{Present: true, UDPSize: 4096, DO: false, ExtendedRcode: 0, Version: 0}, false},                          // < large EDNS
 	}
 
 	for _, tt := range tests {
@@ -314,7 +520,26 @@ func TestShouldTruncate(t *testing.T) {
 
 func TestParseEDNS0_ClampUDPSize(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// OPT with size < 512 (should be clamped to 512)
@@ -323,7 +548,10 @@ func TestParseEDNS0_ClampUDPSize(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  256, // Too small
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt)
 
@@ -335,7 +563,26 @@ func TestParseEDNS0_ClampUDPSize(t *testing.T) {
 
 func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// OPT with size > MaximumUDPSize (should be clamped)
@@ -344,7 +591,10 @@ func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  65000, // Too large
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	msg.Extra = append(msg.Extra, opt)
 
@@ -356,7 +606,26 @@ func TestParseEDNS0_ClampMaxUDPSize(t *testing.T) {
 
 func TestParseEDNS0_DOBit(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	opt := &dns.OPT{
@@ -364,7 +633,10 @@ func TestParseEDNS0_DOBit(t *testing.T) {
 			Name:   ".",
 			Rrtype: dns.TypeOPT,
 			Class:  4096,
+			Ttl:      0,
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 	opt.SetDo() // Set DNSSEC OK bit
 	msg.Extra = append(msg.Extra, opt)
@@ -377,7 +649,26 @@ func TestParseEDNS0_DOBit(t *testing.T) {
 
 func TestAddOPTRecord(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	AddOPTRecord(msg, 4096, true)
@@ -402,7 +693,26 @@ func TestAddOPTRecord(t *testing.T) {
 
 func TestAddOPTRecord_RemovesExisting(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// Add first OPT
@@ -431,7 +741,26 @@ func TestAddOPTRecord_RemovesExisting(t *testing.T) {
 
 func TestAddOPTRecord_ClampSize(t *testing.T) {
 	t.Parallel()
-	msg := &dns.Msg{}
+	msg := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	msg.SetQuestion("example.com.", dns.TypeA)
 
 	// Try to add with size < minimum

@@ -42,8 +42,11 @@ func (e *ValidationError) Error() string {
 // ParseEDNS0 extracts EDNS0 information from a DNS query.
 func ParseEDNS0(msg *dns.Msg) *EDNS0Info {
 	info := &EDNS0Info{
-		Present: false,
-		UDPSize: MinimumUDPSize, // Default to minimum if no EDNS0
+		Present:       false,
+		UDPSize:       MinimumUDPSize, // Default to minimum if no EDNS0
+		DO:            false,
+		ExtendedRcode: 0,
+		Version:       0,
 	}
 
 	// Look for OPT record in additional section
@@ -90,11 +93,13 @@ func AddOPTRecord(msg *dns.Msg, bufferSize uint16, dnssecOK bool) {
 	// Create OPT record
 	opt := &dns.OPT{
 		Hdr: dns.RR_Header{
-			Name:   ".",
-			Rrtype: dns.TypeOPT,
-			Class:  bufferSize, // UDP payload size in CLASS field
-			Ttl:    0,          // Extended RCODE and flags (we use 0 for now)
+			Name:     ".",
+			Rrtype:   dns.TypeOPT,
+			Class:    bufferSize, // UDP payload size in CLASS field
+			Ttl:      0,          // Extended RCODE and flags (we use 0 for now)
+			Rdlength: 0,
 		},
+		Option: nil,
 	}
 
 	// Set DNSSEC OK bit if requested
@@ -221,7 +226,26 @@ func ValidateEDNS0(msg *dns.Msg) error {
 // CreateErrorResponse creates an EDNS0 error response
 // Used when EDNS0 validation fails (e.g., BADVERS).
 func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg {
-	response := &dns.Msg{}
+	response := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 0,
+			Response:           false,
+			Opcode:             0,
+			Authoritative:      false,
+			Truncated:          false,
+			RecursionDesired:   false,
+			RecursionAvailable: false,
+			Zero:               false,
+			AuthenticatedData:  false,
+			CheckingDisabled:   false,
+			Rcode:              0,
+		},
+		Compress: false,
+		Question: nil,
+		Answer:   nil,
+		Ns:       nil,
+		Extra:    nil,
+	}
 	response.SetReply(query)
 	response.Rcode = rcode & 0x0F // Lower 4 bits
 
@@ -229,11 +253,13 @@ func CreateErrorResponse(query *dns.Msg, rcode int, ednsVersion uint8) *dns.Msg 
 	if query.IsEdns0() != nil {
 		opt := &dns.OPT{
 			Hdr: dns.RR_Header{
-				Name:   ".",
-				Rrtype: dns.TypeOPT,
-				Class:  DefaultUDPSize,
-				Ttl:    uint32(rcode>>4) << 24, // Extended RCODE in upper 8 bits of TTL
+				Name:     ".",
+				Rrtype:   dns.TypeOPT,
+				Class:    DefaultUDPSize,
+				Ttl:      uint32(rcode>>4) << 24, // Extended RCODE in upper 8 bits of TTL
+				Rdlength: 0,
 			},
+			Option: nil,
 		}
 		opt.SetVersion(ednsVersion)
 		response.Extra = append(response.Extra, opt)
