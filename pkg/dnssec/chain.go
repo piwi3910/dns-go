@@ -1,3 +1,4 @@
+// Package dnssec implements DNSSEC validation including signature verification and chain of trust.
 package dnssec
 
 import (

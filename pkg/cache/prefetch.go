@@ -265,7 +265,7 @@ func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 	pe.mu.Unlock()
 }
 
-// GetStats returns prefetch statistics.
+// PrefetchStats represents statistical metrics for the prefetch engine.
 type PrefetchStats struct {
 	Enabled     bool
 	Candidates  int

@@ -281,7 +281,7 @@ func (rc *RRsetCache) GetStats() RRsetCacheStats {
 // Clear removes all entries from the cache.
 func (rc *RRsetCache) Clear() {
 	for _, shard := range rc.shards {
-		shard.data.Range(func(key, value interface{}) bool {
+		shard.data.Range(func(key, _ interface{}) bool {
 			shard.data.Delete(key)
 
 			return true

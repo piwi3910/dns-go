@@ -427,10 +427,10 @@ func TestRFC1035_MessageSizeLimits(t *testing.T) {
 
 	// Check response size
 	responseSize := len(response)
-	maxUdpSize := 512 // RFC 1035 limit without EDNS0
+	maxUDPSize := 512 // RFC 1035 limit without EDNS0
 
 	// If response is larger than 512 bytes, truncation flag should be set OR EDNS0 should be used
-	if responseSize > maxUdpSize && !respMsg.Truncated {
+	if responseSize > maxUDPSize && !respMsg.Truncated {
 		// Check if EDNS0 is present
 		hasEdns := false
 		for _, rr := range respMsg.Extra {

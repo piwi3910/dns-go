@@ -1,3 +1,4 @@
+// Package server implements the main DNS server request handling and processing logic.
 package server
 
 import (
@@ -408,7 +409,7 @@ func (h *Handler) CacheResponse(msg *dns.Msg, ttl time.Duration) error {
 	return nil
 }
 
-// GetStats returns combined statistics from all caches.
+// Stats represents combined statistical metrics from all DNS caches.
 type Stats struct {
 	MessageCache cache.MessageCacheStats
 	RRsetCache   cache.RRsetCacheStats

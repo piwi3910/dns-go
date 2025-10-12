@@ -1,3 +1,4 @@
+// Package zone implements DNS zone management including AXFR/IXFR zone transfers.
 package zone
 
 import (

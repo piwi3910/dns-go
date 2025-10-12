@@ -116,7 +116,7 @@ func (v *Validator) GetTrustAnchor(name string, keyTag uint16) *TrustAnchor {
 }
 
 // ValidateResponse validates a DNS response with DNSSEC.
-func (v *Validator) ValidateResponse(ctx context.Context, msg *dns.Msg) (*ValidationResult, error) {
+func (v *Validator) ValidateResponse(_ context.Context, msg *dns.Msg) (*ValidationResult, error) {
 	if !v.config.EnableValidation {
 		return &ValidationResult{
 			Secure:      false,

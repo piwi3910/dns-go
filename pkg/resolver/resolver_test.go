@@ -444,7 +444,7 @@ func TestResolverConfig_Validation(t *testing.T) {
 	}{
 		{
 			name:   "Default config valid",
-			modify: func(c *ResolverConfig) {},
+			modify: func(_ *ResolverConfig) {},
 			valid:  true,
 		},
 		{

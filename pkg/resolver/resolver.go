@@ -302,7 +302,7 @@ func makeQueryKey(name string, qtype uint16, qclass uint16) string {
 	return cache.MakeKey(name, qtype, qclass)
 }
 
-// GetStats returns resolver statistics.
+// ResolverStats represents statistical metrics for DNS resolution operations.
 type ResolverStats struct {
 	InFlightQueries int
 	Upstreams       []cache.UpstreamSnapshot

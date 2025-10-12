@@ -25,7 +25,7 @@ func NewMockQueryHandler() *MockQueryHandler {
 	}
 }
 
-func (m *MockQueryHandler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {
+func (m *MockQueryHandler) HandleQuery(_ context.Context, query []byte, _ net.Addr) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.callCount++

@@ -1,3 +1,4 @@
+// Package security implements DNS security features including rate limiting and request validation.
 package security
 
 import (
@@ -232,7 +233,7 @@ func extractIP(addr net.Addr) string {
 	}
 }
 
-// GetStats returns rate limiting statistics.
+// RateLimitStats represents statistical metrics for rate limiting operations.
 type RateLimitStats struct {
 	ActiveBuckets int
 	TotalIPs      int

@@ -121,11 +121,10 @@ func coversName(owner, next, name string) bool {
 		// Normal case: owner < next
 		// Name is covered if: owner < name < next
 		return ownerCmp < 0 && nextCmp < 0
-	} else {
-		// Wrap-around case: next < owner (last NSEC in zone)
-		// Name is covered if: name > owner OR name < next
-		return ownerCmp < 0 || nextCmp < 0
 	}
+	// Wrap-around case: next < owner (last NSEC in zone)
+	// Name is covered if: name > owner OR name < next
+	return ownerCmp < 0 || nextCmp < 0
 }
 
 // canonicalCompare performs canonical DNS name comparison (RFC 4034 §6.1).

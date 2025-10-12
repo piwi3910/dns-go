@@ -1,3 +1,4 @@
+// Package cache implements high-performance DNS caching with multi-level architecture.
 package cache
 
 import (
@@ -222,7 +223,7 @@ func (stats *UpstreamStats) GetScore() float64 {
 	return score
 }
 
-// GetStats returns a snapshot of current statistics.
+// UpstreamSnapshot represents a point-in-time snapshot of upstream server statistics.
 type UpstreamSnapshot struct {
 	Address       string
 	RTT           float64
@@ -304,7 +305,7 @@ func (ic *InfraCache) SelectBest(addresses []string) string {
 func (ic *InfraCache) GetAllStats() []UpstreamSnapshot {
 	var snapshots []UpstreamSnapshot
 
-	ic.servers.Range(func(key, value interface{}) bool {
+	ic.servers.Range(func(_, value interface{}) bool {
 		stats, ok := value.(*UpstreamStats)
 		if !ok {
 			// Type assertion failed - skip invalid entry
@@ -320,7 +321,7 @@ func (ic *InfraCache) GetAllStats() []UpstreamSnapshot {
 
 // Clear removes all entries from the infrastructure cache.
 func (ic *InfraCache) Clear() {
-	ic.servers.Range(func(key, value interface{}) bool {
+	ic.servers.Range(func(key, _ interface{}) bool {
 		ic.servers.Delete(key)
 
 		return true

@@ -30,7 +30,7 @@ func NewMockPrefetchResolver() *MockPrefetchResolver {
 	}
 }
 
-func (m *MockPrefetchResolver) Resolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
+func (m *MockPrefetchResolver) Resolve(_ context.Context, query *dns.Msg) (*dns.Msg, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

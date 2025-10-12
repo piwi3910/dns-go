@@ -1,3 +1,4 @@
+// Package io provides high-performance I/O handling for DNS queries with per-core optimizations.
 package io
 
 import (

@@ -1,3 +1,4 @@
+// Package edns0 implements EDNS0 (Extension Mechanisms for DNS) per RFC 6891.
 package edns0
 
 import (

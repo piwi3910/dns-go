@@ -1,3 +1,4 @@
+// Package resolver implements DNS resolution with support for recursive and iterative modes.
 package resolver
 
 import (

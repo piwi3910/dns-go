@@ -251,7 +251,7 @@ func (mc *MessageCache) Delete(key string) {
 	}
 }
 
-// Stats returns cache statistics.
+// MessageCacheStats represents statistical metrics for the message cache.
 type MessageCacheStats struct {
 	Hits    int64
 	Misses  int64
@@ -289,7 +289,7 @@ func (mc *MessageCache) GetStats() MessageCacheStats {
 // Clear removes all entries from the cache.
 func (mc *MessageCache) Clear() {
 	for _, shard := range mc.shards {
-		shard.data.Range(func(key, value interface{}) bool {
+		shard.data.Range(func(key, _ interface{}) bool {
 			shard.data.Delete(key)
 
 			return true

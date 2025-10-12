@@ -216,7 +216,7 @@ func (nc *NegativeCache) Delete(key string) {
 	shard.data.Delete(key)
 }
 
-// Stats returns negative cache statistics.
+// NegativeCacheStats represents statistical metrics for negative response caching.
 type NegativeCacheStats struct {
 	Hits    int64
 	Misses  int64

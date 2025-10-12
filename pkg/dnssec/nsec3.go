@@ -167,10 +167,9 @@ func coversHash(owner, next, hash string) bool {
 	if owner < next {
 		// Normal case: owner < next
 		return owner < hash && hash < next
-	} else {
-		// Wrap-around case: next < owner (last NSEC3 in zone)
-		return hash > owner || hash < next
 	}
+	// Wrap-around case: next < owner (last NSEC3 in zone)
+	return hash > owner || hash < next
 }
 
 // nsec3Params holds NSEC3 hash parameters.

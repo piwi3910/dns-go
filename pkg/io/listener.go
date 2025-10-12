@@ -45,7 +45,7 @@ func DefaultListenerConfig(address string) *ListenerConfig {
 // createSocketControlFunc creates a socket control function that configures SO_REUSEPORT and buffer sizes.
 // This helper reduces code duplication between UDP and TCP socket creation.
 func createSocketControlFunc(config *ListenerConfig) func(network, address string, c syscall.RawConn) error {
-	return func(network, address string, c syscall.RawConn) error {
+	return func(_, _ string, c syscall.RawConn) error {
 		var sockErr error
 		err := c.Control(func(fd uintptr) {
 			if config.ReusePort {
@@ -478,8 +478,8 @@ func (tl *TCPListener) Addr() net.Addr {
 }
 
 // SetMaxConnections sets the maximum number of concurrent TCP connections.
-func (tl *TCPListener) SetMaxConnections(max int) {
+func (tl *TCPListener) SetMaxConnections(maxConns int) {
 	tl.connMutex.Lock()
 	defer tl.connMutex.Unlock()
-	tl.maxConnections = max
+	tl.maxConnections = maxConns
 }
