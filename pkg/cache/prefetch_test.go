@@ -180,8 +180,8 @@ func TestPrefetchEngine_RecordAccess(t *testing.T) {
 		t.Errorf("Expected 1 hit, got %d", candidate.hits)
 	}
 
-	if candidate.name != "example.com." {
-		t.Errorf("Expected name example.com., got %s", candidate.name)
+	if candidate.name != testExampleDomain {
+		t.Errorf("Expected name %s, got %s", testExampleDomain, candidate.name)
 	}
 
 	if candidate.qtype != dns.TypeA {
@@ -189,7 +189,7 @@ func TestPrefetchEngine_RecordAccess(t *testing.T) {
 	}
 
 	// Record second access - should increment hits
-	engine.RecordAccess("key1", "example.com.", dns.TypeA, dns.ClassINET)
+	engine.RecordAccess("key1", testExampleDomain, dns.TypeA, dns.ClassINET)
 
 	engine.mu.RLock()
 	candidate = engine.candidates["key1"]
