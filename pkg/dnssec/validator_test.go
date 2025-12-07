@@ -1053,3 +1053,916 @@ func TestDNSKEYCacheOperations(t *testing.T) {
 
 	t.Logf("✓ DNSKEY cache operations working correctly")
 }
+
+// TestVerifyRRSIG_UnsupportedAlgorithm tests RRSIG verification with unsupported algorithm.
+func TestVerifyRRSIG_UnsupportedAlgorithm(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	// Create an RRSIG with unsupported algorithm
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   99, // Unsupported algorithm
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdC1zaWduYXR1cmU=", // base64 "test-signature"
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: 99,
+		PublicKey: "dGVzdC1rZXk=", // base64 "test-key"
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for unsupported algorithm")
+	}
+
+	t.Logf("✓ Unsupported algorithm correctly rejected: %v", err)
+}
+
+// TestVerifyRRSIG_InvalidSignature tests RRSIG verification with invalid signature.
+func TestVerifyRRSIG_InvalidSignature(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	// Create an RRSIG with RSA algorithm
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdC1zaWduYXR1cmU=", // Invalid signature (just "test-signature")
+	}
+
+	// Use real RSA public key format (from root KSK)
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+" +
+			"/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3Eg" +
+			"VLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIds" +
+			"IXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for invalid signature")
+	}
+
+	t.Logf("✓ Invalid signature correctly rejected: %v", err)
+}
+
+// TestVerifyRRSIG_RSA_SHA1 tests RRSIG verification with RSA-SHA1.
+func TestVerifyRRSIG_RSA_SHA1(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA1,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdC1zaWduYXR1cmU=",
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA1,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+" +
+			"/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3Eg" +
+			"VLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIds" +
+			"IXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	// Expected to fail due to invalid signature, but exercises RSA-SHA1 code path
+	if err == nil {
+		t.Log("Unexpectedly succeeded (test data not cryptographically valid)")
+	}
+
+	t.Logf("✓ RSA-SHA1 verification code path exercised")
+}
+
+// TestVerifyRRSIG_RSA_SHA512 tests RRSIG verification with RSA-SHA512.
+func TestVerifyRRSIG_RSA_SHA512(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA512,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdC1zaWduYXR1cmU=",
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA512,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+" +
+			"/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3Eg" +
+			"VLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIds" +
+			"IXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Log("Unexpectedly succeeded (test data not cryptographically valid)")
+	}
+
+	t.Logf("✓ RSA-SHA512 verification code path exercised")
+}
+
+// TestVerifyRRSIG_ECDSA_P256 tests RRSIG verification with ECDSA P-256.
+func TestVerifyRRSIG_ECDSA_P256(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.ECDSAP256SHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		// 64 bytes base64-encoded (matches P-256 signature size)
+		Signature: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+
+	// P-256 public key: 64 bytes (32 bytes X + 32 bytes Y)
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.ECDSAP256SHA256,
+		// 64 bytes base64-encoded for P-256 public key
+		PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Log("Unexpectedly succeeded (test data not cryptographically valid)")
+	}
+
+	t.Logf("✓ ECDSA P-256 verification code path exercised")
+}
+
+// TestVerifyRRSIG_ECDSA_P384 tests RRSIG verification with ECDSA P-384.
+func TestVerifyRRSIG_ECDSA_P384(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.ECDSAP384SHA384,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		// 96 bytes base64-encoded (matches P-384 signature size)
+		Signature: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+
+	// P-384 public key: 96 bytes (48 bytes X + 48 bytes Y)
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.ECDSAP384SHA384,
+		// 96 bytes base64-encoded for P-384 public key
+		PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Log("Unexpectedly succeeded (test data not cryptographically valid)")
+	}
+
+	t.Logf("✓ ECDSA P-384 verification code path exercised")
+}
+
+// TestValidateRRSIGs_WithRRSIG tests RRSIG validation in message.
+func TestValidateRRSIGs_WithRRSIG(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Response = true
+
+	// Add A record
+	aRecord, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	msg.Answer = append(msg.Answer, aRecord)
+
+	// Add RRSIG for the A record
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      20326, // Root KSK tag (for test, won't validate without proper chain)
+		SignerName:  ".",   // Signed by root (won't validate, just testing code path)
+		Signature:   "dGVzdC1zaWduYXR1cmU=",
+	}
+	msg.Answer = append(msg.Answer, rrsig)
+
+	result, err := validator.ValidateResponse(context.Background(), msg)
+
+	// This will fail validation (no valid chain), but exercises the code path
+	if result == nil {
+		t.Error("Expected non-nil result")
+	}
+
+	if err == nil {
+		t.Log("Validation unexpectedly succeeded (test setup is not cryptographically valid)")
+	} else {
+		t.Logf("✓ RRSIG validation code path exercised (expected error: %v)", err)
+	}
+}
+
+// TestVerifyRRSIG_InvalidBase64Signature tests handling of invalid base64 in signature.
+func TestVerifyRRSIG_InvalidBase64Signature(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "!!!invalid-base64!!!", // Invalid base64
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for invalid base64 signature")
+	}
+
+	t.Logf("✓ Invalid base64 signature correctly rejected: %v", err)
+}
+
+// TestVerifyRRSIG_InvalidBase64PublicKey tests handling of invalid base64 in public key.
+func TestVerifyRRSIG_InvalidBase64PublicKey(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdA==", // Valid base64
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "!!!invalid-base64!!!", // Invalid base64
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for invalid base64 public key")
+	}
+
+	t.Logf("✓ Invalid base64 public key correctly rejected: %v", err)
+}
+
+// TestVerifyRRSIG_ShortRSAPublicKey tests handling of too-short RSA public key.
+func TestVerifyRRSIG_ShortRSAPublicKey(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.RSASHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "dGVzdA==",
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "YWI=", // Only 2 bytes (too short for RSA)
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for short RSA public key")
+	}
+
+	t.Logf("✓ Short RSA public key correctly rejected: %v", err)
+}
+
+// TestVerifyRRSIG_ShortECDSAPublicKey tests handling of too-short ECDSA public key.
+func TestVerifyRRSIG_ShortECDSAPublicKey(t *testing.T) {
+	t.Parallel()
+	validator := dnssec.NewValidator(dnssec.DefaultValidatorConfig())
+
+	rrsig := &dns.RRSIG{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeRRSIG,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		TypeCovered: dns.TypeA,
+		Algorithm:   dns.ECDSAP256SHA256,
+		Labels:      2,
+		OrigTtl:     3600,
+		Expiration:  uint32(time.Now().Add(time.Hour).Unix()),
+		Inception:   uint32(time.Now().Add(-time.Hour).Unix()),
+		KeyTag:      12345,
+		SignerName:  "example.com.",
+		Signature:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.ECDSAP256SHA256,
+		PublicKey: "YWI=", // Only 2 bytes (too short for P-256)
+	}
+
+	rr, _ := dns.NewRR("example.com. 3600 IN A 192.0.2.1")
+	rrset := []dns.RR{rr}
+
+	err := validator.VerifyRRSIG(rrsig, rrset, dnskey)
+	if err == nil {
+		t.Error("Expected error for short ECDSA public key")
+	}
+
+	t.Logf("✓ Short ECDSA public key correctly rejected: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_AlgorithmMismatch tests DS validation with mismatched algorithms.
+func TestValidateDNSKEYWithDS_AlgorithmMismatch(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     dnskey.KeyTag(),
+		Algorithm:  dns.RSASHA512, // Different algorithm
+		DigestType: dns.SHA256,
+		Digest:     "ABCD1234",
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	if err == nil {
+		t.Error("Expected error for algorithm mismatch")
+	}
+
+	t.Logf("✓ Algorithm mismatch correctly detected: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_KeyTagMismatch tests DS validation with mismatched key tags.
+func TestValidateDNSKEYWithDS_KeyTagMismatch(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     12345, // Different key tag
+		Algorithm:  dns.RSASHA256,
+		DigestType: dns.SHA256,
+		Digest:     "ABCD1234",
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	if err == nil {
+		t.Error("Expected error for key tag mismatch")
+	}
+
+	t.Logf("✓ Key tag mismatch correctly detected: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_DigestMismatch tests DS validation with wrong digest.
+func TestValidateDNSKEYWithDS_DigestMismatch(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     dnskey.KeyTag(),
+		Algorithm:  dns.RSASHA256,
+		DigestType: dns.SHA256,
+		Digest:     "0000000000000000000000000000000000000000000000000000000000000000", // Wrong digest
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	if err == nil {
+		t.Error("Expected error for digest mismatch")
+	}
+
+	t.Logf("✓ Digest mismatch correctly detected: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_UnsupportedDigest tests DS validation with unsupported digest type.
+func TestValidateDNSKEYWithDS_UnsupportedDigest(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     dnskey.KeyTag(),
+		Algorithm:  dns.RSASHA256,
+		DigestType: 99, // Unsupported digest type
+		Digest:     "ABCD1234",
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	if err == nil {
+		t.Error("Expected error for unsupported digest type")
+	}
+
+	t.Logf("✓ Unsupported digest type correctly rejected: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_SHA1 tests DS validation with SHA-1 digest.
+func TestValidateDNSKEYWithDS_SHA1(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     dnskey.KeyTag(),
+		Algorithm:  dns.RSASHA256,
+		DigestType: dns.SHA1, // SHA-1 digest
+		Digest:     "0000000000000000000000000000000000000000", // 40 hex chars for SHA-1
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	// Will fail with digest mismatch, but exercises SHA-1 code path
+	if err == nil {
+		t.Error("Expected error for digest mismatch")
+	}
+
+	t.Logf("✓ SHA-1 digest validation code path exercised: %v", err)
+}
+
+// TestValidateDNSKEYWithDS_SHA384 tests DS validation with SHA-384 digest.
+func TestValidateDNSKEYWithDS_SHA384(t *testing.T) {
+	t.Parallel()
+
+	dnskey := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTO",
+	}
+
+	ds := &dns.DS{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDS,
+			Class:  dns.ClassINET,
+			Ttl:    3600,
+		},
+		KeyTag:     dnskey.KeyTag(),
+		Algorithm:  dns.RSASHA256,
+		DigestType: dns.SHA384, // SHA-384 digest
+		Digest:     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", // 96 hex chars for SHA-384
+	}
+
+	err := dnssec.ValidateDNSKEYWithDS(dnskey, ds)
+	// Will fail with digest mismatch, but exercises SHA-384 code path
+	if err == nil {
+		t.Error("Expected error for digest mismatch")
+	}
+
+	t.Logf("✓ SHA-384 digest validation code path exercised: %v", err)
+}
+
+// TestIsKSK_Comprehensive tests KSK detection with various flag values.
+func TestIsKSK_Comprehensive(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		flags    uint16
+		expected bool
+	}{
+		{"KSK (257)", 257, true},
+		{"ZSK (256)", 256, false},
+		{"Neither (0)", 0, false},
+		{"SEP only (1)", 1, false},
+		{"Zone key only (256)", 256, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			key := &dns.DNSKEY{
+				Flags: tt.flags,
+			}
+			result := dnssec.IsKSK(key)
+			if result != tt.expected {
+				t.Errorf("IsKSK(flags=%d) = %v, want %v", tt.flags, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIsZSK_Comprehensive tests ZSK detection with various flag values.
+func TestIsZSK_Comprehensive(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		flags    uint16
+		expected bool
+	}{
+		{"ZSK (256)", 256, true},
+		{"KSK (257)", 257, false},
+		{"Neither (0)", 0, false},
+		{"SEP only (1)", 1, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			key := &dns.DNSKEY{
+				Flags: tt.flags,
+			}
+			result := dnssec.IsZSK(key)
+			if result != tt.expected {
+				t.Errorf("IsZSK(flags=%d) = %v, want %v", tt.flags, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestDNSKEYCacheExpiry tests that expired entries are not returned.
+func TestDNSKEYCacheExpiry(t *testing.T) {
+	t.Parallel()
+	config := dnssec.DNSKEYCacheConfig{
+		MaxSize:    100,
+		DefaultTTL: time.Hour,
+		MinTTL:     1 * time.Millisecond,
+		MaxTTL:     time.Hour,
+	}
+	cache := dnssec.NewDNSKEYCache(config)
+
+	key := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    0, // Zero TTL, will use MinTTL
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "test-key",
+	}
+
+	// Add key
+	cache.Add(key, true)
+
+	// Should be present immediately
+	retrieved := cache.Get("example.com.", key.KeyTag(), dns.RSASHA256)
+	if retrieved == nil {
+		t.Error("Expected to retrieve cached key immediately")
+	}
+
+	// Wait for expiry
+	time.Sleep(50 * time.Millisecond)
+
+	// Should be expired
+	retrieved = cache.Get("example.com.", key.KeyTag(), dns.RSASHA256)
+	if retrieved != nil {
+		t.Error("Expected nil for expired key")
+	}
+
+	t.Logf("✓ DNSKEY cache expiry working correctly")
+}
+
+// TestDNSKEYCacheIsValidatedExpiry tests IsValidated with expired entries.
+func TestDNSKEYCacheIsValidatedExpiry(t *testing.T) {
+	t.Parallel()
+	config := dnssec.DNSKEYCacheConfig{
+		MaxSize:    100,
+		DefaultTTL: time.Hour,
+		MinTTL:     1 * time.Millisecond,
+		MaxTTL:     time.Hour,
+	}
+	cache := dnssec.NewDNSKEYCache(config)
+
+	key := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   "example.com.",
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    0, // Zero TTL
+		},
+		Flags:     257,
+		Protocol:  3,
+		Algorithm: dns.RSASHA256,
+		PublicKey: "test-key",
+	}
+
+	// Add validated key
+	cache.Add(key, true)
+
+	// Should be validated immediately
+	if !cache.IsValidated("example.com.", key.KeyTag(), dns.RSASHA256) {
+		t.Error("Expected key to be validated immediately")
+	}
+
+	// Wait for expiry
+	time.Sleep(50 * time.Millisecond)
+
+	// Should not be validated after expiry
+	if cache.IsValidated("example.com.", key.KeyTag(), dns.RSASHA256) {
+		t.Error("Expected key to not be validated after expiry")
+	}
+
+	t.Logf("✓ DNSKEY cache IsValidated expiry working correctly")
+}

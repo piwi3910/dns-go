@@ -77,6 +77,9 @@ func (e *MessageCacheEntry) ShouldPrefetch(hitThreshold int64, ttlPercentThresho
 type MessageCacheShard struct {
 	data sync.Map // Lock-free map for reads
 	size atomic.Int64
+
+	// evictionMu protects eviction operations
+	evictionMu sync.Mutex
 }
 
 // MessageCache is a sharded cache for complete DNS responses
@@ -226,11 +229,97 @@ func (mc *MessageCache) Set(key string, response []byte, ttl time.Duration) {
 			// Type assertion failed - just add new size
 			shard.size.Add(int64(len(response)))
 		}
+		// Overwriting existing entry, update the data
+		shard.data.Store(key, entry)
 	} else {
 		shard.size.Add(int64(len(response)))
 	}
 
-	// Note: Size-based eviction not yet implemented. See issue #2
+	// Check if shard exceeds its size limit and trigger eviction if needed
+	shardMaxSize := mc.config.MaxSizeBytes / int64(len(mc.shards))
+	if shard.size.Load() > shardMaxSize {
+		mc.evictFromShard(shard, shardMaxSize)
+	}
+}
+
+// evictFromShard removes entries from a shard until it's under the size limit.
+// Uses a simple LRU-like approach: evict expired entries first, then lowest hit count.
+func (mc *MessageCache) evictFromShard(shard *MessageCacheShard, maxSize int64) {
+	// Try to acquire the eviction lock, skip if another goroutine is already evicting
+	if !shard.evictionMu.TryLock() {
+		return
+	}
+	defer shard.evictionMu.Unlock()
+
+	// Double-check size after acquiring lock
+	if shard.size.Load() <= maxSize {
+		return
+	}
+
+	// First pass: remove expired entries
+	var expiredKeys []string
+	shard.data.Range(func(key, value interface{}) bool {
+		if entry, ok := value.(*MessageCacheEntry); ok {
+			if entry.IsExpired() {
+				expiredKeys = append(expiredKeys, key.(string))
+			}
+		}
+		return true
+	})
+
+	for _, key := range expiredKeys {
+		if value, ok := shard.data.LoadAndDelete(key); ok {
+			if entry, ok := value.(*MessageCacheEntry); ok {
+				shard.size.Add(-int64(len(entry.ResponseBytes)))
+				mc.evicts.Add(1)
+			}
+		}
+	}
+
+	// Check if we're now under the limit
+	if shard.size.Load() <= maxSize {
+		return
+	}
+
+	// Second pass: collect entries and sort by hit count (LRU-like)
+	type entryInfo struct {
+		key      string
+		hitCount int64
+		size     int
+	}
+	var entries []entryInfo
+
+	shard.data.Range(func(key, value interface{}) bool {
+		if entry, ok := value.(*MessageCacheEntry); ok {
+			entries = append(entries, entryInfo{
+				key:      key.(string),
+				hitCount: entry.HitCount.Load(),
+				size:     len(entry.ResponseBytes),
+			})
+		}
+		return true
+	})
+
+	// Sort by hit count (ascending - evict least popular first)
+	for i := 0; i < len(entries)-1; i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[i].hitCount > entries[j].hitCount {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	// Evict entries until we're under the size limit (target 80% of max)
+	targetSize := maxSize * 80 / 100
+	for _, e := range entries {
+		if shard.size.Load() <= targetSize {
+			break
+		}
+		if _, ok := shard.data.LoadAndDelete(e.key); ok {
+			shard.size.Add(-int64(e.size))
+			mc.evicts.Add(1)
+		}
+	}
 }
 
 // Delete removes an entry from the cache.

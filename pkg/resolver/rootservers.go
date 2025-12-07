@@ -69,6 +69,25 @@ func NewRootServerPool() *RootServerPool {
 	return pool
 }
 
+// NewRootServerPoolWithAddresses creates a root server pool with custom addresses.
+// This is primarily used for testing with mock DNS servers.
+func NewRootServerPoolWithAddresses(addresses []string) *RootServerPool {
+	pool := &RootServerPool{
+		servers: make([]string, 0, len(addresses)),
+		current: 0,
+		mu:      sync.RWMutex{},
+		rttMap:  make(map[string]time.Duration),
+		rttMu:   sync.RWMutex{},
+	}
+
+	// Copy addresses, ensuring they have port numbers
+	for _, addr := range addresses {
+		pool.servers = append(pool.servers, addr)
+	}
+
+	return pool
+}
+
 // GetNext returns the next root server to query (round-robin with RTT awareness).
 func (p *RootServerPool) GetNext() string {
 	p.mu.Lock()

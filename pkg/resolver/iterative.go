@@ -38,6 +38,8 @@ type IterativeResolver struct {
 	maxDepth        int                             // Maximum delegation depth to prevent loops
 	parallelNSLimit int                             // Number of nameservers to query in parallel
 	queryCache      map[string]*iterativeCacheEntry // Cache for NS records and glue
+	portOverrides   map[string]int                  // Test-mode: IP -> custom port mapping
+	nsAddressLookup map[string]string               // Test-mode: NS name -> full address (IP:port)
 }
 
 // iterativeCacheEntry caches nameserver information.
@@ -67,6 +69,56 @@ func NewIterativeResolver() *IterativeResolver {
 		maxDepth:        defaultMaxDelegationDepth,
 		parallelNSLimit: defaultParallelNSLimit,
 		queryCache:      make(map[string]*iterativeCacheEntry),
+	}
+}
+
+// NewIterativeResolverWithRootPool creates a new iterative resolver with a custom root pool.
+// This is primarily used for testing with mock DNS servers.
+func NewIterativeResolverWithRootPool(rootPool *RootServerPool) *IterativeResolver {
+	return &IterativeResolver{
+		client: &dns.Client{
+			Net:            "udp",
+			Timeout:        defaultQueryTimeoutSec * time.Second,
+		},
+		rootPool:        rootPool,
+		maxDepth:        defaultMaxDelegationDepth,
+		parallelNSLimit: defaultParallelNSLimit,
+		queryCache:      make(map[string]*iterativeCacheEntry),
+		portOverrides:   nil,
+	}
+}
+
+// NewIterativeResolverWithPortOverrides creates a new iterative resolver with custom port mappings.
+// This is used for testing with mock DNS servers running on non-standard ports.
+// The portOverrides map should contain IP -> port mappings (e.g., "127.0.0.1" -> 5353).
+func NewIterativeResolverWithPortOverrides(rootPool *RootServerPool, portOverrides map[string]int) *IterativeResolver {
+	return &IterativeResolver{
+		client: &dns.Client{
+			Net:            "udp",
+			Timeout:        defaultQueryTimeoutSec * time.Second,
+		},
+		rootPool:        rootPool,
+		maxDepth:        defaultMaxDelegationDepth,
+		parallelNSLimit: defaultParallelNSLimit,
+		queryCache:      make(map[string]*iterativeCacheEntry),
+		portOverrides:   portOverrides,
+	}
+}
+
+// NewIterativeResolverWithNSLookup creates a new iterative resolver with NS name to address lookups.
+// This is used for testing with mock DNS servers where all servers run on 127.0.0.1 with different ports.
+// The nsAddressLookup map should contain NS name -> full address mappings (e.g., "ns1.com." -> "127.0.0.1:5353").
+func NewIterativeResolverWithNSLookup(rootPool *RootServerPool, nsAddressLookup map[string]string) *IterativeResolver {
+	return &IterativeResolver{
+		client: &dns.Client{
+			Net:     "udp",
+			Timeout: defaultQueryTimeoutSec * time.Second,
+		},
+		rootPool:        rootPool,
+		maxDepth:        defaultMaxDelegationDepth,
+		parallelNSLimit: defaultParallelNSLimit,
+		queryCache:      make(map[string]*iterativeCacheEntry),
+		nsAddressLookup: nsAddressLookup,
 	}
 }
 
@@ -171,6 +223,13 @@ func (ir *IterativeResolver) resolveNSAddresses(
 		return []string{ns}, nil
 	}
 
+	// Check NS address lookup table first (test mode)
+	if ir.nsAddressLookup != nil {
+		if addr, ok := ir.nsAddressLookup[ns]; ok {
+			return []string{addr}, nil
+		}
+	}
+
 	// Look up in glue records first
 	if addrs, ok := glue[ns]; ok && len(addrs) > 0 {
 		return addrs, nil
@@ -193,9 +252,7 @@ func (ir *IterativeResolver) queryNSAddresses(
 
 	for _, addr := range nsAddrs {
 		// Ensure address has port
-		if !strings.Contains(addr, ":") {
-			addr += ":53"
-		}
+		addr = ir.ensurePort(addr)
 
 		start := time.Now()
 		response, _, err := ir.client.ExchangeContext(ctx, query, addr)
@@ -334,6 +391,13 @@ func (ir *IterativeResolver) resolveNSForParallel(
 	glue map[string][]string,
 	depth int,
 ) ([]string, error) {
+	// Check NS address lookup table first (test mode)
+	if ir.nsAddressLookup != nil {
+		if addr, ok := ir.nsAddressLookup[ns]; ok {
+			return []string{addr}, nil
+		}
+	}
+
 	if addrs, ok := glue[ns]; ok && len(addrs) > 0 {
 		return addrs, nil
 	}
@@ -377,9 +441,7 @@ func (ir *IterativeResolver) executeParallelQuery(
 	addr string,
 	results chan<- queryResult,
 ) {
-	if !strings.Contains(addr, ":") {
-		addr += ":53"
-	}
+	addr = ir.ensurePort(addr)
 
 	response, _, err := ir.client.ExchangeContext(ctx, query, addr)
 	if err != nil {
@@ -559,4 +621,31 @@ func isIPAddress(s string) bool {
 	}
 
 	return net.ParseIP(host) != nil
+}
+
+// ensurePort ensures an address has a port, applying port overrides if configured.
+func (ir *IterativeResolver) ensurePort(addr string) string {
+	// If already has port, return as-is
+	if strings.Contains(addr, ":") {
+		return addr
+	}
+
+	// Check for port override (test mode)
+	if ir.portOverrides != nil {
+		if port, ok := ir.portOverrides[addr]; ok {
+			return fmt.Sprintf("%s:%d", addr, port)
+		}
+	}
+
+	// Default to port 53
+	return addr + ":53"
+}
+
+// GetRootServers returns all configured root server addresses.
+// This is primarily used for testing and diagnostics.
+func (ir *IterativeResolver) GetRootServers() []string {
+	if ir.rootPool == nil {
+		return nil
+	}
+	return ir.rootPool.GetAllServers()
 }

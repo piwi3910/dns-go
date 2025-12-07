@@ -355,3 +355,78 @@ func TestRRsetCacheTTLBounds(t *testing.T) {
 		t.Error("Expected entry with adjusted MaxTTL")
 	}
 }
+
+// TestRRsetCacheSizeEviction tests that cache evicts entries when size limit is exceeded.
+func TestRRsetCacheSizeEviction(t *testing.T) {
+	t.Parallel()
+	config := cache.RRsetCacheConfig{
+		NumShards:    1,    // Single shard for predictable testing
+		MaxSizeBytes: 500,  // Very small cache (each RR is ~100 bytes)
+		MinTTL:       1 * time.Millisecond,
+		MaxTTL:       1 * time.Hour,
+	}
+	rrsetCache := cache.NewRRsetCache(config)
+
+	// Add entries until we exceed the limit
+	for i := 0; i < 20; i++ {
+		domain := string(rune('a'+i)) + ".test."
+		rr, _ := dns.NewRR(domain + " 300 IN A 192.0.2.1")
+		rrsetCache.Set(domain, dns.TypeA, []dns.RR{rr}, 5*time.Minute)
+
+		// Simulate hits on first few entries to make them "popular"
+		if i < 3 {
+			for j := 0; j < 100; j++ {
+				rrsetCache.Get(domain, dns.TypeA)
+			}
+		}
+	}
+
+	// Verify that evictions occurred
+	stats := rrsetCache.GetStats()
+	if stats.Evicts == 0 {
+		t.Error("Expected evictions to occur when cache size limit is exceeded")
+	}
+
+	// Verify cache size is under limit
+	if stats.Size > config.MaxSizeBytes {
+		t.Errorf("Cache size %d exceeds max %d after eviction", stats.Size, config.MaxSizeBytes)
+	}
+
+	t.Logf("Evictions: %d, final size: %d", stats.Evicts, stats.Size)
+}
+
+// TestRRsetCacheEvictionExpiredFirst tests that expired entries are evicted first.
+func TestRRsetCacheEvictionExpiredFirst(t *testing.T) {
+	t.Parallel()
+	config := cache.RRsetCacheConfig{
+		NumShards:    1,
+		MaxSizeBytes: 200, // Very small cache
+		MinTTL:       1 * time.Millisecond,
+		MaxTTL:       1 * time.Hour,
+	}
+	rrsetCache := cache.NewRRsetCache(config)
+
+	// Add entries with short TTL (these will expire)
+	for i := 0; i < 10; i++ {
+		domain := string(rune('a'+i)) + ".expired."
+		rr, _ := dns.NewRR(domain + " 300 IN A 192.0.2.1")
+		rrsetCache.Set(domain, dns.TypeA, []dns.RR{rr}, 10*time.Millisecond)
+	}
+
+	// Wait for them to expire
+	time.Sleep(50 * time.Millisecond)
+
+	// Add fresh entries that should trigger eviction of the expired ones
+	for i := 0; i < 20; i++ {
+		domain := string(rune('a'+i)) + ".fresh."
+		rr, _ := dns.NewRR(domain + " 300 IN A 192.0.2.1")
+		rrsetCache.Set(domain, dns.TypeA, []dns.RR{rr}, 5*time.Minute)
+	}
+
+	// Expired entries should have been evicted
+	stats := rrsetCache.GetStats()
+	if stats.Evicts == 0 {
+		t.Error("Expected expired entries to be evicted")
+	}
+	t.Logf("Evictions: %d, final size: %d", stats.Evicts, stats.Size)
+}

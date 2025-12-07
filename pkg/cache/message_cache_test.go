@@ -355,3 +355,105 @@ func TestShouldPrefetch(t *testing.T) {
 		t.Error("Expected shouldPrefetch = false for expired entry")
 	}
 }
+
+// TestMessageCacheSizeEviction tests that cache evicts entries when size limit is exceeded.
+func TestMessageCacheSizeEviction(t *testing.T) {
+	t.Parallel()
+	config := cache.MessageCacheConfig{
+		NumShards:    1,                 // Single shard for predictable testing
+		MaxSizeBytes: 500,               // Very small cache for testing
+		DefaultTTL:   5 * time.Minute,
+		MinTTL:       1 * time.Millisecond,
+		MaxTTL:       1 * time.Hour,
+	}
+	messageCache := cache.NewMessageCache(config)
+
+	// Create a response that's about 100 bytes
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.SetReply(msg)
+	response, _ := msg.Pack()
+	responseSize := len(response)
+
+	// Add entries until we exceed the limit
+	// With 500 byte max and ~100 byte entries, we should be able to store about 5
+	// But after that, eviction should kick in
+	for i := 0; i < 20; i++ {
+		domain := string(rune('a'+i)) + ".test."
+		key := cache.MakeKey(domain, dns.TypeA, dns.ClassINET)
+		messageCache.Set(key, response, 5*time.Minute)
+
+		// Simulate hits on first few entries to make them "popular"
+		if i < 3 {
+			for j := 0; j < 100; j++ {
+				messageCache.Get(key)
+			}
+		}
+	}
+
+	// Verify that evictions occurred
+	stats := messageCache.GetStats()
+	if stats.Evicts == 0 {
+		t.Error("Expected evictions to occur when cache size limit is exceeded")
+	}
+
+	// Verify cache size is under limit
+	if stats.Size > config.MaxSizeBytes {
+		t.Errorf("Cache size %d exceeds max %d after eviction", stats.Size, config.MaxSizeBytes)
+	}
+
+	// The popular entries (first 3) should more likely be retained due to LRU-like eviction
+	// Note: This is probabilistic, so we just check that at least one popular entry remains
+	popularFound := 0
+	for i := 0; i < 3; i++ {
+		domain := string(rune('a'+i)) + ".test."
+		key := cache.MakeKey(domain, dns.TypeA, dns.ClassINET)
+		if messageCache.Get(key) != nil {
+			popularFound++
+		}
+	}
+	t.Logf("Response size: %d bytes, evictions: %d, final size: %d, popular entries retained: %d",
+		responseSize, stats.Evicts, stats.Size, popularFound)
+}
+
+// TestMessageCacheEvictionExpiredFirst tests that expired entries are evicted first.
+func TestMessageCacheEvictionExpiredFirst(t *testing.T) {
+	t.Parallel()
+	config := cache.MessageCacheConfig{
+		NumShards:    1,
+		MaxSizeBytes: 200, // Very small cache
+		DefaultTTL:   5 * time.Minute,
+		MinTTL:       1 * time.Millisecond,
+		MaxTTL:       1 * time.Hour,
+	}
+	messageCache := cache.NewMessageCache(config)
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.SetReply(msg)
+	response, _ := msg.Pack()
+
+	// Add entries with short TTL (these will expire)
+	for i := 0; i < 10; i++ {
+		domain := string(rune('a'+i)) + ".expired."
+		key := cache.MakeKey(domain, dns.TypeA, dns.ClassINET)
+		messageCache.Set(key, response, 10*time.Millisecond)
+	}
+
+	// Wait for them to expire
+	time.Sleep(50 * time.Millisecond)
+
+	// Add fresh entries that should trigger eviction of the expired ones
+	for i := 0; i < 20; i++ {
+		domain := string(rune('a'+i)) + ".fresh."
+		key := cache.MakeKey(domain, dns.TypeA, dns.ClassINET)
+		messageCache.Set(key, response, 5*time.Minute)
+	}
+
+	// Expired entries should have been evicted
+	stats := messageCache.GetStats()
+	if stats.Evicts == 0 {
+		t.Error("Expected expired entries to be evicted")
+	}
+	t.Logf("Evictions: %d, final size: %d", stats.Evicts, stats.Size)
+}

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/piwi3910/dns-go/pkg/config"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
 	"github.com/piwi3910/dns-go/pkg/server"
@@ -33,12 +34,11 @@ const (
 	pprofReadHeaderTimeoutSec = 10  // HTTP read header timeout for pprof server
 	pprofWriteTimeoutSec      = 15  // HTTP write timeout for pprof server
 	pprofIdleTimeoutSec       = 60  // HTTP idle timeout for pprof server
-	gracefulShutdownTimeoutSec = 10  // Graceful shutdown timeout
-	statsReportIntervalSec    = 30  // Stats reporting interval
 	percentageMultiplier      = 100 // Convert fraction to percentage
 )
 
-type config struct {
+type cliFlags struct {
+	configFile string
 	listenAddr string
 	workers    int
 	pprofAddr  string
@@ -46,34 +46,70 @@ type config struct {
 	enableTCP  bool
 }
 
-func parseFlags() *config {
-	cfg := &config{
+func parseFlags() *cliFlags {
+	cfg := &cliFlags{
+		configFile: "",
 		listenAddr: "",
 		workers:    0,
 		pprofAddr:  "",
 		modeFlag:   "",
-		enableTCP:  false,
+		enableTCP:  true,
 	}
-	flag.StringVar(&cfg.listenAddr, "listen", ":8083", "Address to listen on (default :8083)")
-	flag.IntVar(&cfg.workers, "workers", runtime.NumCPU(), "Number of I/O workers (default: NumCPU)")
-	flag.StringVar(&cfg.pprofAddr, "pprof", ":6060", "Address for pprof HTTP server (empty to disable)")
-	flag.StringVar(&cfg.modeFlag, "mode", "forwarding",
-		"Resolution mode: 'forwarding' or 'recursive' (default: forwarding)")
-	flag.BoolVar(&cfg.enableTCP, "tcp", true, "Enable TCP listener (default: true)")
+	flag.StringVar(&cfg.configFile, "config", "", "Path to YAML configuration file")
+	flag.StringVar(&cfg.listenAddr, "listen", "", "Address to listen on (overrides config file)")
+	flag.IntVar(&cfg.workers, "workers", 0, "Number of I/O workers (overrides config file, 0 = use config/default)")
+	flag.StringVar(&cfg.pprofAddr, "pprof", "", "Address for pprof HTTP server (overrides config file)")
+	flag.StringVar(&cfg.modeFlag, "mode", "",
+		"Resolution mode: 'forwarding' or 'recursive' (overrides config file)")
+	flag.BoolVar(&cfg.enableTCP, "tcp", true, "Enable TCP listener")
 	flag.Parse()
 
 	return cfg
 }
 
+// loadConfig loads configuration from file or returns defaults.
+func loadConfig(cli *cliFlags) *config.Config {
+	var cfg *config.Config
+	var err error
+
+	if cli.configFile != "" {
+		cfg, err = config.LoadFromFile(cli.configFile)
+		if err != nil {
+			log.Fatalf("Failed to load config from %s: %v", cli.configFile, err)
+		}
+		log.Printf("Loaded configuration from %s", cli.configFile)
+	} else {
+		cfg = config.DefaultConfig()
+	}
+
+	// Apply CLI overrides
+	if cli.listenAddr != "" {
+		cfg.Server.ListenAddress = cli.listenAddr
+	}
+	if cli.workers > 0 {
+		cfg.Server.NumWorkers = cli.workers
+	}
+	if cli.pprofAddr != "" {
+		cfg.Server.PprofAddress = cli.pprofAddr
+	}
+	if cli.modeFlag != "" {
+		cfg.Resolver.Mode = cli.modeFlag
+	}
+	cfg.Server.EnableTCP = cli.enableTCP
+
+	return cfg
+}
+
 func main() {
-	cfg := parseFlags()
+	cli := parseFlags()
+	cfg := loadConfig(cli)
 
 	log.Printf("Starting DNS Server v%s", version)
 	log.Printf("Go version: %s", runtime.Version())
-	log.Printf("NumCPU: %d, Workers: %d", runtime.NumCPU(), cfg.workers)
+	log.Printf("NumCPU: %d, Workers: %d", runtime.NumCPU(), cfg.Server.NumWorkers)
 
 	// Parse resolution mode
-	resolverMode, err := parseResolutionMode(cfg.modeFlag)
+	resolverMode, err := parseResolutionMode(cfg.Resolver.Mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,13 +124,13 @@ func main() {
 	log.Printf("Cache: enabled (Message + RRset + Infrastructure)")
 
 	// Start pprof HTTP server if enabled
-	startPprofServer(cfg.pprofAddr)
+	startPprofServer(cfg.Server.PprofAddress)
 
 	// Start stats reporter
-	go reportStats(handler)
+	go reportStats(handler, cfg.Server.StatsReportInterval)
 
 	// Wait for shutdown signal and perform graceful shutdown
-	waitAndShutdown(handler, udpListener, tcpListener)
+	waitAndShutdown(handler, udpListener, tcpListener, cfg.Server.GracefulShutdownTimeout)
 }
 
 // parseResolutionMode converts a mode string to RecursionMode.
@@ -122,14 +158,14 @@ func createHandler(resolverMode resolver.RecursionMode) *server.Handler {
 }
 
 // startListeners starts UDP and TCP listeners.
-func startListeners(cfg *config, handler *server.Handler) (*dnsio.UDPListener, *dnsio.TCPListener) {
+func startListeners(cfg *config.Config, handler *server.Handler) (*dnsio.UDPListener, *dnsio.TCPListener) {
 	// Start UDP listener
 	udpListener := startUDPListener(cfg, handler)
-	log.Printf("DNS server listening on UDP %s with %d workers", udpListener.Addr(), cfg.workers)
+	log.Printf("DNS server listening on UDP %s with %d workers", udpListener.Addr(), cfg.Server.NumWorkers)
 
 	// Start TCP listener if enabled
 	var tcpListener *dnsio.TCPListener
-	if cfg.enableTCP {
+	if cfg.Server.EnableTCP {
 		tcpListener = startTCPListener(cfg, handler)
 		log.Printf("DNS server listening on TCP %s (RFC 7766 compliant)", tcpListener.Addr())
 	}
@@ -138,9 +174,9 @@ func startListeners(cfg *config, handler *server.Handler) (*dnsio.UDPListener, *
 }
 
 // startUDPListener creates and starts a UDP listener.
-func startUDPListener(cfg *config, handler *server.Handler) *dnsio.UDPListener {
-	udpConfig := dnsio.DefaultListenerConfig(cfg.listenAddr)
-	udpConfig.NumWorkers = cfg.workers
+func startUDPListener(cfg *config.Config, handler *server.Handler) *dnsio.UDPListener {
+	udpConfig := dnsio.DefaultListenerConfig(cfg.Server.ListenAddress)
+	udpConfig.NumWorkers = cfg.Server.NumWorkers
 	udpConfig.ReusePort = true
 
 	udpListener, err := dnsio.NewUDPListener(udpConfig, handler)
@@ -156,8 +192,8 @@ func startUDPListener(cfg *config, handler *server.Handler) *dnsio.UDPListener {
 }
 
 // startTCPListener creates and starts a TCP listener.
-func startTCPListener(cfg *config, handler *server.Handler) *dnsio.TCPListener {
-	tcpConfig := dnsio.DefaultListenerConfig(cfg.listenAddr)
+func startTCPListener(cfg *config.Config, handler *server.Handler) *dnsio.TCPListener {
+	tcpConfig := dnsio.DefaultListenerConfig(cfg.Server.ListenAddress)
 	tcpConfig.ReusePort = true
 
 	tcpListener, err := dnsio.NewTCPListener(tcpConfig, handler)
@@ -206,7 +242,7 @@ func startPprofServer(addr string) {
 }
 
 // waitAndShutdown waits for shutdown signal and performs graceful shutdown.
-func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener) {
+func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener, shutdownTimeout time.Duration) {
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -217,7 +253,7 @@ func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tc
 	// Graceful shutdown
 	log.Println("Shutting down gracefully...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeoutSec*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	// Stop listeners
@@ -260,8 +296,8 @@ func printFinalStats(handler *server.Handler) {
 }
 
 // reportStats periodically reports cache statistics.
-func reportStats(handler *server.Handler) {
-	ticker := time.NewTicker(statsReportIntervalSec * time.Second)
+func reportStats(handler *server.Handler, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
