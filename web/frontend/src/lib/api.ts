@@ -380,3 +380,104 @@ export const haApi = {
       body: JSON.stringify({ targetID }),
     }),
 }
+
+// Distributed Cache API
+export interface WorkerCacheInfo {
+  workerId: string
+  clusterName: string
+  address: string
+  status: string
+  messageCache: {
+    hits: number
+    misses: number
+    evicts: number
+    hit_rate: number
+    size_bytes: number
+    max_size_bytes: number
+    num_shards: number
+  }
+  rrsetCache: {
+    hits: number
+    misses: number
+    evicts: number
+    hit_rate: number
+    size_bytes: number
+    max_size_bytes: number
+    num_shards: number
+  }
+  infraCache: {
+    server_count: number
+  }
+  lastUpdated: string
+}
+
+export interface SharedCacheInfo {
+  type: string
+  address: string
+  status: string
+  stats: {
+    hits: number
+    misses: number
+    evicts: number
+    hit_rate: number
+    size_bytes: number
+    max_size_bytes: number
+    num_shards: number
+  }
+  lastSync: string
+}
+
+export interface AggregatedCacheStats {
+  totalHits: number
+  totalMisses: number
+  totalEvicts: number
+  averageHitRate: number
+  totalSizeBytes: number
+  totalMaxSizeBytes: number
+  workerCount: number
+}
+
+export interface CacheArchitectureInfo {
+  description: string
+  l1Type: string
+  l2Type: string
+  replication: string
+  invalidation: string
+  features: string[]
+}
+
+export interface DistributedCacheResponse {
+  mode: string
+  workers: WorkerCacheInfo[]
+  sharedCache: SharedCacheInfo | null
+  aggregated: AggregatedCacheStats
+  architecture: CacheArchitectureInfo
+}
+
+export interface WorkerClearResult {
+  workerId: string
+  success: boolean
+  cleared: string[]
+  error?: string
+}
+
+export interface ClearDistributedCacheResponse {
+  success: boolean
+  clearedCount: number
+  results: WorkerClearResult[]
+  sharedCleared: boolean
+}
+
+export const distributedCacheApi = {
+  get: () => fetchApi<DistributedCacheResponse>('/cache/distributed'),
+
+  clear: (options: {
+    target: 'all' | 'worker' | 'shared'
+    workerIds?: string[]
+    cacheType: 'all' | 'message' | 'rrset' | 'infra'
+  }) =>
+    fetchApi<ClearDistributedCacheResponse>('/cache/distributed', {
+      method: 'DELETE',
+      body: JSON.stringify(options),
+    }),
+}

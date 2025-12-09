@@ -1,12 +1,25 @@
 # Docker Compose for dns-go
-# Supports both standalone and distributed modes without Kubernetes
+# Supports standalone, distributed, and hybrid cache modes
+#
+# Profiles:
+#   - standalone: Single DNS server (default, simplest)
+#   - distributed: Control plane + workers (local cache per worker)
+#   - hybrid: Control plane + workers + Redis shared cache
+#   - ha: Multi-site HA with Redis Sentinel
+#
+# Usage:
+#   docker-compose --profile standalone up
+#   docker-compose --profile distributed up
+#   docker-compose --profile hybrid up
+#   docker-compose --profile hybrid up --scale dns-worker=5
 
 version: '3.8'
 
 services:
   # =============================================================================
   # STANDALONE MODE (default)
-  # Run with: docker-compose up dns-standalone
+  # Run with: docker-compose --profile standalone up
+  # Single container, local cache, simplest deployment
   # =============================================================================
   dns-standalone:
     build:
@@ -34,11 +47,93 @@ services:
       - standalone
 
   # =============================================================================
-  # DISTRIBUTED MODE
+  # DISTRIBUTED MODE (Local Cache)
   # Run with: docker-compose --profile distributed up
+  # Control plane manages workers, each worker has independent cache
   # =============================================================================
 
-  # Control Plane
+  # Control Plane (Local Cache Mode)
+  dns-control-local:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    image: ghcr.io/piwi3910/dns-go-control:latest
+    container_name: dns-go-control-local
+    ports:
+      - "8080:8080"    # API/GUI
+      - "9090:9090"    # gRPC (worker connections)
+      - "6060:6060"    # pprof
+    volumes:
+      - ./config/control-local.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - distributed
+
+  # DNS Workers (Local Cache)
+  dns-worker-local:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.worker
+    image: ghcr.io/piwi3910/dns-go-worker:latest
+    ports:
+      - "53/udp"       # DNS (random host port)
+      - "53/tcp"       # DNS TCP
+    volumes:
+      - ./config/worker-local.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+      - CONTROL_PLANE_ADDRESS=dns-control-local:9090
+    depends_on:
+      dns-control-local:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "localhost", "+short"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 2
+    profiles:
+      - distributed
+
+  # =============================================================================
+  # HYBRID MODE (Shared Redis Cache)
+  # Run with: docker-compose --profile hybrid up
+  # Control plane + workers + Redis for shared L2 cache
+  # =============================================================================
+
+  # Redis for shared cache
+  redis:
+    image: redis:7-alpine
+    container_name: dns-go-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - hybrid
+      - ha
+
+  # Control Plane (Hybrid Cache Mode)
   dns-control:
     build:
       context: ../..
@@ -53,6 +148,10 @@ services:
       - ./config/control.yaml:/etc/dns-go/config.yaml:ro
     environment:
       - DNS_LOG_LEVEL=info
+      - REDIS_ADDRESS=redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
@@ -60,9 +159,9 @@ services:
       timeout: 5s
       retries: 3
     profiles:
-      - distributed
+      - hybrid
 
-  # DNS Workers (can scale with --scale dns-worker=N)
+  # DNS Workers (Hybrid Cache with Redis)
   dns-worker:
     build:
       context: ../..
@@ -76,6 +175,7 @@ services:
     environment:
       - DNS_LOG_LEVEL=info
       - CONTROL_PLANE_ADDRESS=dns-control:9090
+      - REDIS_ADDRESS=redis:6379
     depends_on:
       dns-control:
         condition: service_healthy
@@ -88,9 +188,9 @@ services:
     deploy:
       replicas: 2
     profiles:
-      - distributed
+      - hybrid
 
-  # Load Balancer for distributed workers (optional)
+  # Load Balancer for workers (optional)
   dns-lb:
     image: nginx:alpine
     container_name: dns-go-lb
@@ -103,8 +203,216 @@ services:
       - dns-worker
     restart: unless-stopped
     profiles:
-      - distributed
+      - hybrid
       - lb
+
+  # =============================================================================
+  # HIGH AVAILABILITY MODE (Redis Sentinel)
+  # For production multi-site deployments
+  # Run with: docker-compose --profile ha up
+  # =============================================================================
+
+  # Redis Master
+  redis-master:
+    image: redis:7-alpine
+    container_name: dns-go-redis-master
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ha
+
+  # Redis Replica
+  redis-replica:
+    image: redis:7-alpine
+    container_name: dns-go-redis-replica
+    command: >
+      redis-server
+      --appendonly yes
+      --replicaof redis-master 6379
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ha
+
+  # Redis Sentinel 1
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: dns-go-sentinel-1
+    command: >
+      sh -c "
+      cat > /etc/redis/sentinel.conf << 'EOF'
+      port 26379
+      sentinel monitor dns-cache redis-master 6379 2
+      sentinel down-after-milliseconds dns-cache 5000
+      sentinel failover-timeout dns-cache 60000
+      sentinel parallel-syncs dns-cache 1
+      EOF
+      redis-sentinel /etc/redis/sentinel.conf
+      "
+    ports:
+      - "26379:26379"
+    depends_on:
+      - redis-master
+      - redis-replica
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ha
+
+  # Redis Sentinel 2
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: dns-go-sentinel-2
+    command: >
+      sh -c "
+      cat > /etc/redis/sentinel.conf << 'EOF'
+      port 26379
+      sentinel monitor dns-cache redis-master 6379 2
+      sentinel down-after-milliseconds dns-cache 5000
+      sentinel failover-timeout dns-cache 60000
+      sentinel parallel-syncs dns-cache 1
+      EOF
+      redis-sentinel /etc/redis/sentinel.conf
+      "
+    ports:
+      - "26380:26379"
+    depends_on:
+      - redis-master
+      - redis-replica
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ha
+
+  # Redis Sentinel 3
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: dns-go-sentinel-3
+    command: >
+      sh -c "
+      cat > /etc/redis/sentinel.conf << 'EOF'
+      port 26379
+      sentinel monitor dns-cache redis-master 6379 2
+      sentinel down-after-milliseconds dns-cache 5000
+      sentinel failover-timeout dns-cache 60000
+      sentinel parallel-syncs dns-cache 1
+      EOF
+      redis-sentinel /etc/redis/sentinel.conf
+      "
+    ports:
+      - "26381:26379"
+    depends_on:
+      - redis-master
+      - redis-replica
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ha
+
+  # Control Plane (HA Mode with Sentinel)
+  dns-control-ha:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    image: ghcr.io/piwi3910/dns-go-control:latest
+    container_name: dns-go-control-ha
+    ports:
+      - "8080:8080"    # API/GUI
+      - "9090:9090"    # gRPC
+    volumes:
+      - ./config/control-ha.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+      - HA_ENABLED=true
+      - HA_PRIORITY=1
+      - REDIS_SENTINEL_MASTER=dns-cache
+      - REDIS_SENTINEL_ADDRESSES=redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+    depends_on:
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - ha
+
+  # DNS Workers (HA Mode)
+  dns-worker-ha:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.worker
+    image: ghcr.io/piwi3910/dns-go-worker:latest
+    ports:
+      - "53/udp"
+      - "53/tcp"
+    volumes:
+      - ./config/worker-ha.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+      - CONTROL_PLANE_ADDRESS=dns-control-ha:9090
+      - REDIS_SENTINEL_MASTER=dns-cache
+      - REDIS_SENTINEL_ADDRESSES=redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+    depends_on:
+      dns-control-ha:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "localhost", "+short"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 3
+    profiles:
+      - ha
 
 volumes:
   dns-data:
+  redis-data:
+  redis-master-data:
+  redis-replica-data:

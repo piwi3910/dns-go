@@ -1,0 +1,80 @@
+# Control Plane Configuration - High Availability Mode
+# Uses Redis Sentinel for shared cache + HA
+
+control:
+  grpc_address: ":9090"
+  heartbeat_timeout: 30s
+
+cache:
+  mode: hybrid
+  message_cache:
+    max_size_mb: 64
+    num_shards: 32
+    min_ttl: 60
+    max_ttl: 86400
+  rrset_cache:
+    max_size_mb: 128
+    num_shards: 64
+  shared_cache:
+    enabled: true
+    type: redis-sentinel
+    sentinel:
+      master_name: "${REDIS_SENTINEL_MASTER:-dns-cache}"
+      addresses: "${REDIS_SENTINEL_ADDRESSES}"
+    database: 0
+    key_prefix: "dns:"
+    ttl_multiplier: 1.5
+    pool_size: 10
+    min_idle_conns: 5
+    max_retries: 3
+    read_preference: replicaPreferred
+  prefetch:
+    enabled: true
+    threshold_hits: 100
+    threshold_ttl_pct: 10
+  invalidation:
+    strategy: pubsub
+    pubsub_channel: "dns:invalidate"
+
+high_availability:
+  enabled: "${HA_ENABLED:-true}"
+  mode: active_passive
+  priority: "${HA_PRIORITY:-1}"
+  leader_election:
+    lease_duration: 15s
+    renew_deadline: 10s
+    retry_period: 2s
+  quorum:
+    type: worker_witness
+    minimum: 3
+    fencing_enabled: true
+    grace_period: 30s
+    worker_witness:
+      min_clusters_required: 1
+      min_workers_per_cluster: 2
+      heartbeat_interval: 5s
+      heartbeat_timeout: 15s
+
+resolver:
+  mode: parallel
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+    - "9.9.9.9:53"
+  query_timeout: 5s
+
+api:
+  enabled: true
+  listen_address: ":8080"
+  cors_origins:
+    - "*"
+  auth:
+    username: admin
+    password: admin
+    jwt_secret: ""
+    token_expiry: 24h
+
+logging:
+  level: info
+  format: json
+  enable_query_log: false

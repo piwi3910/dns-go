@@ -69,10 +69,37 @@ spec:
             - name: config
               mountPath: /etc/dns-go
               readOnly: true
+            {{- if and .Values.cache.sharedCache.enabled (or .Values.cache.sharedCache.redis.authSecret .Values.cache.sharedCache.redisSentinel.authSecret .Values.cache.sharedCache.redisCluster.authSecret) }}
+            - name: redis-secret
+              mountPath: /etc/dns-go/secrets
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "dns-go.fullname" . }}-control
+        {{- if and .Values.cache.sharedCache.enabled .Values.cache.sharedCache.redis.authSecret }}
+        - name: redis-secret
+          secret:
+            secretName: {{ .Values.cache.sharedCache.redis.authSecret.name }}
+            items:
+              - key: {{ .Values.cache.sharedCache.redis.authSecret.key | default "password" }}
+                path: redis-password
+        {{- else if and .Values.cache.sharedCache.enabled .Values.cache.sharedCache.redisSentinel.authSecret }}
+        - name: redis-secret
+          secret:
+            secretName: {{ .Values.cache.sharedCache.redisSentinel.authSecret.name }}
+            items:
+              - key: {{ .Values.cache.sharedCache.redisSentinel.authSecret.key | default "password" }}
+                path: redis-password
+        {{- else if and .Values.cache.sharedCache.enabled .Values.cache.sharedCache.redisCluster.authSecret }}
+        - name: redis-secret
+          secret:
+            secretName: {{ .Values.cache.sharedCache.redisCluster.authSecret.name }}
+            items:
+              - key: {{ .Values.cache.sharedCache.redisCluster.authSecret.key | default "password" }}
+                path: redis-password
+        {{- end }}
       {{- with .Values.control.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

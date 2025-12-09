@@ -1,0 +1,320 @@
+# Example: DNSCluster with Distributed Cache Configuration
+# Demonstrates all cache modes: standalone, local-only, and hybrid
+
+---
+# Simple standalone deployment with local cache
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-standalone
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 1
+
+  cache:
+    mode: standalone
+    messageCache:
+      maxSizeMB: 64
+      numShards: 32
+    rrsetCache:
+      maxSizeMB: 128
+      numShards: 64
+    prefetch:
+      enabled: true
+      thresholdHits: 100
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Distributed deployment with local cache per worker
+# Good for: horizontal scaling without shared state
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-local-cache
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 5
+    minReplicas: 3
+    maxReplicas: 20
+    autoscaling:
+      enabled: true
+      targetCPUUtilization: 70
+
+  cache:
+    mode: local-only
+    messageCache:
+      maxSizeMB: 64
+      numShards: 32
+      minTTL: 60
+      maxTTL: 86400
+    rrsetCache:
+      maxSizeMB: 128
+      numShards: 64
+    prefetch:
+      enabled: true
+      thresholdHits: 100
+      thresholdTTLPercent: 10
+    invalidation:
+      strategy: broadcast
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Hybrid deployment with shared Redis cache
+# Good for: cache persistence, fast worker warmup, multi-cluster
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-hybrid-cache
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 6
+    minReplicas: 4
+    maxReplicas: 20
+    autoscaling:
+      enabled: true
+      targetCPUUtilization: 70
+
+  cache:
+    mode: hybrid
+    messageCache:
+      maxSizeMB: 64
+      numShards: 32
+      minTTL: 60
+      maxTTL: 86400
+    rrsetCache:
+      maxSizeMB: 128
+      numShards: 64
+    sharedCache:
+      enabled: true
+      type: redis
+      redis:
+        address: "redis.dns-go.svc.cluster.local:6379"
+        database: 0
+        authSecret:
+          name: redis-credentials
+          key: password
+      keyPrefix: "dns:"
+      ttlMultiplier: 1.5
+      poolSize: 10
+      minIdleConns: 5
+      maxRetries: 3
+    prefetch:
+      enabled: true
+      thresholdHits: 100
+      thresholdTTLPercent: 10
+    invalidation:
+      strategy: pubsub
+      pubsubChannel: "dns:invalidate"
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Production HA deployment with Redis Sentinel
+# Good for: multi-site, high availability, automatic failover
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-ha-sentinel
+spec:
+  controlPlane:
+    replicas: 2
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+  workers:
+    replicas: 6
+    minReplicas: 4
+    maxReplicas: 30
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "2"
+    autoscaling:
+      enabled: true
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  cache:
+    mode: hybrid
+    messageCache:
+      maxSizeMB: 128
+      numShards: 64
+      minTTL: 60
+      maxTTL: 86400
+    rrsetCache:
+      maxSizeMB: 256
+      numShards: 128
+    sharedCache:
+      enabled: true
+      type: redis-sentinel
+      redisSentinel:
+        masterName: dns-cache
+        addresses:
+          - "redis-sentinel-0.redis-sentinel.dns-go.svc.cluster.local:26379"
+          - "redis-sentinel-1.redis-sentinel.dns-go.svc.cluster.local:26379"
+          - "redis-sentinel-2.redis-sentinel.dns-go.svc.cluster.local:26379"
+        authSecret:
+          name: redis-credentials
+          key: password
+        readPreference: replicaPreferred
+      keyPrefix: "dns:"
+      ttlMultiplier: 1.5
+      poolSize: 20
+      minIdleConns: 10
+      maxRetries: 3
+    prefetch:
+      enabled: true
+      thresholdHits: 50
+      thresholdTTLPercent: 15
+    invalidation:
+      strategy: pubsub
+      pubsubChannel: "dns:invalidate"
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+    leaderElection:
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 3
+      fencingEnabled: true
+      gracePeriod: "30s"
+      workerWitness:
+        minClustersRequired: 1
+        minWorkersPerCluster: 2
+        voteWeight: Equal
+        heartbeatInterval: "5s"
+        heartbeatTimeout: "15s"
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+    - "9.9.9.9:53"
+
+---
+# Multi-cluster HA with Redis Cluster (sharded + replicated)
+# Good for: global deployments, very high throughput
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-ha-cluster
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 12
+    minReplicas: 8
+    maxReplicas: 50
+
+  cache:
+    mode: hybrid
+    messageCache:
+      maxSizeMB: 256
+      numShards: 128
+    rrsetCache:
+      maxSizeMB: 512
+      numShards: 256
+    sharedCache:
+      enabled: true
+      type: redis-cluster
+      redisCluster:
+        addresses:
+          - "redis-cluster-0.redis-cluster.dns-go.svc.cluster.local:6379"
+          - "redis-cluster-1.redis-cluster.dns-go.svc.cluster.local:6379"
+          - "redis-cluster-2.redis-cluster.dns-go.svc.cluster.local:6379"
+          - "redis-cluster-3.redis-cluster.dns-go.svc.cluster.local:6379"
+          - "redis-cluster-4.redis-cluster.dns-go.svc.cluster.local:6379"
+          - "redis-cluster-5.redis-cluster.dns-go.svc.cluster.local:6379"
+        authSecret:
+          name: redis-credentials
+          key: password
+        readPreference: replicaPreferred
+      keyPrefix: "dns:"
+      ttlMultiplier: 1.5
+      poolSize: 30
+      minIdleConns: 15
+      maxRetries: 3
+    prefetch:
+      enabled: true
+      thresholdHits: 25
+      thresholdTTLPercent: 20
+    invalidation:
+      strategy: pubsub
+      pubsubChannel: "dns:invalidate"
+
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: us-west-1
+        weight: 40
+        minReplicas: 3
+      - clusterRef: us-east-1
+        weight: 30
+        minReplicas: 3
+      - clusterRef: eu-west-1
+        weight: 30
+        minReplicas: 2
+    globalDistribution:
+      strategy: Weighted
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "5m"
+        rebalanceOnRecovery: true
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+    controlPlanePlacements:
+      - clusterRef: us-west-1
+        priority: 1
+        preferredLeader: true
+      - clusterRef: us-east-1
+        priority: 2
+      - clusterRef: eu-west-1
+        priority: 3
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 5
+      fencingEnabled: true
+      gracePeriod: "60s"
+      workerWitness:
+        minClustersRequired: 2
+        minWorkersPerCluster: 2
+        voteWeight: Proportional
+        heartbeatInterval: "5s"
+        heartbeatTimeout: "20s"
+    syncReplication: true
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+    - "9.9.9.9:53"

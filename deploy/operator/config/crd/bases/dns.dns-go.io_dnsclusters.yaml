@@ -245,6 +245,343 @@ spec:
                   type: array
                   items:
                     type: string
+                cache:
+                  description: Cache defines the distributed cache configuration
+                  type: object
+                  properties:
+                    mode:
+                      description: Cache mode - standalone, local-only, or hybrid
+                      type: string
+                      default: local-only
+                      enum:
+                        - standalone
+                        - local-only
+                        - hybrid
+                    messageCache:
+                      description: L1 Message Cache configuration (local per worker)
+                      type: object
+                      properties:
+                        maxSizeMB:
+                          type: integer
+                          format: int32
+                          default: 64
+                        numShards:
+                          type: integer
+                          format: int32
+                          default: 32
+                        minTTL:
+                          type: integer
+                          format: int32
+                          default: 60
+                        maxTTL:
+                          type: integer
+                          format: int32
+                          default: 86400
+                    rrsetCache:
+                      description: L2 RRset Cache configuration (local or shared)
+                      type: object
+                      properties:
+                        maxSizeMB:
+                          type: integer
+                          format: int32
+                          default: 128
+                        numShards:
+                          type: integer
+                          format: int32
+                          default: 64
+                    sharedCache:
+                      description: Shared cache configuration (used in hybrid mode)
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        type:
+                          description: Type of shared cache backend
+                          type: string
+                          default: redis
+                          enum:
+                            - redis
+                            - redis-sentinel
+                            - redis-cluster
+                        redis:
+                          description: Single Redis configuration
+                          type: object
+                          properties:
+                            address:
+                              type: string
+                              default: "redis:6379"
+                            database:
+                              type: integer
+                              format: int32
+                              default: 0
+                            authSecret:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                key:
+                                  type: string
+                                  default: password
+                        redisSentinel:
+                          description: Redis Sentinel configuration for HA
+                          type: object
+                          properties:
+                            masterName:
+                              type: string
+                              default: dns-cache
+                            addresses:
+                              type: array
+                              items:
+                                type: string
+                            authSecret:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                key:
+                                  type: string
+                                  default: password
+                            readPreference:
+                              type: string
+                              default: replicaPreferred
+                              enum:
+                                - master
+                                - replica
+                                - replicaPreferred
+                        redisCluster:
+                          description: Redis Cluster configuration for HA + sharding
+                          type: object
+                          properties:
+                            addresses:
+                              type: array
+                              items:
+                                type: string
+                            authSecret:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                key:
+                                  type: string
+                                  default: password
+                            readPreference:
+                              type: string
+                              default: replicaPreferred
+                              enum:
+                                - master
+                                - replica
+                                - replicaPreferred
+                        keyPrefix:
+                          type: string
+                          default: "dns:"
+                        ttlMultiplier:
+                          description: Store in shared cache for TTL * multiplier
+                          type: number
+                          format: float
+                          default: 1.5
+                        poolSize:
+                          type: integer
+                          format: int32
+                          default: 10
+                        minIdleConns:
+                          type: integer
+                          format: int32
+                          default: 5
+                        maxRetries:
+                          type: integer
+                          format: int32
+                          default: 3
+                    prefetch:
+                      description: Prefetch configuration for cache warming
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        thresholdHits:
+                          type: integer
+                          format: int32
+                          default: 100
+                        thresholdTTLPercent:
+                          type: integer
+                          format: int32
+                          default: 10
+                    invalidation:
+                      description: Cache invalidation strategy
+                      type: object
+                      properties:
+                        strategy:
+                          type: string
+                          default: local-only
+                          enum:
+                            - local-only
+                            - pubsub
+                            - broadcast
+                        pubsubChannel:
+                          type: string
+                          default: "dns:invalidate"
+                multiCluster:
+                  description: Multi-cluster deployment configuration
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    workerPlacements:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - clusterRef
+                        properties:
+                          clusterRef:
+                            type: string
+                          weight:
+                            type: integer
+                            format: int32
+                            default: 100
+                          minReplicas:
+                            type: integer
+                            format: int32
+                          replicas:
+                            type: integer
+                            format: int32
+                    globalDistribution:
+                      type: object
+                      properties:
+                        strategy:
+                          type: string
+                          default: Balanced
+                          enum:
+                            - Balanced
+                            - Weighted
+                            - Geographic
+                            - FollowLoad
+                        antiAffinity:
+                          type: object
+                          properties:
+                            topologyKey:
+                              type: string
+                              default: region
+                            maxSkew:
+                              type: integer
+                              format: int32
+                              default: 1
+                        failoverPolicy:
+                          type: object
+                          properties:
+                            enabled:
+                              type: boolean
+                              default: true
+                            failoverThreshold:
+                              type: string
+                              default: "5m"
+                            rebalanceOnRecovery:
+                              type: boolean
+                              default: true
+                highAvailability:
+                  description: High availability configuration
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    mode:
+                      type: string
+                      default: ActivePassive
+                      enum:
+                        - ActivePassive
+                        - ActiveActive
+                    controlPlanePlacements:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - clusterRef
+                        properties:
+                          clusterRef:
+                            type: string
+                          priority:
+                            type: integer
+                            format: int32
+                            default: 1
+                          preferredLeader:
+                            type: boolean
+                            default: false
+                    leaderElection:
+                      type: object
+                      properties:
+                        leaseDuration:
+                          type: string
+                          default: "15s"
+                        renewDeadline:
+                          type: string
+                          default: "10s"
+                        retryPeriod:
+                          type: string
+                          default: "2s"
+                    quorum:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          default: WorkerWitness
+                          enum:
+                            - Majority
+                            - WorkerWitness
+                            - ExternalWitness
+                        minimumQuorum:
+                          type: integer
+                          format: int32
+                          default: 2
+                        fencingEnabled:
+                          type: boolean
+                          default: true
+                        gracePeriod:
+                          type: string
+                          default: "30s"
+                        workerWitness:
+                          type: object
+                          properties:
+                            minClustersRequired:
+                              type: integer
+                              format: int32
+                              default: 1
+                            minWorkersPerCluster:
+                              type: integer
+                              format: int32
+                              default: 2
+                            voteWeight:
+                              type: string
+                              default: Equal
+                              enum:
+                                - Equal
+                                - Proportional
+                            heartbeatInterval:
+                              type: string
+                              default: "5s"
+                            heartbeatTimeout:
+                              type: string
+                              default: "15s"
+                        externalWitness:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                                - Etcd
+                                - Consul
+                            endpoint:
+                              type: string
+                            secretRef:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                    syncReplication:
+                      type: boolean
+                      default: false
             status:
               description: DNSClusterStatus defines the observed state of DNSCluster
               type: object

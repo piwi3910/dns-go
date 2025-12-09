@@ -32,6 +32,16 @@ A high-performance, RFC-compliant DNS server implementation in Go, designed to a
 - **Request Coalescing**: Deduplicates identical in-flight queries
 - **YAML Configuration**: Full configuration file support
 
+### Distributed Cache Architecture (NEW in v0.6)
+- **Three Cache Modes**: Standalone, Local-Only, or Hybrid with shared Redis
+- **HA Redis Support**: Redis Sentinel and Redis Cluster for multi-site deployments
+- **Cache Invalidation Strategies**: Local-only, PubSub (Redis), or Broadcast
+- **Per-Worker L1/L2 Caches**: Each worker maintains its own high-performance local cache
+- **Shared L3 Cache**: Optional Redis backend for cache persistence and cross-worker sharing
+- **Multi-Cluster Cache**: Share cache state across geographically distributed clusters
+
+See [Cache Architecture Documentation](docs/architecture/cache-architecture.md) for detailed configuration guides.
+
 ### Web GUI (NEW in v0.4)
 - **Modern Dashboard**: Real-time metrics with interactive charts
   - Memory usage graph (area chart)
@@ -377,6 +387,56 @@ EOF
 - Worker rebalancing on cluster recovery
 - Per-cluster status tracking
 - Region/zone-aware placement with anti-affinity
+
+### Distributed Cache Deployment
+
+**Simple Single-Site (Local Cache Only)**
+```bash
+# Docker Compose - local caching per worker
+cd deploy/docker
+docker-compose --profile distributed up -d
+```
+
+**Single-Site with Redis (Hybrid Cache)**
+```bash
+# Docker Compose with Redis for cache persistence
+cd deploy/docker
+docker-compose --profile hybrid up -d
+```
+
+**Multi-Site HA with Redis Sentinel**
+```bash
+# Kubernetes with HA Redis
+kubectl apply -f - <<EOF
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: dns-ha
+spec:
+  workers:
+    replicas: 6
+  cache:
+    mode: hybrid
+    sharedCache:
+      enabled: true
+      type: redis-sentinel
+      redisSentinel:
+        masterName: dns-cache
+        addresses:
+          - "redis-sentinel-0:26379"
+          - "redis-sentinel-1:26379"
+          - "redis-sentinel-2:26379"
+    invalidation:
+      strategy: pubsub
+  highAvailability:
+    enabled: true
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 3
+EOF
+```
+
+See [Cache Architecture Documentation](docs/architecture/cache-architecture.md) for complete configuration guides.
 
 ### High Availability Control Plane
 

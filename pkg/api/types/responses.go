@@ -141,6 +141,80 @@ type InfraCacheInfo struct {
 	ServerCount int `json:"server_count"`
 }
 
+// DistributedCacheResponse contains distributed cache information across workers.
+type DistributedCacheResponse struct {
+	Mode         string                    `json:"mode"`          // "standalone", "local-only", "hybrid"
+	Workers      []WorkerCacheInfo         `json:"workers"`       // Per-worker cache stats
+	SharedCache  *SharedCacheInfo          `json:"sharedCache"`   // Shared L2 cache (nil if not configured)
+	Aggregated   AggregatedCacheStats      `json:"aggregated"`    // Totals across all workers
+	Architecture CacheArchitectureInfo     `json:"architecture"`  // Description of cache setup
+}
+
+// WorkerCacheInfo contains cache information for a specific worker.
+type WorkerCacheInfo struct {
+	WorkerID      string         `json:"workerId"`
+	ClusterName   string         `json:"clusterName"`
+	Address       string         `json:"address"`
+	Status        string         `json:"status"`
+	MessageCache  CacheTypeStats `json:"messageCache"`
+	RRsetCache    CacheTypeStats `json:"rrsetCache"`
+	InfraCache    InfraCacheInfo `json:"infraCache"`
+	LastUpdated   time.Time      `json:"lastUpdated"`
+}
+
+// SharedCacheInfo contains information about the shared L2 cache.
+type SharedCacheInfo struct {
+	Type          string         `json:"type"`          // "redis", "etcd", "none"
+	Address       string         `json:"address"`       // Connection address
+	Status        string         `json:"status"`        // "connected", "disconnected", "degraded"
+	Stats         CacheTypeStats `json:"stats"`         // Shared cache stats
+	LastSync      time.Time      `json:"lastSync"`      // Last sync time
+}
+
+// AggregatedCacheStats contains totals across all worker caches.
+type AggregatedCacheStats struct {
+	TotalHits         int64   `json:"totalHits"`
+	TotalMisses       int64   `json:"totalMisses"`
+	TotalEvicts       int64   `json:"totalEvicts"`
+	AverageHitRate    float64 `json:"averageHitRate"`
+	TotalSizeBytes    int64   `json:"totalSizeBytes"`
+	TotalMaxSizeBytes int64   `json:"totalMaxSizeBytes"`
+	WorkerCount       int     `json:"workerCount"`
+}
+
+// CacheArchitectureInfo describes the cache architecture.
+type CacheArchitectureInfo struct {
+	Description   string   `json:"description"`
+	L1Type        string   `json:"l1Type"`        // "local-message-cache"
+	L2Type        string   `json:"l2Type"`        // "local-rrset-cache", "shared-redis", "none"
+	Replication   string   `json:"replication"`   // "none", "async", "sync"
+	Invalidation  string   `json:"invalidation"`  // "local-only", "pubsub", "broadcast"
+	Features      []string `json:"features"`      // ["prefetch", "negative-caching", etc.]
+}
+
+// ClearDistributedCacheRequest specifies which caches to clear.
+type ClearDistributedCacheRequest struct {
+	Target    string   `json:"target"`    // "all", "worker", "shared"
+	WorkerIDs []string `json:"workerIds"` // Specific workers (if target="worker")
+	CacheType string   `json:"cacheType"` // "all", "message", "rrset", "infra"
+}
+
+// ClearDistributedCacheResponse is returned after clearing distributed cache.
+type ClearDistributedCacheResponse struct {
+	Success       bool                    `json:"success"`
+	ClearedCount  int                     `json:"clearedCount"`
+	Results       []WorkerClearResult     `json:"results"`
+	SharedCleared bool                    `json:"sharedCleared"`
+}
+
+// WorkerClearResult contains the result of clearing a worker's cache.
+type WorkerClearResult struct {
+	WorkerID string   `json:"workerId"`
+	Success  bool     `json:"success"`
+	Cleared  []string `json:"cleared"`
+	Error    string   `json:"error,omitempty"`
+}
+
 // ConfigResponse contains the current configuration.
 type ConfigResponse struct {
 	Server   ServerConfigResponse   `json:"server"`
@@ -265,7 +339,129 @@ type DeleteZoneResponse struct {
 
 // UpdateConfigResponse is returned after updating configuration.
 type UpdateConfigResponse struct {
-	Success        bool           `json:"success"`
-	Config         ConfigResponse `json:"config"`
-	RequiresRestart bool          `json:"requires_restart"`
+	Success         bool           `json:"success"`
+	Config          ConfigResponse `json:"config"`
+	RequiresRestart bool           `json:"requires_restart"`
+}
+
+// ClustersResponse contains cluster information for multi-cluster deployments.
+type ClustersResponse struct {
+	Clusters       []ClusterInfo `json:"clusters"`
+	TotalWorkers   int           `json:"totalWorkers"`
+	HealthyWorkers int           `json:"healthyWorkers"`
+}
+
+// ClusterInfo contains information about a registered cluster.
+type ClusterInfo struct {
+	Name           string            `json:"name"`
+	DisplayName    string            `json:"displayName"`
+	Region         string            `json:"region"`
+	Zone           string            `json:"zone"`
+	Status         string            `json:"status"`
+	LastHeartbeat  time.Time         `json:"lastHeartbeat"`
+	WorkerCount    int               `json:"workerCount"`
+	HealthyWorkers int               `json:"healthyWorkers"`
+	Labels         map[string]string `json:"labels"`
+	Capacity       ClusterCapacity   `json:"capacity"`
+}
+
+// ClusterCapacity contains capacity information for a cluster.
+type ClusterCapacity struct {
+	MaxWorkers       int `json:"maxWorkers"`
+	CurrentWorkers   int `json:"currentWorkers"`
+	AvailableWorkers int `json:"availableWorkers"`
+}
+
+// WorkersResponse contains worker information across clusters.
+type WorkersResponse struct {
+	Workers    []WorkerInfo       `json:"workers"`
+	TotalCount int                `json:"totalCount"`
+	ByCluster  map[string]int     `json:"byCluster"`
+	ByRegion   map[string]int     `json:"byRegion"`
+}
+
+// WorkerInfo contains information about a DNS worker.
+type WorkerInfo struct {
+	ID            string        `json:"id"`
+	ClusterName   string        `json:"clusterName"`
+	Region        string        `json:"region"`
+	Zone          string        `json:"zone"`
+	Status        string        `json:"status"`
+	Address       string        `json:"address"`
+	LastHeartbeat time.Time     `json:"lastHeartbeat"`
+	Metrics       WorkerMetrics `json:"metrics"`
+}
+
+// WorkerMetrics contains performance metrics for a worker.
+type WorkerMetrics struct {
+	QPS          float64 `json:"qps"`
+	CacheHitRate float64 `json:"cacheHitRate"`
+	MemoryMB     float64 `json:"memoryMB"`
+	CPUPercent   float64 `json:"cpuPercent"`
+	Uptime       float64 `json:"uptime"`
+}
+
+// HAStatusResponse contains high availability status information.
+type HAStatusResponse struct {
+	Enabled       bool                     `json:"enabled"`
+	Mode          string                   `json:"mode"`
+	Leader        HALeaderInfo             `json:"leader"`
+	Quorum        HAQuorumInfo             `json:"quorum"`
+	Fencing       HAFencingInfo            `json:"fencing"`
+	ControlPlanes []ControlPlaneInstance   `json:"controlPlanes"`
+}
+
+// HALeaderInfo contains leader election information.
+type HALeaderInfo struct {
+	IsLeader      bool      `json:"isLeader"`
+	LeaderID      string    `json:"leaderID"`
+	LeaderCluster string    `json:"leaderCluster"`
+	LeaseExpiry   time.Time `json:"leaseExpiry"`
+	LastRenewal   time.Time `json:"lastRenewal"`
+}
+
+// HAQuorumInfo contains quorum status information.
+type HAQuorumInfo struct {
+	HasQuorum        bool              `json:"hasQuorum"`
+	QuorumType       string            `json:"quorumType"`
+	VotersTotal      int               `json:"votersTotal"`
+	VotersReachable  int               `json:"votersReachable"`
+	ClusterVotes     []ClusterVoteInfo `json:"clusterVotes"`
+	LastCheck        time.Time         `json:"lastCheck"`
+	QuorumLostSince  *time.Time        `json:"quorumLostSince"`
+}
+
+// ClusterVoteInfo contains voting information for a cluster.
+type ClusterVoteInfo struct {
+	ClusterID     string    `json:"clusterID"`
+	WorkersTotal  int       `json:"workersTotal"`
+	WorkersVoting int       `json:"workersVoting"`
+	LastHeartbeat time.Time `json:"lastHeartbeat"`
+	VoteValid     bool      `json:"voteValid"`
+}
+
+// HAFencingInfo contains fencing status information.
+type HAFencingInfo struct {
+	IsFenced       bool       `json:"isFenced"`
+	Reason         string     `json:"reason"`
+	QuorumLostAt   *time.Time `json:"quorumLostAt"`
+	GracePeriodEnd *time.Time `json:"gracePeriodEnd"`
+}
+
+// ControlPlaneInstance contains information about a control plane instance.
+type ControlPlaneInstance struct {
+	ID            string    `json:"id"`
+	ClusterRef    string    `json:"clusterRef"`
+	Priority      int       `json:"priority"`
+	IsLeader      bool      `json:"isLeader"`
+	Status        string    `json:"status"`
+	LastHeartbeat time.Time `json:"lastHeartbeat"`
+	Address       string    `json:"address"`
+}
+
+// HAFailoverResponse is returned after triggering a failover.
+type HAFailoverResponse struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	NewLeader string `json:"newLeader"`
 }

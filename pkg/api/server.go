@@ -10,7 +10,9 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"math"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -163,6 +165,16 @@ func (s *Server) setupRouter() chi.Router {
 		r.Delete("/api/cache", s.handleClearCache)
 		r.Get("/api/config", s.handleGetConfig)
 		r.Put("/api/config", s.handleUpdateConfig)
+
+		// Multi-cluster and HA endpoints
+		r.Get("/api/clusters", s.handleGetClusters)
+		r.Get("/api/workers", s.handleGetWorkers)
+		r.Get("/api/ha/status", s.handleGetHAStatus)
+		r.Post("/api/ha/failover", s.handleHAFailover)
+
+		// Distributed cache endpoints
+		r.Get("/api/cache/distributed", s.handleGetDistributedCache)
+		r.Delete("/api/cache/distributed", s.handleClearDistributedCache)
 	})
 
 	// Serve embedded frontend
@@ -912,6 +924,263 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if requiresRestart {
 		// Could add this to response if needed
 		_ = requiresRestart
+	}
+
+	s.sendJSON(w, http.StatusOK, resp)
+}
+
+// Clusters handler - returns mock data for standalone mode
+func (s *Server) handleGetClusters(w http.ResponseWriter, r *http.Request) {
+	// In standalone mode, return a single local cluster
+	// In distributed mode, this would query the control plane
+	hostname, _ := os.Hostname()
+
+	clusters := []types.ClusterInfo{
+		{
+			Name:           "local",
+			DisplayName:    "Local Cluster",
+			Region:         "local",
+			Zone:           "default",
+			Status:         "healthy",
+			LastHeartbeat:  time.Now(),
+			WorkerCount:    1,
+			HealthyWorkers: 1,
+			Labels: map[string]string{
+				"environment": "standalone",
+				"hostname":    hostname,
+			},
+			Capacity: types.ClusterCapacity{
+				MaxWorkers:       10,
+				CurrentWorkers:   1,
+				AvailableWorkers: 9,
+			},
+		},
+	}
+
+	resp := types.ClustersResponse{
+		Clusters:       clusters,
+		TotalWorkers:   1,
+		HealthyWorkers: 1,
+	}
+	s.sendJSON(w, http.StatusOK, resp)
+}
+
+// Workers handler - returns mock data for standalone mode
+func (s *Server) handleGetWorkers(w http.ResponseWriter, r *http.Request) {
+	// In standalone mode, return the local server as a worker
+	// In distributed mode, this would query the control plane
+	hostname, _ := os.Hostname()
+
+	// Get current stats to populate metrics
+	stats := s.buildStatsResponse()
+
+	// Calculate QPS - avoid division by zero and round to 2 decimal places
+	var qps float64
+	if stats.Server.UptimeSeconds > 0 {
+		totalQueries := float64(stats.Cache.MessageCache.Hits + stats.Cache.MessageCache.Misses)
+		qps = math.Round(totalQueries/stats.Server.UptimeSeconds*100) / 100
+	}
+
+	workers := []types.WorkerInfo{
+		{
+			ID:            hostname + "-standalone",
+			ClusterName:   "local",
+			Region:        "local",
+			Zone:          "default",
+			Status:        "healthy",
+			Address:       s.config.Server.ListenAddress,
+			LastHeartbeat: time.Now(),
+			Metrics: types.WorkerMetrics{
+				QPS:          qps,
+				CacheHitRate: math.Round(stats.Cache.MessageCache.HitRate*100*100) / 100, // Round to 2 decimals
+				MemoryMB:     math.Round(stats.Server.MemoryMB*100) / 100,
+				CPUPercent:   0, // Not tracked in standalone mode
+				Uptime:       stats.Server.UptimeSeconds,
+			},
+		},
+	}
+
+	resp := types.WorkersResponse{
+		Workers:    workers,
+		TotalCount: 1,
+		ByCluster:  map[string]int{"local": 1},
+		ByRegion:   map[string]int{"local": 1},
+	}
+	s.sendJSON(w, http.StatusOK, resp)
+}
+
+// HA Status handler - returns mock data for standalone mode
+func (s *Server) handleGetHAStatus(w http.ResponseWriter, r *http.Request) {
+	// In standalone mode, HA is disabled
+	// In distributed mode, this would return actual HA status
+	hostname, _ := os.Hostname()
+
+	resp := types.HAStatusResponse{
+		Enabled: false,
+		Mode:    "standalone",
+		Leader: types.HALeaderInfo{
+			IsLeader:      true,
+			LeaderID:      hostname,
+			LeaderCluster: "local",
+			LeaseExpiry:   time.Now().Add(24 * time.Hour), // Never expires in standalone
+			LastRenewal:   time.Now(),
+		},
+		Quorum: types.HAQuorumInfo{
+			HasQuorum:       true,
+			QuorumType:      "single-node",
+			VotersTotal:     1,
+			VotersReachable: 1,
+			ClusterVotes: []types.ClusterVoteInfo{
+				{
+					ClusterID:     "local",
+					WorkersTotal:  1,
+					WorkersVoting: 1,
+					LastHeartbeat: time.Now(),
+					VoteValid:     true,
+				},
+			},
+			LastCheck:       time.Now(),
+			QuorumLostSince: nil,
+		},
+		Fencing: types.HAFencingInfo{
+			IsFenced:       false,
+			Reason:         "",
+			QuorumLostAt:   nil,
+			GracePeriodEnd: nil,
+		},
+		ControlPlanes: []types.ControlPlaneInstance{
+			{
+				ID:            hostname,
+				ClusterRef:    "local",
+				Priority:      1,
+				IsLeader:      true,
+				Status:        "active",
+				LastHeartbeat: time.Now(),
+				Address:       s.config.API.ListenAddress,
+			},
+		},
+	}
+	s.sendJSON(w, http.StatusOK, resp)
+}
+
+// HA Failover handler - not available in standalone mode
+func (s *Server) handleHAFailover(w http.ResponseWriter, r *http.Request) {
+	// In standalone mode, failover is not supported
+	resp := types.HAFailoverResponse{
+		Success:   false,
+		Message:   "Failover not available in standalone mode",
+		NewLeader: "",
+	}
+	s.sendError(w, http.StatusBadRequest, resp.Message)
+}
+
+// Distributed Cache handler - returns cache info across all workers
+func (s *Server) handleGetDistributedCache(w http.ResponseWriter, r *http.Request) {
+	hostname, _ := os.Hostname()
+
+	// Get current cache stats
+	ctx := r.Context()
+	cacheStats, err := s.dnsService.GetCacheStats(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Build per-worker cache info (in standalone mode, just one worker)
+	workerCache := types.WorkerCacheInfo{
+		WorkerID:    hostname + "-standalone",
+		ClusterName: "local",
+		Address:     s.config.Server.ListenAddress,
+		Status:      "healthy",
+		MessageCache: types.CacheTypeStats{
+			Hits:         cacheStats.MessageCache.Hits,
+			Misses:       cacheStats.MessageCache.Misses,
+			Evicts:       cacheStats.MessageCache.Evicts,
+			HitRate:      math.Round(cacheStats.MessageCache.HitRate*10000) / 100, // Convert to percentage with 2 decimals
+			SizeBytes:    cacheStats.MessageCache.SizeBytes,
+			MaxSizeBytes: cacheStats.MessageCache.MaxSizeBytes,
+			NumShards:    cacheStats.MessageCache.NumShards,
+		},
+		RRsetCache: types.CacheTypeStats{
+			Hits:         cacheStats.RRsetCache.Hits,
+			Misses:       cacheStats.RRsetCache.Misses,
+			Evicts:       cacheStats.RRsetCache.Evicts,
+			HitRate:      math.Round(cacheStats.RRsetCache.HitRate*10000) / 100,
+			SizeBytes:    cacheStats.RRsetCache.SizeBytes,
+			MaxSizeBytes: cacheStats.RRsetCache.MaxSizeBytes,
+			NumShards:    cacheStats.RRsetCache.NumShards,
+		},
+		InfraCache: types.InfraCacheInfo{
+			ServerCount: cacheStats.InfraCache.ServerCount,
+		},
+		LastUpdated: time.Now(),
+	}
+
+	// Calculate aggregated stats
+	aggregated := types.AggregatedCacheStats{
+		TotalHits:         cacheStats.MessageCache.Hits + cacheStats.RRsetCache.Hits,
+		TotalMisses:       cacheStats.MessageCache.Misses + cacheStats.RRsetCache.Misses,
+		TotalEvicts:       cacheStats.MessageCache.Evicts + cacheStats.RRsetCache.Evicts,
+		AverageHitRate:    math.Round((cacheStats.MessageCache.HitRate+cacheStats.RRsetCache.HitRate)/2*10000) / 100,
+		TotalSizeBytes:    cacheStats.MessageCache.SizeBytes + cacheStats.RRsetCache.SizeBytes,
+		TotalMaxSizeBytes: cacheStats.MessageCache.MaxSizeBytes + cacheStats.RRsetCache.MaxSizeBytes,
+		WorkerCount:       1,
+	}
+
+	// Build architecture description
+	architecture := types.CacheArchitectureInfo{
+		Description:  "Standalone mode: Local L1 message cache + Local L2 RRset cache per worker",
+		L1Type:       "local-message-cache",
+		L2Type:       "local-rrset-cache",
+		Replication:  "none",
+		Invalidation: "local-only",
+		Features:     []string{"two-level-cache", "negative-caching", "prefetch"},
+	}
+
+	resp := types.DistributedCacheResponse{
+		Mode:         "standalone",
+		Workers:      []types.WorkerCacheInfo{workerCache},
+		SharedCache:  nil, // No shared cache in standalone mode
+		Aggregated:   aggregated,
+		Architecture: architecture,
+	}
+
+	s.sendJSON(w, http.StatusOK, resp)
+}
+
+// Clear Distributed Cache handler - clears cache across workers
+func (s *Server) handleClearDistributedCache(w http.ResponseWriter, r *http.Request) {
+	var req types.ClearDistributedCacheRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Default to clearing all caches on all workers
+		req = types.ClearDistributedCacheRequest{
+			Target:    "all",
+			CacheType: "all",
+		}
+	}
+
+	hostname, _ := os.Hostname()
+	workerID := hostname + "-standalone"
+
+	// In standalone mode, we only have one worker
+	ctx := r.Context()
+	cleared, err := s.dnsService.ClearCache(ctx, req.CacheType)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result := types.WorkerClearResult{
+		WorkerID: workerID,
+		Success:  true,
+		Cleared:  cleared,
+	}
+
+	resp := types.ClearDistributedCacheResponse{
+		Success:       true,
+		ClearedCount:  1,
+		Results:       []types.WorkerClearResult{result},
+		SharedCleared: false, // No shared cache in standalone mode
 	}
 
 	s.sendJSON(w, http.StatusOK, resp)

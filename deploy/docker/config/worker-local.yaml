@@ -1,0 +1,28 @@
+# Worker Configuration - Local Cache Mode
+# Independent L1+L2 cache per worker
+
+server:
+  listen_address: "0.0.0.0:53"
+  num_workers: 4
+  enable_tcp: true
+
+cache:
+  mode: local-only
+  message_cache:
+    max_size_mb: 64
+    num_shards: 32
+  rrset_cache:
+    max_size_mb: 128
+    num_shards: 64
+  prefetch:
+    enabled: true
+    threshold_hits: 100
+
+worker:
+  control_plane_address: "${CONTROL_PLANE_ADDRESS}"
+  heartbeat_interval: 10s
+  reconnect_delay: 5s
+
+logging:
+  level: info
+  format: json

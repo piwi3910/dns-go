@@ -6,7 +6,159 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
 
-# Control plane configuration
+# =============================================================================
+# Cache Configuration
+# =============================================================================
+cache:
+  # Cache mode: standalone | local-only | hybrid
+  mode: local-only
+
+  # L1: Message Cache (always local per worker)
+  messageCache:
+    maxSizeMB: 64
+    numShards: 32
+    minTTL: 60
+    maxTTL: 86400
+
+  # L2: RRset Cache
+  rrsetCache:
+    maxSizeMB: 128
+    numShards: 64
+
+  # Shared Cache (only used in hybrid mode)
+  sharedCache:
+    enabled: false
+    # Type: redis | redis-sentinel | redis-cluster
+    type: redis
+
+    # Single Redis configuration
+    redis:
+      address: "redis:6379"
+      database: 0
+      # authSecret:
+      #   name: redis-credentials
+      #   key: password
+
+    # Redis Sentinel for HA (alternative to single Redis)
+    redisSentinel:
+      masterName: dns-cache
+      addresses: []
+      # - "sentinel-0:26379"
+      # - "sentinel-1:26379"
+      # - "sentinel-2:26379"
+      readPreference: replicaPreferred  # master | replica | replicaPreferred
+      # authSecret:
+      #   name: redis-credentials
+      #   key: password
+
+    # Redis Cluster for HA + sharding (alternative to Sentinel)
+    redisCluster:
+      addresses: []
+      # - "redis-0:6379"
+      # - "redis-1:6379"
+      # - "redis-2:6379"
+      readPreference: replicaPreferred
+      # authSecret:
+      #   name: redis-credentials
+      #   key: password
+
+    # Common shared cache options
+    keyPrefix: "dns:"
+    ttlMultiplier: 1.5
+    poolSize: 10
+    minIdleConns: 5
+    maxRetries: 3
+
+  # Prefetch configuration
+  prefetch:
+    enabled: true
+    thresholdHits: 100
+    thresholdTTLPercent: 10
+
+  # Cache invalidation
+  invalidation:
+    # Strategy: local-only | pubsub | broadcast
+    strategy: local-only
+    pubsubChannel: "dns:invalidate"
+
+# =============================================================================
+# High Availability Configuration
+# =============================================================================
+highAvailability:
+  enabled: false
+  # Mode: ActivePassive | ActiveActive
+  mode: ActivePassive
+
+  # Leader election settings
+  leaderElection:
+    leaseDuration: "15s"
+    renewDeadline: "10s"
+    retryPeriod: "2s"
+
+  # Quorum configuration
+  quorum:
+    # Type: Majority | WorkerWitness | ExternalWitness
+    type: WorkerWitness
+    minimumQuorum: 2
+    fencingEnabled: true
+    gracePeriod: "30s"
+
+    # Worker witness settings (for WorkerWitness type)
+    workerWitness:
+      minClustersRequired: 1
+      minWorkersPerCluster: 2
+      voteWeight: Equal  # Equal | Proportional
+      heartbeatInterval: "5s"
+      heartbeatTimeout: "15s"
+
+    # External witness settings (for ExternalWitness type)
+    externalWitness:
+      type: ""  # Etcd | Consul
+      endpoint: ""
+      # secretRef:
+      #   name: witness-credentials
+
+  # Control plane placements for multi-cluster
+  controlPlanePlacements: []
+  # - clusterRef: site-a
+  #   priority: 1
+  #   preferredLeader: true
+  # - clusterRef: site-b
+  #   priority: 2
+
+  # Sync replication for zone data
+  syncReplication: false
+
+# =============================================================================
+# Multi-Cluster Configuration
+# =============================================================================
+multiCluster:
+  enabled: false
+
+  # Worker placements across clusters
+  workerPlacements: []
+  # - clusterRef: us-west-1
+  #   weight: 50
+  #   minReplicas: 2
+  # - clusterRef: eu-central-1
+  #   weight: 50
+  #   minReplicas: 2
+
+  # Distribution strategy
+  globalDistribution:
+    # Strategy: Balanced | Weighted | Geographic | FollowLoad
+    strategy: Balanced
+    antiAffinity:
+      topologyKey: region
+      maxSkew: 1
+    failoverPolicy:
+      enabled: true
+      failoverThreshold: "5m"
+      rebalanceOnRecovery: true
+
+# =============================================================================
+# Control Plane Configuration
+# =============================================================================
 control:
   enabled: true
   replicaCount: 1  # Single replica (HA requires leader election)
@@ -52,7 +204,9 @@ control:
       format: json
       enableQueryLog: false
 
-# Worker configuration
+# =============================================================================
+# Worker Configuration
+# =============================================================================
 worker:
   enabled: true
   replicaCount: 3
@@ -106,6 +260,10 @@ worker:
     heartbeatInterval: 10s
     reconnectDelay: 5s
 
+# =============================================================================
+# Operational Configuration
+# =============================================================================
+
 # Pod Disruption Budget
 podDisruptionBudget:
   enabled: true
@@ -125,9 +283,13 @@ networkPolicy:
   allowDNSFrom: []
   # - namespaceSelector: {}
 
+# =============================================================================
 # Secrets
+# =============================================================================
 secrets:
   # Admin password hash (bcrypt)
   adminPasswordHash: ""
   # JWT secret for API auth
   jwtSecret: ""
+  # Redis password (for hybrid cache mode)
+  redisPassword: ""

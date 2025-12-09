@@ -1,29 +1,17 @@
-{{- if .Values.control.enabled }}
+{{- if .Values.worker.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "dns-go.fullname" . }}-control
+  name: {{ include "dns-go.fullname" . }}-worker
   labels:
-    {{- include "dns-go.control.labels" . | nindent 4 }}
+    {{- include "dns-go.worker.labels" . | nindent 4 }}
 data:
   config.yaml: |
-    mode: control
-    control_plane:
-      grpc_address: "{{ .Values.control.config.grpcAddress }}"
-      heartbeat_timeout: {{ .Values.control.config.heartbeatTimeout }}
-    api:
-      enabled: {{ .Values.control.config.api.enabled }}
-      listen_address: "{{ .Values.control.config.api.listenAddress }}"
-      cors_origins:
-        {{- toYaml .Values.control.config.api.corsOrigins | nindent 8 }}
-      auth:
-        username: {{ .Values.control.config.api.auth.username }}
-        jwt_secret: "{{ .Values.control.config.api.auth.jwtSecret }}"
-        token_expiry: {{ .Values.control.config.api.auth.tokenExpiry }}
-    logging:
-      level: {{ .Values.control.config.logging.level }}
-      format: {{ .Values.control.config.logging.format }}
-      enable_query_log: {{ .Values.control.config.logging.enableQueryLog }}
+    mode: worker
+    worker:
+      listen_address: "{{ .Values.worker.config.listenAddress }}"
+      heartbeat_interval: {{ .Values.worker.config.heartbeatInterval }}
+      reconnect_delay: {{ .Values.worker.config.reconnectDelay }}
     cache:
       mode: {{ .Values.cache.mode }}
       message_cache:
@@ -78,31 +66,4 @@ data:
         {{- if eq .Values.cache.invalidation.strategy "pubsub" }}
         pubsub_channel: "{{ .Values.cache.invalidation.pubsubChannel }}"
         {{- end }}
-    {{- if .Values.highAvailability.enabled }}
-    high_availability:
-      enabled: true
-      mode: {{ .Values.highAvailability.mode }}
-      leader_election:
-        lease_duration: {{ .Values.highAvailability.leaderElection.leaseDuration }}
-        renew_deadline: {{ .Values.highAvailability.leaderElection.renewDeadline }}
-        retry_period: {{ .Values.highAvailability.leaderElection.retryPeriod }}
-      quorum:
-        type: {{ .Values.highAvailability.quorum.type }}
-        minimum_quorum: {{ .Values.highAvailability.quorum.minimumQuorum }}
-        fencing_enabled: {{ .Values.highAvailability.quorum.fencingEnabled }}
-        grace_period: {{ .Values.highAvailability.quorum.gracePeriod }}
-        {{- if eq .Values.highAvailability.quorum.type "WorkerWitness" }}
-        worker_witness:
-          min_clusters_required: {{ .Values.highAvailability.quorum.workerWitness.minClustersRequired }}
-          min_workers_per_cluster: {{ .Values.highAvailability.quorum.workerWitness.minWorkersPerCluster }}
-          vote_weight: {{ .Values.highAvailability.quorum.workerWitness.voteWeight }}
-          heartbeat_interval: {{ .Values.highAvailability.quorum.workerWitness.heartbeatInterval }}
-          heartbeat_timeout: {{ .Values.highAvailability.quorum.workerWitness.heartbeatTimeout }}
-        {{- else if eq .Values.highAvailability.quorum.type "ExternalWitness" }}
-        external_witness:
-          type: {{ .Values.highAvailability.quorum.externalWitness.type }}
-          endpoint: "{{ .Values.highAvailability.quorum.externalWitness.endpoint }}"
-        {{- end }}
-      sync_replication: {{ .Values.highAvailability.syncReplication }}
-    {{- end }}
 {{- end }}
