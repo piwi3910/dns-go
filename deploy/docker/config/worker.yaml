@@ -1,0 +1,59 @@
+# DNS Worker Configuration
+# Connects to control plane for zone/config sync
+
+mode: worker
+
+server:
+  listen_address: ":53"
+  num_workers: 4
+  enable_tcp: true
+  pprof_address: ":6060"
+  graceful_shutdown_timeout: 10s
+  stats_report_interval: 10s
+
+worker:
+  worker_id: ""  # Auto-generated from hostname
+  control_plane_address: "${CONTROL_PLANE_ADDRESS:-dns-control:9090}"
+  heartbeat_interval: 10s
+  reconnect_delay: 5s
+
+# Local cache (can be overridden by control plane)
+cache:
+  message_cache:
+    max_size_mb: 128
+    num_shards: 64
+  rrset_cache:
+    max_size_mb: 256
+    num_shards: 128
+  prefetch:
+    enabled: true
+    threshold_hits: 100
+    threshold_ttl_percent: 0.1
+  min_ttl: 60s
+  max_ttl: 24h
+  negative_ttl: 1h
+
+# Fallback resolver (if control plane unavailable)
+resolver:
+  mode: parallel
+  upstreams:
+    - "8.8.8.8:53"
+    - "8.8.4.4:53"
+    - "1.1.1.1:53"
+    - "1.0.0.1:53"
+  max_recursion_depth: 30
+  query_timeout: 5s
+  enable_coalescing: true
+  parallel:
+    num_parallel: 3
+    fallback_to_recursive: true
+    success_rcodes: [0, 3]
+
+logging:
+  level: info
+  format: json
+  enable_query_log: false
+
+# Workers don't run API server (control plane does)
+api:
+  enabled: false

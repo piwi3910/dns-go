@@ -1,0 +1,110 @@
+# Docker Compose for dns-go
+# Supports both standalone and distributed modes without Kubernetes
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # STANDALONE MODE (default)
+  # Run with: docker-compose up dns-standalone
+  # =============================================================================
+  dns-standalone:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: ghcr.io/piwi3910/dns-go:latest
+    container_name: dns-go-standalone
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8080:8080"    # API/GUI
+      - "6060:6060"    # pprof
+    volumes:
+      - ./config/standalone.yaml:/etc/dns-go/config.yaml:ro
+      - dns-data:/var/lib/dns-go
+    environment:
+      - DNS_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "localhost", "+short"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - standalone
+
+  # =============================================================================
+  # DISTRIBUTED MODE
+  # Run with: docker-compose --profile distributed up
+  # =============================================================================
+
+  # Control Plane
+  dns-control:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.control
+    image: ghcr.io/piwi3910/dns-go-control:latest
+    container_name: dns-go-control
+    ports:
+      - "8080:8080"    # API/GUI
+      - "9090:9090"    # gRPC (worker connections)
+      - "6060:6060"    # pprof
+    volumes:
+      - ./config/control.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - distributed
+
+  # DNS Workers (can scale with --scale dns-worker=N)
+  dns-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.worker
+    image: ghcr.io/piwi3910/dns-go-worker:latest
+    ports:
+      - "53/udp"       # DNS (random host port)
+      - "53/tcp"       # DNS TCP
+    volumes:
+      - ./config/worker.yaml:/etc/dns-go/config.yaml:ro
+    environment:
+      - DNS_LOG_LEVEL=info
+      - CONTROL_PLANE_ADDRESS=dns-control:9090
+    depends_on:
+      dns-control:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "localhost", "+short"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 2
+    profiles:
+      - distributed
+
+  # Load Balancer for distributed workers (optional)
+  dns-lb:
+    image: nginx:alpine
+    container_name: dns-go-lb
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./nginx-dns.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - dns-worker
+    restart: unless-stopped
+    profiles:
+      - distributed
+      - lb
+
+volumes:
+  dns-data:
