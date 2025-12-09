@@ -1,0 +1,294 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: dnsclusters.dns.dns-go.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: dns.dns-go.io
+  names:
+    kind: DNSCluster
+    listKind: DNSClusterList
+    plural: dnsclusters
+    singular: dnscluster
+    shortNames:
+      - dns
+      - dnsc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Control
+          type: boolean
+          jsonPath: .status.controlPlaneReady
+        - name: Workers
+          type: string
+          jsonPath: .status.workersReady
+        - name: DNS
+          type: string
+          jsonPath: .status.externalDNS
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          description: DNSCluster is the Schema for the dnsclusters API
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: DNSClusterSpec defines the desired state of DNSCluster
+              type: object
+              properties:
+                controlPlane:
+                  description: ControlPlane defines the control plane configuration
+                  type: object
+                  properties:
+                    replicas:
+                      type: integer
+                      format: int32
+                      default: 1
+                    grpcPort:
+                      type: integer
+                      format: int32
+                      default: 9090
+                    httpPort:
+                      type: integer
+                      format: int32
+                      default: 8080
+                    resources:
+                      type: object
+                      properties:
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                              - type: integer
+                              - type: string
+                            x-kubernetes-int-or-string: true
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                              - type: integer
+                              - type: string
+                            x-kubernetes-int-or-string: true
+                          type: object
+                    nodeSelector:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    tolerations:
+                      items:
+                        type: object
+                        properties:
+                          effect:
+                            type: string
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                          tolerationSeconds:
+                            format: int64
+                            type: integer
+                          value:
+                            type: string
+                      type: array
+                workers:
+                  description: Workers defines the worker configuration
+                  type: object
+                  properties:
+                    replicas:
+                      type: integer
+                      format: int32
+                      default: 3
+                    minReplicas:
+                      type: integer
+                      format: int32
+                      default: 3
+                    maxReplicas:
+                      type: integer
+                      format: int32
+                      default: 20
+                    dnsPort:
+                      type: integer
+                      format: int32
+                      default: 53
+                    serviceType:
+                      type: string
+                      default: LoadBalancer
+                    resources:
+                      type: object
+                      properties:
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                              - type: integer
+                              - type: string
+                            x-kubernetes-int-or-string: true
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                              - type: integer
+                              - type: string
+                            x-kubernetes-int-or-string: true
+                          type: object
+                    nodeSelector:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    tolerations:
+                      items:
+                        type: object
+                        properties:
+                          effect:
+                            type: string
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                          tolerationSeconds:
+                            format: int64
+                            type: integer
+                          value:
+                            type: string
+                      type: array
+                    autoscaling:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        targetCPUUtilization:
+                          type: integer
+                          format: int32
+                          default: 70
+                        targetMemoryUtilization:
+                          type: integer
+                          format: int32
+                          default: 80
+                image:
+                  description: Image defines the container image to use
+                  type: object
+                  properties:
+                    repository:
+                      type: string
+                      default: "ghcr.io/piwi3910/dns-go"
+                    tag:
+                      type: string
+                      default: "latest"
+                    pullPolicy:
+                      type: string
+                      default: IfNotPresent
+                    pullSecrets:
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                      type: array
+                zones:
+                  description: Zones defines the DNS zones to manage
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+                        default: primary
+                        enum:
+                          - primary
+                          - secondary
+                      primaryNS:
+                        type: string
+                      records:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - name
+                            - type
+                            - value
+                          properties:
+                            name:
+                              type: string
+                            type:
+                              type: string
+                            ttl:
+                              type: integer
+                              format: int32
+                              default: 300
+                            value:
+                              type: string
+                            priority:
+                              type: integer
+                              format: int32
+                upstreams:
+                  description: Upstreams defines upstream DNS servers
+                  type: array
+                  items:
+                    type: string
+            status:
+              description: DNSClusterStatus defines the observed state of DNSCluster
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Creating
+                    - Running
+                    - Updating
+                    - Failed
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - status
+                controlPlaneReady:
+                  type: boolean
+                workersReady:
+                  type: integer
+                  format: int32
+                workersDesired:
+                  type: integer
+                  format: int32
+                externalDNS:
+                  type: string
+                zonesLoaded:
+                  type: integer
+                  format: int32
+                lastUpdated:
+                  type: string
+                  format: date-time

@@ -1,0 +1,343 @@
+syntax = "proto3";
+
+package dns.control;
+
+option go_package = "github.com/piwi3910/dns-go/pkg/proto/gen";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// ControlPlane service handles communication from workers to the control plane.
+// Workers connect to this service to register, send heartbeats, and receive updates.
+service ControlPlane {
+    // Register a new worker with the control plane
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+
+    // Deregister a worker (graceful shutdown)
+    rpc Deregister(DeregisterRequest) returns (google.protobuf.Empty);
+
+    // Send periodic heartbeat with worker stats
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+    // Get current configuration for worker
+    rpc GetConfig(GetConfigRequest) returns (WorkerConfig);
+
+    // Stream configuration updates (server push)
+    rpc StreamConfigUpdates(ConfigStreamRequest) returns (stream ConfigUpdate);
+
+    // Get zone data
+    rpc GetZone(GetZoneRequest) returns (ZoneData);
+
+    // Stream zone updates (server push)
+    rpc StreamZoneUpdates(ZoneStreamRequest) returns (stream ZoneUpdate);
+
+    // Report stats from worker
+    rpc ReportStats(StatsReport) returns (google.protobuf.Empty);
+}
+
+// WorkerManagement service allows control plane to manage workers.
+service WorkerManagement {
+    // List all registered workers
+    rpc ListWorkers(ListWorkersRequest) returns (ListWorkersResponse);
+
+    // Get worker details
+    rpc GetWorker(GetWorkerRequest) returns (WorkerInfo);
+
+    // Force worker to reload configuration
+    rpc ReloadWorker(ReloadWorkerRequest) returns (google.protobuf.Empty);
+
+    // Evict a worker
+    rpc EvictWorker(EvictWorkerRequest) returns (google.protobuf.Empty);
+}
+
+// Registration messages
+message RegisterRequest {
+    string worker_id = 1;          // Unique worker identifier
+    string hostname = 2;           // Worker hostname
+    string listen_address = 3;     // DNS listen address
+    string version = 4;            // Worker version
+    repeated string capabilities = 5;  // Worker capabilities (e.g., "tcp", "udp", "dnssec")
+    map<string, string> labels = 6;    // Custom labels for routing/filtering
+}
+
+message RegisterResponse {
+    bool success = 1;
+    string message = 2;
+    string assigned_id = 3;        // Control-plane assigned ID (if worker_id was empty)
+    WorkerConfig config = 4;       // Initial configuration
+    repeated ZoneAssignment zones = 5;  // Initially assigned zones
+}
+
+message DeregisterRequest {
+    string worker_id = 1;
+    string reason = 2;             // Reason for deregistration
+}
+
+// Heartbeat messages
+message HeartbeatRequest {
+    string worker_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    WorkerStats stats = 3;
+    HealthStatus health = 4;
+}
+
+message HeartbeatResponse {
+    bool acknowledged = 1;
+    repeated WorkerCommand commands = 2;  // Commands for worker to execute
+}
+
+message WorkerStats {
+    int64 queries_total = 1;
+    int64 queries_per_second = 2;
+    double cache_hit_rate = 3;
+    int64 cache_size_bytes = 4;
+    int32 active_connections = 5;
+    double cpu_usage_percent = 6;
+    int64 memory_used_bytes = 7;
+    int32 goroutines = 8;
+}
+
+message HealthStatus {
+    enum Status {
+        UNKNOWN = 0;
+        HEALTHY = 1;
+        DEGRADED = 2;
+        UNHEALTHY = 3;
+    }
+    Status status = 1;
+    string message = 2;
+    google.protobuf.Timestamp last_check = 3;
+}
+
+message WorkerCommand {
+    enum CommandType {
+        NOOP = 0;
+        RELOAD_CONFIG = 1;
+        RELOAD_ZONES = 2;
+        CLEAR_CACHE = 3;
+        SHUTDOWN = 4;
+    }
+    CommandType type = 1;
+    map<string, string> parameters = 2;
+}
+
+// Configuration messages
+message GetConfigRequest {
+    string worker_id = 1;
+}
+
+message ConfigStreamRequest {
+    string worker_id = 1;
+}
+
+message ConfigUpdate {
+    string version = 1;            // Config version for tracking
+    google.protobuf.Timestamp timestamp = 2;
+    WorkerConfig config = 3;
+    bool full_reload_required = 4;
+}
+
+message WorkerConfig {
+    string config_version = 1;
+
+    // Resolver settings
+    ResolverConfig resolver = 2;
+
+    // Cache settings
+    CacheConfig cache = 3;
+
+    // Upstream servers
+    repeated UpstreamServer upstreams = 4;
+
+    // Security settings
+    SecurityConfig security = 5;
+
+    // Logging settings
+    LoggingConfig logging = 6;
+}
+
+message ResolverConfig {
+    string mode = 1;               // "forwarding", "recursive", "parallel"
+    int32 max_recursion_depth = 2;
+    int32 query_timeout_ms = 3;
+    bool enable_coalescing = 4;
+    ParallelConfig parallel = 5;
+}
+
+message ParallelConfig {
+    int32 num_parallel = 1;
+    bool fallback_to_recursive = 2;
+    repeated int32 success_rcodes = 3;
+}
+
+message CacheConfig {
+    int32 message_cache_size_mb = 1;
+    int32 message_cache_shards = 2;
+    int32 rrset_cache_size_mb = 3;
+    int32 rrset_cache_shards = 4;
+    int32 min_ttl_seconds = 5;
+    int32 max_ttl_seconds = 6;
+    int32 negative_ttl_seconds = 7;
+    PrefetchConfig prefetch = 8;
+}
+
+message PrefetchConfig {
+    bool enabled = 1;
+    int64 threshold_hits = 2;
+    double threshold_ttl_percent = 3;
+}
+
+message UpstreamServer {
+    string address = 1;
+    int32 weight = 2;
+    bool enabled = 3;
+}
+
+message SecurityConfig {
+    bool enable_rate_limiting = 1;
+    int32 rate_limit_qps = 2;
+    repeated string blocked_domains = 3;
+    repeated string allowed_networks = 4;
+}
+
+message LoggingConfig {
+    string level = 1;
+    string format = 2;
+    bool enable_query_log = 3;
+}
+
+// Zone messages
+message GetZoneRequest {
+    string worker_id = 1;
+    string origin = 2;
+    uint32 current_serial = 3;     // For incremental updates
+}
+
+message ZoneStreamRequest {
+    string worker_id = 1;
+    repeated string zone_origins = 2;  // Empty = all zones
+}
+
+message ZoneUpdate {
+    enum UpdateType {
+        FULL = 0;          // Full zone transfer
+        INCREMENTAL = 1;   // Incremental update (IXFR-style)
+        DELETE = 2;        // Zone removed
+    }
+    UpdateType type = 1;
+    string origin = 2;
+    uint32 serial = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    ZoneData data = 5;            // For FULL updates
+    repeated RecordChange changes = 6;  // For INCREMENTAL updates
+}
+
+message ZoneData {
+    string origin = 1;
+    uint32 serial = 2;
+    SOARecord soa = 3;
+    repeated DNSRecord records = 4;
+    repeated string transfer_acl = 5;
+    repeated string update_acl = 6;
+}
+
+message SOARecord {
+    string primary_ns = 1;
+    string admin_email = 2;
+    uint32 serial = 3;
+    uint32 refresh = 4;
+    uint32 retry = 5;
+    uint32 expire = 6;
+    uint32 minimum = 7;
+}
+
+message DNSRecord {
+    string name = 1;
+    string type = 2;
+    uint32 ttl = 3;
+    string rdata = 4;
+}
+
+message RecordChange {
+    enum ChangeType {
+        ADD = 0;
+        DELETE = 1;
+        MODIFY = 2;
+    }
+    ChangeType type = 1;
+    DNSRecord record = 2;
+    DNSRecord old_record = 3;     // For MODIFY operations
+}
+
+message ZoneAssignment {
+    string origin = 1;
+    uint32 serial = 2;
+    bool primary = 3;              // Is this worker primary for the zone?
+}
+
+// Stats reporting
+message StatsReport {
+    string worker_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    WorkerStats stats = 3;
+
+    // Per-zone stats
+    repeated ZoneStats zone_stats = 4;
+
+    // Per-upstream stats
+    repeated UpstreamStats upstream_stats = 5;
+}
+
+message ZoneStats {
+    string origin = 1;
+    int64 queries = 2;
+    int64 nxdomain = 3;
+    int64 servfail = 4;
+}
+
+message UpstreamStats {
+    string address = 1;
+    int64 queries = 2;
+    int64 failures = 3;
+    double avg_rtt_ms = 4;
+}
+
+// Worker management messages
+message ListWorkersRequest {
+    map<string, string> label_selector = 1;  // Filter by labels
+    bool include_stats = 2;
+}
+
+message ListWorkersResponse {
+    repeated WorkerInfo workers = 1;
+}
+
+message GetWorkerRequest {
+    string worker_id = 1;
+}
+
+message WorkerInfo {
+    string worker_id = 1;
+    string hostname = 2;
+    string listen_address = 3;
+    string version = 4;
+    repeated string capabilities = 5;
+    map<string, string> labels = 6;
+    HealthStatus health = 7;
+    WorkerStats stats = 8;
+    google.protobuf.Timestamp registered_at = 9;
+    google.protobuf.Timestamp last_heartbeat = 10;
+    repeated string assigned_zones = 11;
+}
+
+message ReloadWorkerRequest {
+    string worker_id = 1;
+    bool reload_config = 2;
+    bool reload_zones = 3;
+}
+
+message EvictWorkerRequest {
+    string worker_id = 1;
+    string reason = 2;
+    bool graceful = 3;
+}

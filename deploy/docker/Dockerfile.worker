@@ -1,0 +1,26 @@
+# Worker image
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /bin/dns-worker ./cmd/dns-worker
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata
+RUN addgroup -g 1000 dns && adduser -u 1000 -G dns -s /bin/sh -D dns
+
+COPY --from=builder /bin/dns-worker /usr/local/bin/
+RUN mkdir -p /etc/dns-go && chown dns:dns /etc/dns-go
+
+USER dns
+WORKDIR /home/dns
+
+# DNS ports
+EXPOSE 53/udp 53/tcp 6060
+
+ENTRYPOINT ["/usr/local/bin/dns-worker"]

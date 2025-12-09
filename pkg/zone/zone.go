@@ -246,6 +246,68 @@ func (z *Zone) Clear() {
 	z.LastModified = time.Now()
 }
 
+// RemoveRecord removes a resource record from the zone.
+// Returns an error if the record is not found.
+func (z *Zone) RemoveRecord(rr dns.RR) error {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+
+	owner := dns.Fqdn(rr.Header().Name)
+	rrType := rr.Header().Rrtype
+
+	typeMap, exists := z.Records[owner]
+	if !exists {
+		return fmt.Errorf("no records found for owner %s", owner)
+	}
+
+	records, exists := typeMap[rrType]
+	if !exists {
+		return fmt.Errorf("no records of type %d found for owner %s", rrType, owner)
+	}
+
+	// Find and remove the record
+	rrString := rr.String()
+	found := false
+	for i, existing := range records {
+		if existing.String() == rrString {
+			// Remove by swapping with last and truncating
+			records[i] = records[len(records)-1]
+			records = records[:len(records)-1]
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("record not found: %s", rrString)
+	}
+
+	// Update the slice in the map
+	if len(records) == 0 {
+		delete(typeMap, rrType)
+		if len(typeMap) == 0 {
+			delete(z.Records, owner)
+		}
+	} else {
+		typeMap[rrType] = records
+	}
+
+	z.LastModified = time.Now()
+	return nil
+}
+
+// SetSOA sets the Start of Authority record for the zone.
+func (z *Zone) SetSOA(soa *dns.SOA) {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+
+	z.SOA = soa
+	if soa != nil {
+		z.Serial.Store(soa.Serial)
+	}
+	z.LastModified = time.Now()
+}
+
 // Clone creates a deep copy of the zone.
 func (z *Zone) Clone() *Zone {
 	z.mu.RLock()

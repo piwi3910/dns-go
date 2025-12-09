@@ -22,11 +22,43 @@ var (
 
 // Config represents the complete DNS server configuration.
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Cache    CacheConfig    `yaml:"cache"`
-	Resolver ResolverConfig `yaml:"resolver"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	API      APIConfig      `yaml:"api"`
+	// Mode is the deployment mode: "standalone", "control", or "worker"
+	// - standalone: Original single-process mode (default, backward compatible)
+	// - control: Run as control plane server (manages distributed workers)
+	// - worker: Run as DNS worker (connects to control plane)
+	Mode string `yaml:"mode"`
+
+	Server       ServerConfig       `yaml:"server"`
+	Cache        CacheConfig        `yaml:"cache"`
+	Resolver     ResolverConfig     `yaml:"resolver"`
+	Logging      LoggingConfig      `yaml:"logging"`
+	API          APIConfig          `yaml:"api"`
+	ControlPlane ControlPlaneConfig `yaml:"control_plane"`
+	Worker       WorkerModeConfig   `yaml:"worker"`
+}
+
+// ControlPlaneConfig holds control plane configuration.
+type ControlPlaneConfig struct {
+	// GRPCAddress is the address for the gRPC server (worker connections)
+	GRPCAddress string `yaml:"grpc_address"`
+
+	// HeartbeatTimeout is the timeout for considering a worker stale
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
+}
+
+// WorkerModeConfig holds worker mode configuration.
+type WorkerModeConfig struct {
+	// WorkerID is a unique identifier for this worker (auto-generated if empty)
+	WorkerID string `yaml:"worker_id"`
+
+	// ControlPlaneAddress is the address of the control plane to connect to
+	ControlPlaneAddress string `yaml:"control_plane_address"`
+
+	// HeartbeatInterval is the interval between heartbeats
+	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
+
+	// ReconnectDelay is the delay before attempting to reconnect
+	ReconnectDelay time.Duration `yaml:"reconnect_delay"`
 }
 
 // APIConfig holds configuration for the management API.
@@ -190,6 +222,7 @@ type LoggingConfig struct {
 // DefaultConfig returns a configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
+		Mode: "standalone", // Default to standalone mode for backward compatibility
 		Server: ServerConfig{
 			ListenAddress:           ":8083",
 			NumWorkers:              runtime.NumCPU(),
@@ -250,6 +283,16 @@ func DefaultConfig() *Config {
 				TokenExpiry:  24 * time.Hour,
 			},
 		},
+		ControlPlane: ControlPlaneConfig{
+			GRPCAddress:      ":9090",
+			HeartbeatTimeout: 30 * time.Second,
+		},
+		Worker: WorkerModeConfig{
+			WorkerID:            "", // Auto-generated
+			ControlPlaneAddress: "localhost:9090",
+			HeartbeatInterval:   10 * time.Second,
+			ReconnectDelay:      5 * time.Second,
+		},
 	}
 }
 
@@ -298,8 +341,19 @@ func LoadFromFileOrDefault(path string) (*Config, error) {
 
 // Validate validates the configuration.
 func (c *Config) Validate() error {
-	// Validate server config
-	if c.Server.NumWorkers <= 0 {
+	// Validate deployment mode
+	switch c.Mode {
+	case "", "standalone", "control", "worker":
+		// Valid modes (empty defaults to standalone)
+		if c.Mode == "" {
+			c.Mode = "standalone"
+		}
+	default:
+		return fmt.Errorf("%w: deployment mode must be 'standalone', 'control', or 'worker', got '%s'", ErrInvalidConfig, c.Mode)
+	}
+
+	// Validate server config (only for standalone and worker modes)
+	if c.Mode != "control" && c.Server.NumWorkers <= 0 {
 		return fmt.Errorf("%w: %d", ErrInvalidWorkerCount, c.Server.NumWorkers)
 	}
 

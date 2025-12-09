@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dns-go
+  labels:
+    app.kubernetes.io/name: dns-go
+    app.kubernetes.io/part-of: dns-go

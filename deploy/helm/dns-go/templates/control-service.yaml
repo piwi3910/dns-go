@@ -1,0 +1,25 @@
+{{- if .Values.control.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dns-go.control.serviceName" . }}
+  labels:
+    {{- include "dns-go.control.labels" . | nindent 4 }}
+  {{- with .Values.control.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.control.service.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.control.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: {{ .Values.control.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "dns-go.control.selectorLabels" . | nindent 4 }}
+{{- end }}

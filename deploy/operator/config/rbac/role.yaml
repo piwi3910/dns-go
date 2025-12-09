@@ -1,0 +1,99 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dns-go-operator-role
+rules:
+  # DNSCluster resources
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - dnsclusters
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - dnsclusters/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - dnsclusters/status
+    verbs:
+      - get
+      - patch
+      - update
+
+  # Core resources
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+      - services
+      - serviceaccounts
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+  # Apps resources
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Autoscaling
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Policy
+  - apiGroups:
+      - policy
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch

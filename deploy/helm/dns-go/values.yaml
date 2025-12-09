@@ -1,0 +1,133 @@
+# Default values for dns-go
+# This is a YAML-formatted file.
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Control plane configuration
+control:
+  enabled: true
+  replicaCount: 1  # Single replica (HA requires leader election)
+
+  image:
+    repository: ghcr.io/piwi3910/dns-go
+    tag: ""  # Defaults to Chart appVersion
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    grpcPort: 9090
+    httpPort: 8080
+    annotations: {}
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  config:
+    grpcAddress: ":9090"
+    heartbeatTimeout: 30s
+    api:
+      enabled: true
+      listenAddress: ":8080"
+      corsOrigins:
+        - "*"
+      auth:
+        username: admin
+        # passwordHash: ""  # Set via secret
+        jwtSecret: ""  # Auto-generated if empty
+        tokenExpiry: 24h
+    logging:
+      level: info
+      format: json
+      enableQueryLog: false
+
+# Worker configuration
+worker:
+  enabled: true
+  replicaCount: 3
+
+  image:
+    repository: ghcr.io/piwi3910/dns-go
+    tag: ""  # Defaults to Chart appVersion
+    pullPolicy: IfNotPresent
+
+  service:
+    type: LoadBalancer
+    dnsPort: 53
+    externalTrafficPolicy: Local
+    annotations: {}
+    # AWS NLB example:
+    # service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  nodeSelector: {}
+  tolerations: []
+
+  # Anti-affinity to spread workers across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: worker
+            topologyKey: kubernetes.io/hostname
+
+  # HPA configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Worker-specific config (most config comes from control plane)
+  config:
+    listenAddress: "0.0.0.0:53"
+    heartbeatInterval: 10s
+    reconnectDelay: 5s
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Network Policy
+networkPolicy:
+  enabled: false
+  # Allow DNS traffic from all namespaces
+  allowDNSFrom: []
+  # - namespaceSelector: {}
+
+# Secrets
+secrets:
+  # Admin password hash (bcrypt)
+  adminPasswordHash: ""
+  # JWT secret for API auth
+  jwtSecret: ""

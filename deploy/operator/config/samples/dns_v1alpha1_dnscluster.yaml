@@ -1,0 +1,92 @@
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: example-dns
+  namespace: dns-go
+spec:
+  # Container image configuration
+  image:
+    repository: ghcr.io/piwi3910/dns-go
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Control plane configuration
+  controlPlane:
+    replicas: 1
+    grpcPort: 9090
+    httpPort: 8080
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # Worker configuration
+  workers:
+    replicas: 3
+    minReplicas: 3
+    maxReplicas: 10
+    dnsPort: 53
+    serviceType: LoadBalancer
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    autoscaling:
+      enabled: true
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  # Upstream DNS servers for forwarding
+  upstreams:
+    - "8.8.8.8:53"
+    - "8.8.4.4:53"
+    - "1.1.1.1:53"
+
+  # DNS zones to manage
+  zones:
+    - name: example.com
+      type: primary
+      records:
+        - name: "@"
+          type: A
+          ttl: 300
+          value: "192.168.1.100"
+        - name: "www"
+          type: CNAME
+          ttl: 300
+          value: "example.com."
+        - name: "@"
+          type: MX
+          ttl: 300
+          value: "mail.example.com."
+          priority: 10
+        - name: "mail"
+          type: A
+          ttl: 300
+          value: "192.168.1.101"
+        - name: "@"
+          type: TXT
+          ttl: 300
+          value: "v=spf1 mx -all"
+
+    - name: internal.local
+      type: primary
+      records:
+        - name: "db"
+          type: A
+          ttl: 60
+          value: "10.0.0.10"
+        - name: "api"
+          type: A
+          ttl: 60
+          value: "10.0.0.20"
+        - name: "cache"
+          type: A
+          ttl: 60
+          value: "10.0.0.30"

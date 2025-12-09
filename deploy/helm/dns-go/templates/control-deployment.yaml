@@ -1,0 +1,88 @@
+{{- if .Values.control.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dns-go.fullname" . }}-control
+  labels:
+    {{- include "dns-go.control.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.control.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dns-go.control.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dns-go.control.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/control-configmap.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "dns-go.fullname" . }}-control
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: control
+          image: {{ include "dns-go.control.image" . }}
+          imagePullPolicy: {{ .Values.control.image.pullPolicy }}
+          command: ["/usr/local/bin/dns-control"]
+          args:
+            - "-grpc={{ .Values.control.config.grpcAddress }}"
+            - "-http={{ .Values.control.config.api.listenAddress }}"
+          ports:
+            - name: grpc
+              containerPort: 9090
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.control.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dns-go
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "dns-go.fullname" . }}-control
+      {{- with .Values.control.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.control.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.control.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

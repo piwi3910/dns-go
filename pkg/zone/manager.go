@@ -189,3 +189,31 @@ func (m *Manager) GetAllZones() []string {
 	}
 	return origins
 }
+
+// GetOrCreateZone returns an existing zone or creates a new one.
+func (m *Manager) GetOrCreateZone(origin string) *Zone {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	origin = dns.Fqdn(origin)
+	if zone, exists := m.zones[origin]; exists {
+		return zone
+	}
+
+	zone := NewZone(Config{Origin: origin})
+	m.zones[origin] = zone
+	return zone
+}
+
+// DeleteZone removes a zone from the manager and returns an error if not found.
+func (m *Manager) DeleteZone(origin string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	origin = dns.Fqdn(origin)
+	if _, exists := m.zones[origin]; !exists {
+		return fmt.Errorf("zone %s not found", origin)
+	}
+	delete(m.zones, origin)
+	return nil
+}

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: dns-go
+description: High-performance DNS server with control plane and distributed workers
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - dns
+  - dns-server
+  - high-performance
+  - distributed
+home: https://github.com/piwi3910/dns-go
+sources:
+  - https://github.com/piwi3910/dns-go
+maintainers:
+  - name: Pascal Watteel
+    email: pascal@example.com

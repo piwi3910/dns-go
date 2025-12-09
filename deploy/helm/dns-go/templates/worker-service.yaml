@@ -1,0 +1,28 @@
+{{- if .Values.worker.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dns-go.worker.serviceName" . }}
+  labels:
+    {{- include "dns-go.worker.labels" . | nindent 4 }}
+  {{- with .Values.worker.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.worker.service.type }}
+  {{- if eq .Values.worker.service.type "LoadBalancer" }}
+  externalTrafficPolicy: {{ .Values.worker.service.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - name: dns-udp
+      port: {{ .Values.worker.service.dnsPort }}
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: {{ .Values.worker.service.dnsPort }}
+      targetPort: dns-tcp
+      protocol: TCP
+  selector:
+    {{- include "dns-go.worker.selectorLabels" . | nindent 4 }}
+{{- end }}
