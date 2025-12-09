@@ -262,3 +262,121 @@ export const configApi = {
 export const healthApi = {
   check: () => fetchApi<{ status: string; timestamp: string }>('/health'),
 }
+
+// Clusters API (Multi-Cluster Support)
+export interface ClusterInfo {
+  name: string
+  displayName: string
+  region: string
+  zone: string
+  status: 'Ready' | 'NotReady' | 'Connecting' | 'Error'
+  lastHeartbeat: string
+  workerCount: number
+  healthyWorkers: number
+  labels: Record<string, string>
+  capacity: {
+    maxWorkers: number
+    currentWorkers: number
+    availableWorkers: number
+  }
+}
+
+export interface ClusterWorker {
+  id: string
+  clusterName: string
+  region: string
+  zone: string
+  status: 'Running' | 'Stopped' | 'Starting' | 'Error' | 'Unknown'
+  address: string
+  lastHeartbeat: string
+  metrics: {
+    qps: number
+    cacheHitRate: number
+    memoryMB: number
+    cpuPercent: number
+    uptime: number
+  }
+}
+
+export interface ClustersResponse {
+  clusters: ClusterInfo[]
+  totalWorkers: number
+  healthyWorkers: number
+}
+
+export interface WorkersResponse {
+  workers: ClusterWorker[]
+  totalCount: number
+  byCluster: Record<string, number>
+  byRegion: Record<string, number>
+}
+
+export const clustersApi = {
+  list: () => fetchApi<ClustersResponse>('/clusters'),
+
+  get: (name: string) => fetchApi<ClusterInfo>(`/clusters/${encodeURIComponent(name)}`),
+
+  getWorkers: (clusterName?: string) => {
+    const endpoint = clusterName
+      ? `/workers?cluster=${encodeURIComponent(clusterName)}`
+      : '/workers'
+    return fetchApi<WorkersResponse>(endpoint)
+  },
+}
+
+// HA (High Availability) API
+export interface HAStatus {
+  enabled: boolean
+  mode: 'ActivePassive' | 'ActiveActive'
+  leader: {
+    isLeader: boolean
+    leaderID: string
+    leaderCluster: string
+    leaseExpiry: string
+    lastRenewal: string
+  }
+  quorum: {
+    hasQuorum: boolean
+    quorumType: 'WorkerWitness' | 'Majority' | 'ExternalWitness'
+    votersTotal: number
+    votersReachable: number
+    clusterVotes: ClusterVote[]
+    lastCheck: string
+    quorumLostSince: string | null
+  }
+  fencing: {
+    isFenced: boolean
+    reason: string
+    quorumLostAt: string | null
+    gracePeriodEnd: string | null
+  }
+  controlPlanes: ControlPlaneInstance[]
+}
+
+export interface ClusterVote {
+  clusterID: string
+  workersTotal: number
+  workersVoting: number
+  lastHeartbeat: string
+  voteValid: boolean
+}
+
+export interface ControlPlaneInstance {
+  id: string
+  clusterRef: string
+  priority: number
+  isLeader: boolean
+  status: 'Active' | 'Standby' | 'Failed' | 'Unknown'
+  lastHeartbeat: string
+  address: string
+}
+
+export const haApi = {
+  status: () => fetchApi<HAStatus>('/ha/status'),
+
+  forceFailover: (targetID?: string) =>
+    fetchApi<{ message: string; newLeader: string }>('/ha/failover', {
+      method: 'POST',
+      body: JSON.stringify({ targetID }),
+    }),
+}

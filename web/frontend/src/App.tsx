@@ -4,6 +4,8 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
+import { Clusters } from '@/pages/Clusters'
+import { Workers } from '@/pages/Workers'
 import { Zones } from '@/pages/Zones'
 import { Upstreams } from '@/pages/Upstreams'
 import { Cache } from '@/pages/Cache'
@@ -73,6 +75,8 @@ function AppContent() {
       <Routes>
         <Route element={<MainLayout connected={connected} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard stats={stats as Stats | null} />} />
+          <Route path="/clusters" element={<Clusters />} />
+          <Route path="/workers" element={<Workers />} />
           <Route path="/zones" element={<Zones />} />
           <Route path="/upstreams" element={<Upstreams />} />
           <Route path="/cache" element={<Cache />} />

@@ -8,6 +8,8 @@ import {
   LogOut,
   WifiOff,
   Sparkles,
+  Network,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '../ThemeToggle'
@@ -19,6 +21,8 @@ interface SidebarProps {
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/clusters', icon: Network, label: 'Clusters' },
+  { to: '/workers', icon: Users, label: 'Workers' },
   { to: '/zones', icon: Globe, label: 'Zones' },
   { to: '/upstreams', icon: Server, label: 'Upstreams' },
   { to: '/cache', icon: Database, label: 'Cache' },

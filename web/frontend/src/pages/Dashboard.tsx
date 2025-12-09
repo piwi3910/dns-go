@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/badge'
 import { StatsCard } from '@/components/dashboard/StatsCard'
 import { AreaChartCard } from '@/components/charts/AreaChartCard'
 import { MultiLineChart } from '@/components/charts/MultiLineChart'
+import { HAStatus } from '@/components/dashboard/HAStatus'
+import { ClusterOverview } from '@/components/dashboard/ClusterOverview'
 import { formatNumber, formatBytes, formatUptime, formatDuration } from '@/lib/utils'
 import { upstreamsApi, type Stats, type UpstreamStats } from '@/lib/api'
 import { useStatsHistory } from '@/hooks/useStatsHistory'
@@ -232,6 +234,12 @@ export function Dashboard({ stats }: DashboardProps) {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* HA Status and Cluster Overview Row */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <HAStatus />
+        <ClusterOverview />
       </div>
 
       {/* System Info and Upstreams Row */}
