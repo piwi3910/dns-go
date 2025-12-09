@@ -1,0 +1,177 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterregistrations.dns.dns-go.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+spec:
+  group: dns.dns-go.io
+  names:
+    kind: ClusterRegistration
+    listKind: ClusterRegistrationList
+    plural: clusterregistrations
+    singular: clusterregistration
+    shortNames:
+      - cr
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Display Name
+          type: string
+          jsonPath: .spec.displayName
+        - name: Region
+          type: string
+          jsonPath: .spec.region
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Workers
+          type: integer
+          jsonPath: .status.workerCount
+        - name: Healthy
+          type: integer
+          jsonPath: .status.healthyWorkers
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          description: ClusterRegistration represents a remote Kubernetes cluster where DNS workers can be deployed
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: ClusterRegistrationSpec defines a remote Kubernetes cluster for DNS deployment
+              type: object
+              required:
+                - kubeconfigSecret
+              properties:
+                displayName:
+                  description: DisplayName is a human-readable name for the cluster
+                  type: string
+                region:
+                  description: Region identifies the geographic region of the cluster
+                  type: string
+                zone:
+                  description: Zone identifies the availability zone within a region
+                  type: string
+                kubeconfigSecret:
+                  description: KubeconfigSecret references a Secret containing the kubeconfig for this cluster
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      description: Name is the name of the Secret
+                      type: string
+                    namespace:
+                      description: Namespace is the namespace of the Secret
+                      type: string
+                    key:
+                      description: Key is the key in the Secret data (default: "kubeconfig")
+                      type: string
+                labels:
+                  description: Labels are additional labels to apply to resources in this cluster
+                  type: object
+                  additionalProperties:
+                    type: string
+                taints:
+                  description: Taints prevent DNS workloads from being scheduled unless tolerated
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - key
+                      - effect
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                capacity:
+                  description: Capacity defines resource limits for this cluster
+                  type: object
+                  properties:
+                    maxWorkers:
+                      description: MaxWorkers is the maximum number of DNS workers this cluster can run
+                      type: integer
+                      format: int32
+                    maxQPS:
+                      description: MaxQPS is the maximum queries per second this cluster should handle
+                      type: integer
+                      format: int64
+            status:
+              description: ClusterRegistrationStatus defines the observed state of ClusterRegistration
+              type: object
+              properties:
+                phase:
+                  description: Phase represents the current phase of the cluster registration
+                  type: string
+                  enum:
+                    - Pending
+                    - Connecting
+                    - Ready
+                    - Degraded
+                    - Offline
+                    - Error
+                conditions:
+                  description: Conditions represent the latest available observations
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      message:
+                        type: string
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                      reason:
+                        type: string
+                      status:
+                        type: string
+                      type:
+                        type: string
+                lastProbeTime:
+                  description: LastProbeTime is the last time the cluster was probed for connectivity
+                  type: string
+                  format: date-time
+                kubernetesVersion:
+                  description: KubernetesVersion is the version of Kubernetes running in the cluster
+                  type: string
+                workerCount:
+                  description: WorkerCount is the current number of DNS workers in this cluster
+                  type: integer
+                  format: int32
+                healthyWorkers:
+                  description: HealthyWorkers is the number of healthy DNS workers
+                  type: integer
+                  format: int32
+                currentQPS:
+                  description: CurrentQPS is the current queries per second handled by this cluster
+                  type: integer
+                  format: int64
+                message:
+                  description: Message provides additional information about the current status
+                  type: string

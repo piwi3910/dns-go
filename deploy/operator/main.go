@@ -78,11 +78,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create shared cluster client manager for multi-cluster support
+	clusterManager := controllers.NewClusterClientManager(scheme)
+
 	if err = (&controllers.DNSClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		ClusterManager: clusterManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSCluster")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.ClusterRegistrationReconciler{
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		ClusterManager: clusterManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterRegistration")
 		os.Exit(1)
 	}
 

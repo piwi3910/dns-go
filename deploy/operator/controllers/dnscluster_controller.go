@@ -36,7 +36,8 @@ const (
 // DNSClusterReconciler reconciles a DNSCluster object
 type DNSClusterReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme         *runtime.Scheme
+	ClusterManager *ClusterClientManager
 }
 
 //+kubebuilder:rbac:groups=dns.dns-go.io,resources=dnsclusters,verbs=get;list;watch;create;update;patch;delete

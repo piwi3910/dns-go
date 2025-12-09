@@ -306,6 +306,144 @@ spec:
 EOF
 ```
 
+### Multi-Cluster Deployment
+
+Deploy DNS workers across multiple Kubernetes clusters with centralized management:
+
+```bash
+# Step 1: Register remote clusters
+# Create a secret with kubeconfig for each cluster
+kubectl create secret generic cluster-us-west-kubeconfig \
+  --from-file=kubeconfig=/path/to/us-west-kubeconfig.yaml
+
+# Step 2: Create ClusterRegistration resources
+kubectl apply -f - <<EOF
+apiVersion: dns.dns-go.io/v1alpha1
+kind: ClusterRegistration
+metadata:
+  name: us-west-1
+spec:
+  displayName: "US West Production"
+  region: us-west
+  zone: us-west-1a
+  kubeconfigSecret:
+    name: cluster-us-west-kubeconfig
+    namespace: dns-go
+    key: kubeconfig
+  capacity:
+    maxWorkers: 20
+EOF
+
+# Step 3: Create multi-cluster DNSCluster
+kubectl apply -f - <<EOF
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: global-dns
+spec:
+  controlPlane:
+    replicas: 1
+  workers:
+    replicas: 10
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: us-west-1
+        weight: 50
+      - clusterRef: eu-central-1
+        weight: 30
+      - clusterRef: ap-southeast-1
+        weight: 20
+    globalDistribution:
+      strategy: Weighted
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "5m"
+        rebalanceOnRecovery: true
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+EOF
+```
+
+**Distribution Strategies:**
+- `Balanced`: Equal workers per cluster
+- `Weighted`: Distribute by cluster weight
+- `Geographic`: Optimize for geographic coverage
+- `FollowLoad`: Distribute based on current load
+
+**Features:**
+- Automatic failover when clusters become unhealthy
+- Worker rebalancing on cluster recovery
+- Per-cluster status tracking
+- Region/zone-aware placement with anti-affinity
+
+### High Availability Control Plane
+
+Deploy the control plane in HA mode with split-brain prevention using workers as witness nodes:
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: ha-dns
+spec:
+  controlPlane:
+    replicas: 2
+
+  workers:
+    replicas: 6
+    minReplicas: 4
+
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: site-a
+        minReplicas: 2
+      - clusterRef: site-b
+        minReplicas: 2
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+    controlPlanePlacements:
+      - clusterRef: site-a
+        priority: 1
+        preferredLeader: true
+      - clusterRef: site-b
+        priority: 2
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 3
+      fencingEnabled: true
+      gracePeriod: "30s"
+      workerWitness:
+        # Require workers from BOTH sites to prevent split-brain
+        minClustersRequired: 2
+        minWorkersPerCluster: 2
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+EOF
+```
+
+**HA Modes:**
+- `ActivePassive`: One leader accepts writes, others on standby
+- `ActiveActive`: All instances accept reads, only leader accepts writes
+
+**Quorum Types:**
+- `WorkerWitness`: Workers vote for reachable control plane (ideal for 2-site deployments)
+- `Majority`: Traditional majority quorum (requires 3+ control planes)
+- `ExternalWitness`: Use external service (etcd, Consul) as witness
+
+**Split-Brain Prevention:**
+In a 2-site deployment, workers act as witness nodes. When network partitions:
+- Each control plane only has quorum if workers from BOTH sites can reach it
+- This prevents both sides from becoming active simultaneously
+- The side that loses connectivity to workers will fence itself (stop accepting writes)
+
 ## Development
 
 ### Prerequisites

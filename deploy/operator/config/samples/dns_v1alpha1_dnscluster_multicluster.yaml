@@ -1,0 +1,180 @@
+# Example: Multi-cluster DNS deployment
+#
+# This DNSCluster distributes workers across multiple registered clusters
+# for geographic distribution and high availability.
+#
+# Prerequisites:
+# 1. Register clusters using ClusterRegistration resources
+# 2. Create kubeconfig secrets for each cluster
+
+---
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: global-dns
+  namespace: dns-go-system
+spec:
+  # Control plane runs in the management cluster
+  controlPlane:
+    replicas: 2
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"
+
+  # Total workers across all clusters
+  workers:
+    replicas: 15
+    minReplicas: 10
+    maxReplicas: 50
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+
+  # Multi-cluster configuration
+  multiCluster:
+    enabled: true
+
+    # Explicit worker placement per cluster
+    workerPlacements:
+      - clusterRef: us-west-1
+        replicas: 5
+        minReplicas: 3
+        maxReplicas: 20
+
+      - clusterRef: eu-central-1
+        replicas: 5
+        minReplicas: 3
+        maxReplicas: 15
+
+      - clusterRef: ap-southeast-1
+        replicas: 5
+        minReplicas: 2
+        maxReplicas: 10
+        # Tolerate the region taint
+        tolerations:
+          - key: dns.dns-go.io/region
+            operator: Equal
+            value: ap-southeast
+            effect: NoSchedule
+
+    # Global distribution settings
+    globalDistribution:
+      strategy: Balanced
+
+      # Spread workers across zones for fault tolerance
+      antiAffinity:
+        topologyKey: zone
+        maxSkew: 2
+
+      # Automatic failover configuration
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "5m"
+        rebalanceOnRecovery: true
+
+  # DNS zones to serve
+  zones:
+    - name: example.com
+      type: primary
+      records:
+        - name: "@"
+          type: A
+          ttl: 300
+          value: "203.0.113.10"
+        - name: "www"
+          type: CNAME
+          ttl: 300
+          value: "example.com"
+
+  # Upstream resolvers for forwarding
+  upstreams:
+    - "8.8.8.8:53"
+    - "8.8.4.4:53"
+    - "1.1.1.1:53"
+
+---
+# Alternative: Weight-based distribution
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: weighted-dns
+  namespace: dns-go-system
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 20
+
+  multiCluster:
+    enabled: true
+
+    # Use weights instead of explicit replicas
+    workerPlacements:
+      - clusterRef: us-west-1
+        weight: 50  # 50% of workers
+      - clusterRef: eu-central-1
+        weight: 30  # 30% of workers
+      - clusterRef: ap-southeast-1
+        weight: 20  # 20% of workers
+        tolerations:
+          - key: dns.dns-go.io/region
+            operator: Equal
+            value: ap-southeast
+
+    globalDistribution:
+      strategy: Weighted
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "3m"
+        rebalanceOnRecovery: true
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Geographic optimization: Prioritize specific regions
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: geo-optimized-dns
+  namespace: dns-go-system
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 12
+
+  multiCluster:
+    enabled: true
+
+    globalDistribution:
+      strategy: Geographic
+
+      # Prefer US and EU regions
+      regionAffinity:
+        - us-west
+        - eu-central
+
+      # But still spread across zones
+      antiAffinity:
+        topologyKey: zone
+        maxSkew: 1
+
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "2m"
+        rebalanceOnRecovery: true
+
+  upstreams:
+    - "8.8.8.8:53"

@@ -1,0 +1,242 @@
+# Example: HA Control Plane Deployment with Worker Witness Quorum
+# This configuration prevents split-brain in 2-site deployments
+# by using workers as witness nodes to establish quorum.
+
+---
+# Basic HA with 2 control planes
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: ha-dns-basic
+spec:
+  controlPlane:
+    replicas: 2
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+  workers:
+    replicas: 6
+    minReplicas: 4
+    maxReplicas: 20
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+    leaderElection:
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 2
+      fencingEnabled: true
+      gracePeriod: "30s"
+      workerWitness:
+        minClustersRequired: 1
+        minWorkersPerCluster: 2
+        voteWeight: Equal
+        heartbeatInterval: "5s"
+        heartbeatTimeout: "15s"
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Multi-cluster HA with split-brain prevention
+# Workers in each cluster vote for the control plane they can reach
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: ha-dns-multicluster
+spec:
+  controlPlane:
+    replicas: 1  # One control plane per cluster placement
+
+  workers:
+    replicas: 10
+    minReplicas: 6
+    maxReplicas: 30
+
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: us-west-1
+        weight: 50
+        minReplicas: 2
+      - clusterRef: eu-central-1
+        weight: 50
+        minReplicas: 2
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+
+    # Place control planes in both clusters
+    controlPlanePlacements:
+      - clusterRef: us-west-1
+        priority: 1
+        preferredLeader: true
+      - clusterRef: eu-central-1
+        priority: 2
+
+    leaderElection:
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 3
+      fencingEnabled: true
+      gracePeriod: "30s"
+      workerWitness:
+        # Require workers from BOTH clusters to prevent split-brain
+        # When network partitions, neither side can claim quorum alone
+        minClustersRequired: 2
+        minWorkersPerCluster: 2
+        voteWeight: Equal
+        heartbeatInterval: "5s"
+        heartbeatTimeout: "15s"
+
+    syncReplication: true
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# 2-Site Active-Active with External Witness
+# Use when you have an external witness service (e.g., etcd in a third location)
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: ha-dns-external-witness
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 8
+    minReplicas: 4
+    maxReplicas: 20
+
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: site-a
+        replicas: 4
+      - clusterRef: site-b
+        replicas: 4
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+
+    controlPlanePlacements:
+      - clusterRef: site-a
+        priority: 1
+        preferredLeader: true
+      - clusterRef: site-b
+        priority: 2
+
+    leaderElection:
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+
+    quorum:
+      type: ExternalWitness
+      minimumQuorum: 1
+      fencingEnabled: true
+      gracePeriod: "30s"
+      externalWitness:
+        endpoint: "https://etcd-witness.example.com:2379"
+        secretRef:
+          name: etcd-witness-credentials
+        type: Etcd
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+---
+# Geographic HA with Weighted Distribution
+# Optimizes for latency while maintaining HA
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: ha-dns-geographic
+spec:
+  controlPlane:
+    replicas: 1
+
+  workers:
+    replicas: 15
+    minReplicas: 9
+    maxReplicas: 30
+
+  multiCluster:
+    enabled: true
+    workerPlacements:
+      - clusterRef: us-west-1
+        weight: 40
+        minReplicas: 3
+      - clusterRef: us-east-1
+        weight: 30
+        minReplicas: 3
+      - clusterRef: eu-west-1
+        weight: 30
+        minReplicas: 3
+    globalDistribution:
+      strategy: Geographic
+      antiAffinity:
+        topologyKey: region
+        maxSkew: 2
+      failoverPolicy:
+        enabled: true
+        failoverThreshold: "5m"
+        rebalanceOnRecovery: true
+
+  highAvailability:
+    enabled: true
+    mode: ActivePassive
+
+    controlPlanePlacements:
+      - clusterRef: us-west-1
+        priority: 1
+        preferredLeader: true
+      - clusterRef: us-east-1
+        priority: 2
+      - clusterRef: eu-west-1
+        priority: 3
+
+    leaderElection:
+      leaseDuration: "15s"
+      renewDeadline: "10s"
+      retryPeriod: "2s"
+
+    quorum:
+      type: WorkerWitness
+      minimumQuorum: 5
+      fencingEnabled: true
+      gracePeriod: "60s"
+      workerWitness:
+        # With 3 regions, require workers from at least 2
+        minClustersRequired: 2
+        minWorkersPerCluster: 2
+        # Proportional voting gives more weight to regions with more workers
+        voteWeight: Proportional
+        heartbeatInterval: "5s"
+        heartbeatTimeout: "20s"
+
+    syncReplication: true
+
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"

@@ -1,0 +1,85 @@
+# Example: Register a remote Kubernetes cluster for DNS worker deployment
+#
+# Before applying:
+# 1. Create a kubeconfig for the remote cluster with appropriate permissions
+# 2. Store it in a Secret in the same namespace
+#
+# kubectl create secret generic cluster-us-west-kubeconfig \
+#   --from-file=kubeconfig=/path/to/remote-cluster-kubeconfig.yaml
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-us-west-kubeconfig
+  namespace: dns-go-system
+type: Opaque
+data:
+  # Base64-encoded kubeconfig for the remote cluster
+  # Replace with: cat /path/to/kubeconfig | base64
+  kubeconfig: ""
+
+---
+apiVersion: dns.dns-go.io/v1alpha1
+kind: ClusterRegistration
+metadata:
+  name: us-west-1
+spec:
+  displayName: "US West (Oregon)"
+  region: us-west
+  zone: us-west-1a
+  kubeconfigSecret:
+    name: cluster-us-west-kubeconfig
+    namespace: dns-go-system
+    key: kubeconfig
+  labels:
+    environment: production
+    provider: aws
+  capacity:
+    maxWorkers: 20
+    maxQPS: 100000
+
+---
+apiVersion: dns.dns-go.io/v1alpha1
+kind: ClusterRegistration
+metadata:
+  name: eu-central-1
+spec:
+  displayName: "EU Central (Frankfurt)"
+  region: eu-central
+  zone: eu-central-1a
+  kubeconfigSecret:
+    name: cluster-eu-central-kubeconfig
+    namespace: dns-go-system
+    key: kubeconfig
+  labels:
+    environment: production
+    provider: aws
+  capacity:
+    maxWorkers: 15
+    maxQPS: 75000
+
+---
+apiVersion: dns.dns-go.io/v1alpha1
+kind: ClusterRegistration
+metadata:
+  name: ap-southeast-1
+spec:
+  displayName: "Asia Pacific (Singapore)"
+  region: ap-southeast
+  zone: ap-southeast-1a
+  kubeconfigSecret:
+    name: cluster-ap-southeast-kubeconfig
+    namespace: dns-go-system
+    key: kubeconfig
+  labels:
+    environment: production
+    provider: aws
+  # Taint this cluster to require explicit toleration
+  taints:
+    - key: dns.dns-go.io/region
+      value: ap-southeast
+      effect: NoSchedule
+  capacity:
+    maxWorkers: 10
+    maxQPS: 50000

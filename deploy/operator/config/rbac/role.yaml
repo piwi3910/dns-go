@@ -32,6 +32,34 @@ rules:
       - patch
       - update
 
+  # ClusterRegistration resources (multi-cluster support)
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - clusterregistrations
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - clusterregistrations/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - dns.dns-go.io
+    resources:
+      - clusterregistrations/status
+    verbs:
+      - get
+      - patch
+      - update
+
   # Core resources
   - apiGroups:
       - ""
