@@ -23,10 +23,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/piwi3910/dns-go/pkg/api/types"
+	"github.com/piwi3910/dns-go/pkg/bridge"
 	"github.com/piwi3910/dns-go/pkg/config"
-	"github.com/piwi3910/dns-go/pkg/resolver"
-	"github.com/piwi3910/dns-go/pkg/server"
-	"github.com/piwi3910/dns-go/pkg/zone"
 	"github.com/piwi3910/dns-go/web"
 )
 
@@ -37,29 +35,25 @@ const (
 
 // Server is the API server for the DNS management GUI.
 type Server struct {
-	config      *config.Config
-	handler     *server.Handler
-	zoneManager *zone.Manager
-	upstream    *resolver.UpstreamPool
-	jwtSecret   []byte
+	config       *config.Config
+	dnsService   bridge.DNSService
+	jwtSecret    []byte
 	passwordHash string
-	startTime   time.Time
-	httpServer  *http.Server
+	startTime    time.Time
+	httpServer   *http.Server
 
 	// SSE broadcaster
-	sseClients   map[chan []byte]bool
-	sseRegister  chan chan []byte
+	sseClients    map[chan []byte]bool
+	sseRegister   chan chan []byte
 	sseUnregister chan chan []byte
-	sseMu        sync.RWMutex
+	sseMu         sync.RWMutex
 }
 
 // NewServer creates a new API server.
-func NewServer(cfg *config.Config, handler *server.Handler, zoneManager *zone.Manager, upstream *resolver.UpstreamPool) *Server {
+func NewServer(cfg *config.Config, dnsService bridge.DNSService) *Server {
 	s := &Server{
 		config:        cfg,
-		handler:       handler,
-		zoneManager:   zoneManager,
-		upstream:      upstream,
+		dnsService:    dnsService,
 		startTime:     time.Now(),
 		sseClients:    make(map[chan []byte]bool),
 		sseRegister:   make(chan chan []byte),
@@ -400,66 +394,46 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) buildStatsResponse() types.StatsResponse {
-	handlerStats := s.handler.GetStats()
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-
-	// Determine resolver mode string
-	modeStr := "unknown"
-	switch s.config.Resolver.Mode {
-	case "forwarding":
-		modeStr = "forwarding"
-	case "recursive":
-		modeStr = "recursive"
-	case "parallel":
-		modeStr = "parallel"
-	}
-
-	// Count zones
-	zoneCount := 0
-	totalRecords := 0
-	if s.zoneManager != nil {
-		origins := s.zoneManager.GetAllZones()
-		zoneCount = len(origins)
-		for _, origin := range origins {
-			if z := s.zoneManager.GetZone(origin); z != nil {
-				totalRecords += z.RecordCount()
-			}
-		}
+	// Get stats from DNS service
+	ctx := context.Background()
+	stats, err := s.dnsService.GetStats(ctx)
+	if err != nil {
+		// Return empty stats on error
+		return types.StatsResponse{}
 	}
 
 	return types.StatsResponse{
 		Server: types.ServerStats{
-			Version:       "1.0.0",
-			UptimeSeconds: time.Since(s.startTime).Seconds(),
-			GoVersion:     runtime.Version(),
-			NumCPU:        runtime.NumCPU(),
-			NumGoroutines: runtime.NumGoroutine(),
-			MemoryMB:      float64(memStats.Alloc) / 1024 / 1024,
+			Version:       stats.Server.Version,
+			UptimeSeconds: stats.Server.UptimeSeconds,
+			GoVersion:     stats.Server.GoVersion,
+			NumCPU:        stats.Server.NumCPU,
+			NumGoroutines: stats.Server.NumGoroutines,
+			MemoryMB:      stats.Server.MemoryMB,
 		},
 		Cache: types.CacheStats{
 			MessageCache: types.CacheTypeStats{
-				Hits:      handlerStats.MessageCache.Hits,
-				Misses:    handlerStats.MessageCache.Misses,
-				Evicts:    handlerStats.MessageCache.Evicts,
-				HitRate:   handlerStats.MessageCache.HitRate,
-				SizeBytes: handlerStats.MessageCache.Size,
+				Hits:      stats.Cache.MessageCache.Hits,
+				Misses:    stats.Cache.MessageCache.Misses,
+				Evicts:    stats.Cache.MessageCache.Evicts,
+				HitRate:   stats.Cache.MessageCache.HitRate,
+				SizeBytes: stats.Cache.MessageCache.SizeBytes,
 			},
 			RRsetCache: types.CacheTypeStats{
-				Hits:      handlerStats.RRsetCache.Hits,
-				Misses:    handlerStats.RRsetCache.Misses,
-				Evicts:    handlerStats.RRsetCache.Evicts,
-				HitRate:   handlerStats.RRsetCache.HitRate,
-				SizeBytes: handlerStats.RRsetCache.Size,
+				Hits:      stats.Cache.RRsetCache.Hits,
+				Misses:    stats.Cache.RRsetCache.Misses,
+				Evicts:    stats.Cache.RRsetCache.Evicts,
+				HitRate:   stats.Cache.RRsetCache.HitRate,
+				SizeBytes: stats.Cache.RRsetCache.SizeBytes,
 			},
 		},
 		Resolver: types.ResolverStats{
-			InFlightQueries: 0, // TODO: expose from resolver
-			Mode:            modeStr,
+			InFlightQueries: stats.Resolver.InFlightQueries,
+			Mode:            stats.Resolver.Mode,
 		},
 		Zones: types.ZonesStats{
-			Count:        zoneCount,
-			TotalRecords: totalRecords,
+			Count:        stats.Zones.Count,
+			TotalRecords: stats.Zones.TotalRecords,
 		},
 	}
 }
@@ -548,48 +522,29 @@ func (s *Server) broadcastStats() {
 
 // Upstreams handlers
 func (s *Server) handleGetUpstreams(w http.ResponseWriter, r *http.Request) {
-	upstreams := s.upstream.GetUpstreams()
-	stats := s.upstream.GetStats()
-
-	// Create map for quick lookup
-	statsMap := make(map[string]interface{})
-	for _, stat := range stats {
-		statsMap[stat.Address] = stat
+	ctx := r.Context()
+	upstreams, err := s.dnsService.GetUpstreams(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
+	// Convert bridge types to API types
 	var upstreamInfos []types.UpstreamInfo
-	for _, addr := range upstreams {
-		info := types.UpstreamInfo{
-			Address: addr,
-			Healthy: true,
-		}
-
-		if stat, ok := statsMap[addr]; ok {
-			// Type assert to get the actual stats
-			if s, ok := stat.(interface {
-				GetSnapshot() interface{}
-			}); ok {
-				_ = s // Use the snapshot
-			}
-		}
-
-		upstreamInfos = append(upstreamInfos, info)
-	}
-
-	// Get detailed stats from infra cache
-	for i, stat := range stats {
-		if i < len(upstreamInfos) {
-			upstreamInfos[i].RTTMS = stat.RTT
-			upstreamInfos[i].Failures = stat.Failures
-			upstreamInfos[i].InFlight = stat.InFlight
-			upstreamInfos[i].LastSuccess = stat.LastSuccess
-			upstreamInfos[i].LastFailure = stat.LastFailure
-			upstreamInfos[i].TotalQueries = stat.TotalQueries
-			upstreamInfos[i].TotalFailures = stat.TotalFailures
-			upstreamInfos[i].FailureRate = stat.FailureRate
-			upstreamInfos[i].Score = stat.Score
-			upstreamInfos[i].Healthy = stat.FailureRate < 0.5
-		}
+	for _, u := range upstreams {
+		upstreamInfos = append(upstreamInfos, types.UpstreamInfo{
+			Address:       u.Address,
+			RTTMS:         u.RTTMS,
+			Failures:      u.Failures,
+			InFlight:      u.InFlight,
+			LastSuccess:   u.LastSuccess,
+			LastFailure:   u.LastFailure,
+			TotalQueries:  u.TotalQueries,
+			TotalFailures: u.TotalFailures,
+			FailureRate:   u.FailureRate,
+			Score:         u.Score,
+			Healthy:       u.Healthy,
+		})
 	}
 
 	resp := types.UpstreamsResponse{
@@ -610,7 +565,11 @@ func (s *Server) handleUpdateUpstreams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.upstream.SetUpstreams(req.Upstreams)
+	ctx := r.Context()
+	if err := s.dnsService.SetUpstreams(ctx, req.Upstreams); err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	resp := types.UpdateUpstreamsResponse{
 		Success:   true,
@@ -621,30 +580,26 @@ func (s *Server) handleUpdateUpstreams(w http.ResponseWriter, r *http.Request) {
 
 // Zone handlers
 func (s *Server) handleGetZones(w http.ResponseWriter, r *http.Request) {
-	if s.zoneManager == nil {
-		s.sendJSON(w, http.StatusOK, types.ZonesResponse{Zones: []types.ZoneInfo{}})
+	ctx := r.Context()
+	zones, err := s.dnsService.GetZones(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	origins := s.zoneManager.GetAllZones()
-	var zones []types.ZoneInfo
-
-	for _, origin := range origins {
-		z := s.zoneManager.GetZone(origin)
-		if z == nil {
-			continue
-		}
-
-		zones = append(zones, types.ZoneInfo{
+	// Convert bridge types to API types
+	var zoneInfos []types.ZoneInfo
+	for _, z := range zones {
+		zoneInfos = append(zoneInfos, types.ZoneInfo{
 			Origin:       z.Origin,
-			Serial:       z.GetSerial(),
-			RecordCount:  z.RecordCount(),
+			Serial:       z.Serial,
+			RecordCount:  z.RecordCount,
 			LastModified: z.LastModified,
-			HasSOA:       z.SOA != nil,
+			HasSOA:       z.HasSOA,
 		})
 	}
 
-	resp := types.ZonesResponse{Zones: zones}
+	resp := types.ZonesResponse{Zones: zoneInfos}
 	s.sendJSON(w, http.StatusOK, resp)
 }
 
@@ -655,44 +610,39 @@ func (s *Server) handleGetZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.zoneManager == nil {
-		s.sendError(w, http.StatusNotFound, "Zone not found")
-		return
-	}
-
-	z := s.zoneManager.GetZone(origin)
-	if z == nil {
+	ctx := r.Context()
+	z, err := s.dnsService.GetZone(ctx, origin)
+	if err != nil {
 		s.sendError(w, http.StatusNotFound, "Zone not found")
 		return
 	}
 
 	resp := types.ZoneDetailResponse{
 		Origin:      z.Origin,
-		Serial:      z.GetSerial(),
+		Serial:      z.Serial,
 		TransferACL: z.TransferACL,
 		UpdateACL:   z.UpdateACL,
 	}
 
 	if z.SOA != nil {
 		resp.SOA = &types.SOAInfo{
-			PrimaryNS:  z.SOA.Ns,
-			AdminEmail: z.SOA.Mbox,
+			PrimaryNS:  z.SOA.PrimaryNS,
+			AdminEmail: z.SOA.AdminEmail,
 			Serial:     z.SOA.Serial,
 			Refresh:    z.SOA.Refresh,
 			Retry:      z.SOA.Retry,
 			Expire:     z.SOA.Expire,
-			Minimum:    z.SOA.Minttl,
+			Minimum:    z.SOA.Minimum,
 		}
 	}
 
-	// Get all records
-	allRecords := z.GetAllRecordsOrdered()
-	for _, rr := range allRecords {
+	// Convert records
+	for _, rec := range z.Records {
 		resp.Records = append(resp.Records, types.RecordInfo{
-			Name: rr.Header().Name,
-			Type: typeToString(rr.Header().Rrtype),
-			TTL:  rr.Header().Ttl,
-			Data: rr.String(),
+			Name: rec.Name,
+			Type: rec.Type,
+			TTL:  rec.TTL,
+			Data: rec.Data,
 		})
 	}
 
@@ -711,25 +661,22 @@ func (s *Server) handleCreateZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.zoneManager == nil {
-		s.sendError(w, http.StatusInternalServerError, "Zone manager not available")
-		return
-	}
-
-	// Create zone
-	z := zone.NewZone(zone.Config{
+	ctx := r.Context()
+	z, err := s.dnsService.CreateZone(ctx, bridge.CreateZoneRequest{
 		Origin:      req.Origin,
 		TransferACL: req.TransferACL,
 		UpdateACL:   req.UpdateACL,
 	})
-
-	s.zoneManager.AddZone(z)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	resp := types.CreateZoneResponse{
 		Success: true,
 		Zone: types.ZoneDetailResponse{
 			Origin:      z.Origin,
-			Serial:      z.GetSerial(),
+			Serial:      z.Serial,
 			TransferACL: z.TransferACL,
 			UpdateACL:   z.UpdateACL,
 		},
@@ -744,12 +691,11 @@ func (s *Server) handleDeleteZone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.zoneManager == nil {
+	ctx := r.Context()
+	if err := s.dnsService.DeleteZone(ctx, origin); err != nil {
 		s.sendError(w, http.StatusNotFound, "Zone not found")
 		return
 	}
-
-	s.zoneManager.RemoveZone(origin)
 
 	resp := types.DeleteZoneResponse{
 		Success: true,
@@ -760,7 +706,12 @@ func (s *Server) handleDeleteZone(w http.ResponseWriter, r *http.Request) {
 
 // Cache handlers
 func (s *Server) handleGetCache(w http.ResponseWriter, r *http.Request) {
-	stats := s.handler.GetStats()
+	ctx := r.Context()
+	stats, err := s.dnsService.GetCacheStats(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	resp := types.CacheResponse{
 		MessageCache: types.CacheTypeStats{
@@ -768,17 +719,17 @@ func (s *Server) handleGetCache(w http.ResponseWriter, r *http.Request) {
 			Misses:    stats.MessageCache.Misses,
 			Evicts:    stats.MessageCache.Evicts,
 			HitRate:   stats.MessageCache.HitRate,
-			SizeBytes: stats.MessageCache.Size,
+			SizeBytes: stats.MessageCache.SizeBytes,
 		},
 		RRsetCache: types.CacheTypeStats{
 			Hits:      stats.RRsetCache.Hits,
 			Misses:    stats.RRsetCache.Misses,
 			Evicts:    stats.RRsetCache.Evicts,
 			HitRate:   stats.RRsetCache.HitRate,
-			SizeBytes: stats.RRsetCache.Size,
+			SizeBytes: stats.RRsetCache.SizeBytes,
 		},
 		InfraCache: types.InfraCacheInfo{
-			ServerCount: len(s.upstream.GetUpstreams()),
+			ServerCount: stats.InfraCache.ServerCount,
 		},
 	}
 	s.sendJSON(w, http.StatusOK, resp)
@@ -791,23 +742,10 @@ func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var cleared []string
-	switch req.CacheType {
-	case "all":
-		s.handler.ClearCaches()
-		cleared = []string{"message", "rrset", "infra"}
-	case "message":
-		// TODO: Add individual cache clear methods
-		s.handler.ClearCaches()
-		cleared = []string{"message"}
-	case "rrset":
-		s.handler.ClearCaches()
-		cleared = []string{"rrset"}
-	case "infra":
-		s.handler.ClearCaches()
-		cleared = []string{"infra"}
-	default:
-		s.sendError(w, http.StatusBadRequest, "Invalid cache type")
+	ctx := r.Context()
+	cleared, err := s.dnsService.ClearCache(ctx, req.CacheType)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -820,7 +758,12 @@ func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
 
 // Config handlers
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.config
+	ctx := r.Context()
+	cfg, err := s.dnsService.GetConfig(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	resp := types.ConfigResponse{
 		Server: types.ServerConfigResponse{
@@ -828,8 +771,8 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 			NumWorkers:                  cfg.Server.NumWorkers,
 			EnableTCP:                   cfg.Server.EnableTCP,
 			PprofAddress:                cfg.Server.PprofAddress,
-			GracefulShutdownTimeoutSecs: int(cfg.Server.GracefulShutdownTimeout.Seconds()),
-			StatsReportIntervalSecs:     int(cfg.Server.StatsReportInterval.Seconds()),
+			GracefulShutdownTimeoutSecs: cfg.Server.GracefulShutdownTimeoutSecs,
+			StatsReportIntervalSecs:     cfg.Server.StatsReportIntervalSecs,
 		},
 		Cache: types.CacheConfigResponse{
 			MessageCache: types.MessageCacheConfigResponse{
@@ -845,21 +788,21 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 				ThresholdHits:       cfg.Cache.Prefetch.ThresholdHits,
 				ThresholdTTLPercent: cfg.Cache.Prefetch.ThresholdTTLPercent,
 			},
-			MinTTLSecs: int(cfg.Cache.MinTTL.Seconds()),
-			MaxTTLSecs: int(cfg.Cache.MaxTTL.Seconds()),
-			NegTTLSecs: int(cfg.Cache.NegativeTTL.Seconds()),
+			MinTTLSecs: cfg.Cache.MinTTLSecs,
+			MaxTTLSecs: cfg.Cache.MaxTTLSecs,
+			NegTTLSecs: cfg.Cache.NegTTLSecs,
 		},
 		Resolver: types.ResolverConfigResponse{
 			Mode:              cfg.Resolver.Mode,
 			Upstreams:         cfg.Resolver.Upstreams,
 			RootHintsFile:     cfg.Resolver.RootHintsFile,
 			MaxRecursionDepth: cfg.Resolver.MaxRecursionDepth,
-			QueryTimeoutSecs:  int(cfg.Resolver.QueryTimeout.Seconds()),
+			QueryTimeoutSecs:  cfg.Resolver.QueryTimeoutSecs,
 			EnableCoalescing:  cfg.Resolver.EnableCoalescing,
 			Parallel: types.ParallelConfigResponse{
-				NumParallel:         cfg.Resolver.ParallelConfig.NumParallel,
-				FallbackToRecursive: cfg.Resolver.ParallelConfig.FallbackToRecursive,
-				SuccessRcodes:       cfg.Resolver.ParallelConfig.SuccessRcodes,
+				NumParallel:         cfg.Resolver.Parallel.NumParallel,
+				FallbackToRecursive: cfg.Resolver.Parallel.FallbackToRecursive,
+				SuccessRcodes:       cfg.Resolver.Parallel.SuccessRcodes,
 			},
 		},
 		Logging: types.LoggingConfigResponse{
@@ -883,29 +826,95 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply updates
+	ctx := r.Context()
+	updateReq := bridge.UpdateConfigRequest{}
+
 	if req.Resolver != nil {
-		if req.Resolver.Upstreams != nil {
-			s.upstream.SetUpstreams(req.Resolver.Upstreams)
-			s.config.Resolver.Upstreams = req.Resolver.Upstreams
-		}
-		if req.Resolver.Mode != nil {
-			s.config.Resolver.Mode = *req.Resolver.Mode
-			// Note: Mode change requires restart to take effect
+		updateReq.Resolver = &bridge.ResolverConfigUpdate{
+			Mode:      req.Resolver.Mode,
+			Upstreams: req.Resolver.Upstreams,
 		}
 	}
 
 	if req.Logging != nil {
-		if req.Logging.Level != nil {
-			s.config.Logging.Level = *req.Logging.Level
-		}
-		if req.Logging.EnableQueryLog != nil {
-			s.config.Logging.EnableQueryLog = *req.Logging.EnableQueryLog
+		updateReq.Logging = &bridge.LoggingConfigUpdate{
+			Level:          req.Logging.Level,
+			EnableQueryLog: req.Logging.EnableQueryLog,
 		}
 	}
 
-	// Return updated config
-	s.handleGetConfig(w, r)
+	requiresRestart, err := s.dnsService.UpdateConfig(ctx, updateReq)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Get and return updated config
+	cfg, err := s.dnsService.GetConfig(ctx)
+	if err != nil {
+		s.sendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp := types.ConfigResponse{
+		Server: types.ServerConfigResponse{
+			ListenAddress:               cfg.Server.ListenAddress,
+			NumWorkers:                  cfg.Server.NumWorkers,
+			EnableTCP:                   cfg.Server.EnableTCP,
+			PprofAddress:                cfg.Server.PprofAddress,
+			GracefulShutdownTimeoutSecs: cfg.Server.GracefulShutdownTimeoutSecs,
+			StatsReportIntervalSecs:     cfg.Server.StatsReportIntervalSecs,
+		},
+		Cache: types.CacheConfigResponse{
+			MessageCache: types.MessageCacheConfigResponse{
+				MaxSizeMB: cfg.Cache.MessageCache.MaxSizeMB,
+				NumShards: cfg.Cache.MessageCache.NumShards,
+			},
+			RRsetCache: types.RRsetCacheConfigResponse{
+				MaxSizeMB: cfg.Cache.RRsetCache.MaxSizeMB,
+				NumShards: cfg.Cache.RRsetCache.NumShards,
+			},
+			Prefetch: types.PrefetchConfigResponse{
+				Enabled:             cfg.Cache.Prefetch.Enabled,
+				ThresholdHits:       cfg.Cache.Prefetch.ThresholdHits,
+				ThresholdTTLPercent: cfg.Cache.Prefetch.ThresholdTTLPercent,
+			},
+			MinTTLSecs: cfg.Cache.MinTTLSecs,
+			MaxTTLSecs: cfg.Cache.MaxTTLSecs,
+			NegTTLSecs: cfg.Cache.NegTTLSecs,
+		},
+		Resolver: types.ResolverConfigResponse{
+			Mode:              cfg.Resolver.Mode,
+			Upstreams:         cfg.Resolver.Upstreams,
+			RootHintsFile:     cfg.Resolver.RootHintsFile,
+			MaxRecursionDepth: cfg.Resolver.MaxRecursionDepth,
+			QueryTimeoutSecs:  cfg.Resolver.QueryTimeoutSecs,
+			EnableCoalescing:  cfg.Resolver.EnableCoalescing,
+			Parallel: types.ParallelConfigResponse{
+				NumParallel:         cfg.Resolver.Parallel.NumParallel,
+				FallbackToRecursive: cfg.Resolver.Parallel.FallbackToRecursive,
+				SuccessRcodes:       cfg.Resolver.Parallel.SuccessRcodes,
+			},
+		},
+		Logging: types.LoggingConfigResponse{
+			Level:          cfg.Logging.Level,
+			Format:         cfg.Logging.Format,
+			EnableQueryLog: cfg.Logging.EnableQueryLog,
+		},
+		API: types.APIConfigResponse{
+			Enabled:       cfg.API.Enabled,
+			ListenAddress: cfg.API.ListenAddress,
+			CORSOrigins:   cfg.API.CORSOrigins,
+		},
+	}
+
+	// Add note about restart requirement
+	if requiresRestart {
+		// Could add this to response if needed
+		_ = requiresRestart
+	}
+
+	s.sendJSON(w, http.StatusOK, resp)
 }
 
 // Helper functions

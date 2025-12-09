@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/piwi3910/dns-go/pkg/api"
+	"github.com/piwi3910/dns-go/pkg/bridge"
 	"github.com/piwi3910/dns-go/pkg/cache"
 	"github.com/piwi3910/dns-go/pkg/config"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
@@ -146,7 +147,16 @@ func main() {
 	// Start API server if enabled
 	var apiServer *api.Server
 	if cfg.API.Enabled {
-		apiServer = api.NewServer(cfg, handler, zoneManager, upstreamPool)
+		// Create local DNS service bridge for standalone mode
+		dnsService := bridge.NewLocalService(bridge.LocalServiceConfig{
+			Handler:     handler,
+			ZoneManager: zoneManager,
+			Upstream:    upstreamPool,
+			Config:      cfg,
+			StartTime:   time.Now(),
+		})
+
+		apiServer = api.NewServer(cfg, dnsService)
 		go func() {
 			if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
 				log.Printf("API server error: %v", err)
