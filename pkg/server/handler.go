@@ -14,6 +14,7 @@ import (
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
 	"github.com/piwi3910/dns-go/pkg/security"
+	"github.com/piwi3910/dns-go/pkg/zone"
 )
 
 // Handler configuration constants.
@@ -35,6 +36,9 @@ type Handler struct {
 
 	// Resolver for upstream queries
 	resolver *resolver.Resolver
+
+	// Zone manager for authoritative responses
+	zoneManager *zone.Manager
 
 	// DNSSEC validator
 	dnssecValidator *dnssec.Validator
@@ -129,12 +133,18 @@ func NewHandler(config HandlerConfig) *Handler {
 		msgPool:                 dnsio.NewMessagePool(),
 		bufferPool:              dnsio.NewBufferPool(dnsio.DefaultBufferSize),
 		resolver:                resolverInstance,
+		zoneManager:             zone.NewManager(),
 		dnssecValidator:         dnssecValidator,
 		rateLimiter:             rateLimiter,
 		queryValidator:          queryValidator,
 		cachePoisoningProtector: cachePoisoningProtector,
 		config:                  config,
 	}
+}
+
+// GetZoneManager returns the zone manager for external configuration.
+func (h *Handler) GetZoneManager() *zone.Manager {
+	return h.zoneManager
 }
 
 // HandleQuery processes a DNS query and returns a response
@@ -320,6 +330,10 @@ func (h *Handler) handleSlowPath(ctx context.Context, query []byte, addr net.Add
 }
 
 // handleCacheMiss handles queries that are not in cache.
+// Resolution order:
+// 1. Check local zones (authoritative)
+// 2. Forward to upstreams (parallel mode: fastest wins)
+// 3. Fall back to recursive resolution if all forwarders fail
 func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.FastPathQuery) ([]byte, error) {
 	_ = fpq // Reserved for future optimizations
 
@@ -331,7 +345,21 @@ func (h *Handler) handleCacheMiss(ctx context.Context, query []byte, fpq *dnsio.
 		return h.buildErrorResponse(query, dns.RcodeFormatError)
 	}
 
-	// Resolve via upstream
+	// Step 1: Check local zones first (authoritative response)
+	if h.zoneManager != nil {
+		if zoneResponse, handled := h.zoneManager.Query(msg); handled {
+			// Apply EDNS0 if query had it
+			h.applyEDNS0(msg, zoneResponse)
+
+			// Cache the authoritative response
+			h.cacheResponseIfValid(zoneResponse)
+
+			// Pack and return response
+			return h.packAndHandleSize(msg, zoneResponse, query)
+		}
+	}
+
+	// Step 2 & 3: Resolve via upstream (parallel forwarding with recursive fallback)
 	response, err := h.resolveQuery(ctx, msg, query)
 	if err != nil {
 		return h.buildErrorResponse(query, dns.RcodeServerFailure)

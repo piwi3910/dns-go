@@ -1,0 +1,53 @@
+server:
+  listen_address: "127.0.0.1:5353"
+  num_workers: 4
+  enable_tcp: true
+  pprof_address: "127.0.0.1:6060"
+  graceful_shutdown_timeout: 5s
+  stats_report_interval: 30s
+
+cache:
+  message_cache:
+    max_size_mb: 64
+    num_shards: 32
+  rrset_cache:
+    max_size_mb: 128
+    num_shards: 64
+  prefetch:
+    enabled: true
+    threshold_hits: 100
+    threshold_ttl_percent: 10.0
+  min_ttl: 60s
+  max_ttl: 86400s
+  negative_ttl: 3600s
+
+resolver:
+  mode: "parallel"
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+    - "9.9.9.9:53"
+  root_hints_file: ""
+  max_recursion_depth: 30
+  query_timeout: 5s
+  enable_coalescing: true
+  parallel:
+    num_parallel: 3
+    fallback_to_recursive: true
+    success_rcodes: [0, 3]
+
+logging:
+  level: "info"
+  format: "text"
+  enable_query_log: false
+
+api:
+  enabled: true
+  listen_address: ":8080"
+  cors_origins:
+    - "http://localhost:5173"
+  auth:
+    username: "admin"
+    password_hash: ""
+    jwt_secret: ""
+    token_expiry: 24h

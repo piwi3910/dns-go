@@ -18,8 +18,8 @@ func TestDefaultResolverConfig(t *testing.T) {
 	t.Parallel()
 	config := resolver.DefaultConfig()
 
-	if config.Mode != resolver.RecursiveMode {
-		t.Errorf("Expected resolver.RecursiveMode, got %v", config.Mode)
+	if config.Mode != resolver.ParallelMode {
+		t.Errorf("Expected resolver.ParallelMode, got %v", config.Mode)
 	}
 
 	if config.WorkerPoolSize != 1000 {
@@ -40,6 +40,14 @@ func TestDefaultResolverConfig(t *testing.T) {
 
 	if !config.EnableDNSSEC {
 		t.Error("Expected DNSSEC to be enabled")
+	}
+
+	// Check parallel config defaults
+	if config.ParallelConfig.NumParallel != 3 {
+		t.Errorf("Expected NumParallel 3, got %d", config.ParallelConfig.NumParallel)
+	}
+	if !config.ParallelConfig.FallbackToRecursive {
+		t.Error("Expected FallbackToRecursive to be true")
 	}
 }
 

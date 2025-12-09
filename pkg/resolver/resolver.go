@@ -27,6 +27,9 @@ const (
 	ForwardingMode RecursionMode = iota
 	// RecursiveMode performs true recursive resolution starting from root servers.
 	RecursiveMode
+	// ParallelMode queries multiple forwarders simultaneously and returns fastest good response.
+	// Falls back to recursive resolution if all forwarders fail.
+	ParallelMode
 )
 
 // Resolver configuration defaults.
@@ -54,7 +57,7 @@ type Resolver struct {
 
 // Config holds configuration for the resolver.
 type Config struct {
-	// Mode determines resolution strategy (Forwarding or Recursive)
+	// Mode determines resolution strategy (Forwarding, Recursive, or Parallel)
 	Mode RecursionMode
 
 	// WorkerPoolSize is the maximum number of concurrent queries
@@ -74,19 +77,39 @@ type Config struct {
 
 	// DNSSECConfig holds DNSSEC validator configuration
 	DNSSECConfig dnssec.ValidatorConfig
+
+	// ParallelConfig holds configuration for parallel forwarding mode
+	ParallelConfig ParallelConfig
+}
+
+// ParallelConfig holds configuration for parallel forwarding.
+type ParallelConfig struct {
+	// NumParallel is the number of upstreams to query in parallel
+	NumParallel int
+
+	// FallbackToRecursive enables fallback to recursive resolution
+	FallbackToRecursive bool
+
+	// SuccessRcodes defines which response codes are considered successful
+	SuccessRcodes []int
 }
 
 // DefaultConfig returns configuration with sensible defaults
-// Uses RecursiveMode for true local recursion from root servers.
+// Uses ParallelMode for best performance with fallback to recursive.
 func DefaultConfig() Config {
 	return Config{
-		Mode:             RecursiveMode,                          // True recursive resolution
+		Mode:             ParallelMode,                          // Parallel forwarding with recursive fallback
 		WorkerPoolSize:   defaultWorkerPoolSize,                 // 1000 concurrent queries
 		MaxRetries:       defaultMaxRetries,                     // 2 retry attempts
 		QueryTimeout:     defaultQueryTimeoutSec * time.Second,  // 5 second timeout
 		EnableCoalescing: true,                                  // Request deduplication enabled
 		EnableDNSSEC:     true,                                  // DNSSEC validation enabled by default
 		DNSSECConfig:     dnssec.DefaultValidatorConfig(),
+		ParallelConfig: ParallelConfig{
+			NumParallel:         3,            // Query 3 upstreams simultaneously
+			FallbackToRecursive: true,         // Fall back to recursive if all fail
+			SuccessRcodes:       []int{0, 3},  // NOERROR, NXDOMAIN are valid
+		},
 	}
 }
 
@@ -126,8 +149,8 @@ func NewResolver(config Config, upstream *UpstreamPool) *Resolver {
 		r.dnssecValidator = dnssec.NewValidator(config.DNSSECConfig)
 	}
 
-	// Initialize iterative resolver if in recursive mode
-	if config.Mode == RecursiveMode {
+	// Initialize iterative resolver if needed (recursive mode or parallel mode with fallback)
+	if config.Mode == RecursiveMode || (config.Mode == ParallelMode && config.ParallelConfig.FallbackToRecursive) {
 		r.iterative = NewIterativeResolver()
 	}
 
@@ -232,6 +255,10 @@ func (r *Resolver) doResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, err
 		// Forward to upstream resolvers (Google DNS, Cloudflare, etc.)
 		return r.doForwardingResolve(queryCtx, query)
 
+	case ParallelMode:
+		// Parallel forwarding with recursive fallback
+		return r.doParallelResolve(queryCtx, query)
+
 	default:
 		return nil, fmt.Errorf("%w: %d", ErrUnknownRecursionMode, r.config.Mode)
 	}
@@ -317,6 +344,57 @@ func (r *Resolver) doForwardingResolve(ctx context.Context, query *dns.Msg) (*dn
 		// Return the response even if it's an error (NXDOMAIN, etc.)
 		// The handler can cache error responses too
 		return response, nil
+	}
+
+	return response, nil
+}
+
+// doParallelResolve performs parallel queries to multiple forwarders.
+// Returns the fastest successful response or falls back to recursive resolution.
+func (r *Resolver) doParallelResolve(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
+	// Try parallel forwarding first
+	response, err := r.upstream.QueryParallel(ctx, query, r.config.ParallelConfig.NumParallel, r.config.ParallelConfig.SuccessRcodes)
+	if err == nil && response != nil {
+		// Got a good response from forwarders
+		return r.applyDNSSECValidation(ctx, query, response)
+	}
+
+	// All forwarders failed - check if we should fall back to recursive
+	if !r.config.ParallelConfig.FallbackToRecursive {
+		if err != nil {
+			return nil, fmt.Errorf("parallel forwarding failed: %w", err)
+		}
+		return nil, ErrAllUpstreamsFailed
+	}
+
+	// Fall back to recursive resolution
+	if r.iterative == nil {
+		return nil, ErrIterativeResolverNotInit
+	}
+
+	return r.doRecursiveResolve(ctx, query)
+}
+
+// applyDNSSECValidation applies DNSSEC validation to a response if enabled.
+func (r *Resolver) applyDNSSECValidation(ctx context.Context, query, response *dns.Msg) (*dns.Msg, error) {
+	// Copy query ID and flags to response
+	response.Id = query.Id
+	response.RecursionDesired = query.RecursionDesired
+	response.RecursionAvailable = true
+
+	// DNSSEC validation if enabled and CheckingDisabled is not set
+	if !r.dnssecEnabled || r.dnssecValidator == nil || query.CheckingDisabled {
+		return response, nil
+	}
+
+	validationResult, err := r.dnssecValidator.ValidateResponse(ctx, response)
+	if err != nil {
+		if r.config.DNSSECConfig.RequireValidation {
+			return nil, fmt.Errorf("DNSSEC validation failed: %w", err)
+		}
+		response.AuthenticatedData = false
+	} else {
+		response.AuthenticatedData = validationResult.Secure
 	}
 
 	return response, nil

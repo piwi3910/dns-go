@@ -29,8 +29,16 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("Expected default RRset cache size 256MB, got %d", cfg.Cache.RRsetCache.MaxSizeMB)
 	}
 
-	if cfg.Resolver.Mode != "forwarding" {
-		t.Errorf("Expected default mode 'forwarding', got %s", cfg.Resolver.Mode)
+	if cfg.Resolver.Mode != "parallel" {
+		t.Errorf("Expected default mode 'parallel', got %s", cfg.Resolver.Mode)
+	}
+
+	// Check parallel config defaults
+	if cfg.Resolver.ParallelConfig.NumParallel != 3 {
+		t.Errorf("Expected default NumParallel 3, got %d", cfg.Resolver.ParallelConfig.NumParallel)
+	}
+	if !cfg.Resolver.ParallelConfig.FallbackToRecursive {
+		t.Error("Expected FallbackToRecursive to be true by default")
 	}
 }
 

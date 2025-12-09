@@ -183,6 +183,152 @@ func (up *UpstreamPool) Close() error {
 	return nil
 }
 
+// QueryParallel queries multiple upstreams simultaneously and returns the fastest good response.
+// numParallel specifies how many upstreams to query at once.
+// successRcodes defines which response codes are considered successful (e.g., [0, 3] for NOERROR, NXDOMAIN).
+func (up *UpstreamPool) QueryParallel(ctx context.Context, msg *dns.Msg, numParallel int, successRcodes []int) (*dns.Msg, error) {
+	up.mu.RLock()
+	upstreams := up.upstreams
+	up.mu.RUnlock()
+
+	if len(upstreams) == 0 {
+		return nil, &net.OpError{
+			Op:   "query",
+			Err:  net.ErrClosed,
+		}
+	}
+
+	// Select best N upstreams based on infrastructure cache stats
+	selectedUpstreams := up.selectBestUpstreams(upstreams, numParallel)
+
+	// Create result channel - buffered to avoid goroutine leaks
+	type result struct {
+		response *dns.Msg
+		err      error
+		upstream string
+		rtt      time.Duration
+	}
+	results := make(chan result, len(selectedUpstreams))
+
+	// Create a context that we can cancel once we get a good response
+	queryCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Launch parallel queries
+	for _, addr := range selectedUpstreams {
+		go func(upstream string) {
+			stats := up.infraCache.GetOrCreate(upstream)
+			stats.RecordQueryStart()
+			defer stats.RecordQueryEnd()
+
+			attemptCtx, attemptCancel := context.WithTimeout(queryCtx, up.timeout)
+			defer attemptCancel()
+
+			response, rtt, err := up.executeQueryAttempt(attemptCtx, msg, upstream, stats)
+			if err != nil {
+				results <- result{nil, err, upstream, 0}
+				return
+			}
+
+			// Check for truncated response - retry with TCP
+			if response.Truncated {
+				tcpResponse, tcpErr := up.queryTCP(attemptCtx, msg, upstream, stats)
+				if tcpErr != nil {
+					results <- result{nil, tcpErr, upstream, rtt}
+					return
+				}
+				response = tcpResponse
+			}
+
+			stats.RecordSuccess(rtt)
+			results <- result{response, nil, upstream, rtt}
+		}(addr)
+	}
+
+	// Build success rcode map for fast lookup
+	successMap := make(map[int]bool, len(successRcodes))
+	for _, rc := range successRcodes {
+		successMap[rc] = true
+	}
+
+	// Collect responses, return first good one
+	var lastErr error
+	responsesReceived := 0
+
+	for responsesReceived < len(selectedUpstreams) {
+		select {
+		case res := <-results:
+			responsesReceived++
+
+			if res.err != nil {
+				lastErr = res.err
+				continue
+			}
+
+			// Check if response code is considered successful
+			if successMap[res.response.Rcode] {
+				// Got a good response - cancel other queries and return
+				cancel()
+				return res.response, nil
+			}
+
+			// Response received but not a success code (e.g., SERVFAIL, REFUSED)
+			lastErr = fmt.Errorf("upstream %s returned rcode %d", res.upstream, res.response.Rcode)
+
+		case <-ctx.Done():
+			return nil, fmt.Errorf("parallel query cancelled: %w", ctx.Err())
+		}
+	}
+
+	// All queries failed or returned non-success codes
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, ErrAllUpstreamsFailed
+}
+
+// selectBestUpstreams selects the best N upstreams based on infrastructure cache stats.
+func (up *UpstreamPool) selectBestUpstreams(upstreams []string, n int) []string {
+	if len(upstreams) <= n {
+		return upstreams
+	}
+
+	// Get stats for all upstreams and sort by performance
+	type upstreamScore struct {
+		addr  string
+		score float64
+	}
+
+	scores := make([]upstreamScore, len(upstreams))
+	for i, addr := range upstreams {
+		stats := up.infraCache.GetOrCreate(addr)
+		snapshot := stats.GetSnapshot()
+		// Lower score is better: weight RTT heavily, penalize failures
+		// Score = RTT_ms + (failureRate * 1000)
+		// RTT is already in milliseconds as float64
+		score := snapshot.RTT + (snapshot.FailureRate * 1000)
+		scores[i] = upstreamScore{addr, score}
+	}
+
+	// Simple selection sort for small N (typically 3-4)
+	for i := 0; i < n && i < len(scores)-1; i++ {
+		minIdx := i
+		for j := i + 1; j < len(scores); j++ {
+			if scores[j].score < scores[minIdx].score {
+				minIdx = j
+			}
+		}
+		scores[i], scores[minIdx] = scores[minIdx], scores[i]
+	}
+
+	result := make([]string, n)
+	for i := 0; i < n; i++ {
+		result[i] = scores[i].addr
+	}
+
+	return result
+}
+
 // QueryWithFallback queries upstream with automatic fallback to other servers on failure.
 func (up *UpstreamPool) QueryWithFallback(ctx context.Context, msg *dns.Msg, maxRetries int) (*dns.Msg, error) {
 	up.mu.RLock()

@@ -26,6 +26,37 @@ type Config struct {
 	Cache    CacheConfig    `yaml:"cache"`
 	Resolver ResolverConfig `yaml:"resolver"`
 	Logging  LoggingConfig  `yaml:"logging"`
+	API      APIConfig      `yaml:"api"`
+}
+
+// APIConfig holds configuration for the management API.
+type APIConfig struct {
+	// Enabled enables the management API server
+	Enabled bool `yaml:"enabled"`
+
+	// ListenAddress is the address for the API server (e.g., ":8080")
+	ListenAddress string `yaml:"listen_address"`
+
+	// CORSOrigins is the list of allowed CORS origins (for development)
+	CORSOrigins []string `yaml:"cors_origins"`
+
+	// Auth holds authentication configuration
+	Auth AuthConfig `yaml:"auth"`
+}
+
+// AuthConfig holds authentication configuration.
+type AuthConfig struct {
+	// Username is the admin username
+	Username string `yaml:"username"`
+
+	// PasswordHash is the bcrypt hash of the admin password
+	PasswordHash string `yaml:"password_hash"`
+
+	// JWTSecret is the secret key for signing JWT tokens
+	JWTSecret string `yaml:"jwt_secret"`
+
+	// TokenExpiry is the JWT token expiration duration
+	TokenExpiry time.Duration `yaml:"token_expiry"`
 }
 
 // ServerConfig holds server-related configuration.
@@ -102,10 +133,14 @@ type PrefetchConfig struct {
 
 // ResolverConfig holds resolver-related configuration.
 type ResolverConfig struct {
-	// Mode is the resolution mode: "forwarding" or "recursive"
+	// Mode is the resolution mode: "forwarding", "recursive", or "parallel"
+	// - forwarding: Sequential queries to upstream servers with fallback
+	// - recursive: True recursive resolution from root servers
+	// - parallel: Parallel queries to multiple forwarders, fastest response wins,
+	//             with fallback to recursive resolution if all fail
 	Mode string `yaml:"mode"`
 
-	// Upstreams is the list of upstream DNS servers (for forwarding mode)
+	// Upstreams is the list of upstream DNS servers (for forwarding/parallel mode)
 	Upstreams []string `yaml:"upstreams"`
 
 	// RootHintsFile is the path to the root hints file (for recursive mode)
@@ -119,6 +154,25 @@ type ResolverConfig struct {
 
 	// EnableCoalescing enables request coalescing
 	EnableCoalescing bool `yaml:"enable_coalescing"`
+
+	// ParallelConfig holds configuration for parallel forwarding mode
+	ParallelConfig ParallelForwardingConfig `yaml:"parallel"`
+}
+
+// ParallelForwardingConfig holds configuration for parallel forwarding mode.
+type ParallelForwardingConfig struct {
+	// NumParallel is the number of upstreams to query in parallel (default: 3)
+	// If more upstreams are configured, the best N are selected based on latency
+	NumParallel int `yaml:"num_parallel"`
+
+	// FallbackToRecursive enables fallback to recursive resolution
+	// when all parallel forwarders fail (default: true)
+	FallbackToRecursive bool `yaml:"fallback_to_recursive"`
+
+	// SuccessRcodes defines which response codes are considered successful
+	// Default: NOERROR (0) and NXDOMAIN (3) - these are valid answers
+	// SERVFAIL, REFUSED, etc. trigger fallback to next response
+	SuccessRcodes []int `yaml:"success_rcodes"`
 }
 
 // LoggingConfig holds logging-related configuration.
@@ -163,20 +217,38 @@ func DefaultConfig() *Config {
 			NegativeTTL: 1 * time.Hour,
 		},
 		Resolver: ResolverConfig{
-			Mode: "forwarding",
+			Mode: "parallel",
 			Upstreams: []string{
 				"8.8.8.8:53",
+				"8.8.4.4:53",
 				"1.1.1.1:53",
+				"1.0.0.1:53",
 			},
 			RootHintsFile:     "",
 			MaxRecursionDepth: 30,
 			QueryTimeout:      5 * time.Second,
 			EnableCoalescing:  true,
+			ParallelConfig: ParallelForwardingConfig{
+				NumParallel:         3,
+				FallbackToRecursive: true,
+				SuccessRcodes:       []int{0, 3}, // NOERROR, NXDOMAIN
+			},
 		},
 		Logging: LoggingConfig{
 			Level:          "info",
 			Format:         "text",
 			EnableQueryLog: false,
+		},
+		API: APIConfig{
+			Enabled:       true,
+			ListenAddress: ":8080",
+			CORSOrigins:   []string{"http://localhost:5173"}, // Vite dev server
+			Auth: AuthConfig{
+				Username:     "admin",
+				PasswordHash: "", // Empty means use default password "admin" (will be hashed on first use)
+				JWTSecret:    "", // Empty means generate random secret on startup
+				TokenExpiry:  24 * time.Hour,
+			},
 		},
 	}
 }
@@ -241,10 +313,20 @@ func (c *Config) Validate() error {
 
 	// Validate resolver mode
 	switch c.Resolver.Mode {
-	case "forwarding", "recursive":
+	case "forwarding", "recursive", "parallel":
 		// Valid modes
 	default:
 		return fmt.Errorf("%w: %s", ErrInvalidMode, c.Resolver.Mode)
+	}
+
+	// Validate parallel config
+	if c.Resolver.Mode == "parallel" {
+		if c.Resolver.ParallelConfig.NumParallel <= 0 {
+			c.Resolver.ParallelConfig.NumParallel = 3 // Default
+		}
+		if len(c.Resolver.ParallelConfig.SuccessRcodes) == 0 {
+			c.Resolver.ParallelConfig.SuccessRcodes = []int{0, 3} // NOERROR, NXDOMAIN
+		}
 	}
 
 	return nil

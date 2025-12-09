@@ -15,10 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/piwi3910/dns-go/pkg/api"
+	"github.com/piwi3910/dns-go/pkg/cache"
 	"github.com/piwi3910/dns-go/pkg/config"
 	dnsio "github.com/piwi3910/dns-go/pkg/io"
 	"github.com/piwi3910/dns-go/pkg/resolver"
 	"github.com/piwi3910/dns-go/pkg/server"
+	"github.com/piwi3910/dns-go/pkg/zone"
 )
 
 const version = "0.1.0-dev"
@@ -114,6 +117,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Create zone manager
+	zoneManager := zone.NewManager()
+
+	// Create infrastructure cache for upstream stats
+	infraCache := cache.NewInfraCache()
+
+	// Create upstream pool
+	upstreamConfig := resolver.UpstreamConfig{
+		Upstreams:              cfg.Resolver.Upstreams,
+		Timeout:                cfg.Resolver.QueryTimeout,
+		ConnectionsPerUpstream: 2,
+	}
+	upstreamPool := resolver.NewUpstreamPool(upstreamConfig, infraCache)
+
 	// Create DNS handler with configured mode
 	handler := createHandler(resolverMode)
 
@@ -126,11 +143,23 @@ func main() {
 	// Start pprof HTTP server if enabled
 	startPprofServer(cfg.Server.PprofAddress)
 
+	// Start API server if enabled
+	var apiServer *api.Server
+	if cfg.API.Enabled {
+		apiServer = api.NewServer(cfg, handler, zoneManager, upstreamPool)
+		go func() {
+			if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
+				log.Printf("API server error: %v", err)
+			}
+		}()
+		log.Printf("API server listening on %s", cfg.API.ListenAddress)
+	}
+
 	// Start stats reporter
 	go reportStats(handler, cfg.Server.StatsReportInterval)
 
 	// Wait for shutdown signal and perform graceful shutdown
-	waitAndShutdown(handler, udpListener, tcpListener, cfg.Server.GracefulShutdownTimeout)
+	waitAndShutdown(handler, udpListener, tcpListener, apiServer, cfg.Server.GracefulShutdownTimeout)
 }
 
 // parseResolutionMode converts a mode string to RecursionMode.
@@ -144,8 +173,12 @@ func parseResolutionMode(modeFlag string) (resolver.RecursionMode, error) {
 		log.Printf("Resolution mode: Recursive (true resolution from root servers)")
 
 		return resolver.RecursiveMode, nil
+	case "parallel":
+		log.Printf("Resolution mode: Parallel (query multiple upstreams, fastest wins)")
+
+		return resolver.ParallelMode, nil
 	default:
-		return 0, fmt.Errorf("%w: %s (must be 'forwarding' or 'recursive')", ErrInvalidMode, modeFlag)
+		return 0, fmt.Errorf("%w: %s (must be 'forwarding', 'recursive', or 'parallel')", ErrInvalidMode, modeFlag)
 	}
 }
 
@@ -242,7 +275,7 @@ func startPprofServer(addr string) {
 }
 
 // waitAndShutdown waits for shutdown signal and performs graceful shutdown.
-func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener, shutdownTimeout time.Duration) {
+func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener, apiServer *api.Server, shutdownTimeout time.Duration) {
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -255,6 +288,13 @@ func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tc
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	// Stop API server
+	if apiServer != nil {
+		if err := apiServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error stopping API server: %v", err)
+		}
+	}
 
 	// Stop listeners
 	stopListeners(udpListener, tcpListener)
