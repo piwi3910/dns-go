@@ -4,6 +4,17 @@ A high-performance, RFC-compliant DNS server implementation in Go, designed to a
 
 ## Features
 
+### Deployment Modes (NEW in v0.5)
+- **Standalone Mode**: Single-process deployment for simple setups
+- **Distributed Mode**: Control plane + worker architecture for high availability
+  - Control Plane: Manages workers, aggregates stats, serves web GUI
+  - Workers: Handle DNS queries, auto-scale based on load
+- **Multiple Deployment Options**:
+  - Docker / Docker Compose (standalone or distributed)
+  - Kubernetes manifests with Kustomize
+  - Helm chart with HPA, PDB, ServiceMonitor
+  - Kubernetes Operator with DNSCluster CRD
+
 ### Core DNS Server (v0.4)
 - **True Recursive Resolution**: Iterative queries from root servers (a-m.root-servers.net)
   - Full DNS hierarchy traversal: root → TLD → authoritative nameservers
@@ -38,7 +49,36 @@ A high-performance, RFC-compliant DNS server implementation in Go, designed to a
 
 ## Quick Start
 
-### Building
+### Option 1: Docker (Recommended)
+
+```bash
+# Standalone mode (single container)
+cd deploy/docker
+docker-compose --profile standalone up
+
+# Distributed mode (control + workers)
+docker-compose --profile distributed up
+
+# Scale workers
+docker-compose --profile distributed up --scale dns-worker=5
+```
+
+### Option 2: Kubernetes
+
+```bash
+# Using raw manifests
+kubectl apply -k deploy/kubernetes/
+
+# Using Helm
+helm install dns-go deploy/helm/dns-go/
+
+# Using Operator
+cd deploy/operator
+make install && make deploy
+kubectl apply -f config/samples/dns_v1alpha1_dnscluster.yaml
+```
+
+### Option 3: Build from Source
 
 ```bash
 # Build server
@@ -47,17 +87,16 @@ go build -o dns-server ./cmd/dns-server
 # Build with production optimizations
 go build -ldflags="-s -w" -o dns-server ./cmd/dns-server
 
-# Build test client
-go build -o dns-test-client ./cmd/dns-test-client
+# Build all binaries (server, control, worker)
+go build ./cmd/dns-server
+go build ./cmd/dns-control
+go build ./cmd/dns-worker
 
 # Run tests
 go test ./...
-
-# Run benchmarks
-go test -bench=. -benchmem ./...
 ```
 
-### Running
+### Running Locally
 
 ```bash
 # Start with config file
@@ -130,32 +169,42 @@ api:
 ```
 dns-go/
 ├── cmd/
-│   ├── dns-server/        # Main server binary
+│   ├── dns-server/        # Standalone server binary
+│   ├── dns-control/       # Control plane binary
+│   ├── dns-worker/        # Worker binary
 │   └── dns-test-client/   # Test client utility
 ├── configs/               # Configuration files
 │   └── config.yaml        # Example configuration
+├── deploy/
+│   ├── docker/            # Docker deployment
+│   │   ├── Dockerfile*    # Container images
+│   │   ├── docker-compose.yaml
+│   │   └── config/        # Pre-configured YAML files
+│   ├── kubernetes/        # Raw K8s manifests
+│   ├── helm/dns-go/       # Helm chart
+│   └── operator/          # Kubernetes Operator
+│       ├── api/v1alpha1/  # CRD types
+│       ├── controllers/   # Reconciliation logic
+│       └── config/        # RBAC, CRDs, samples
 ├── pkg/
 │   ├── api/              # REST API and web server
-│   │   └── types/        # API request/response types
+│   ├── bridge/           # Abstraction layer (local/remote)
 │   ├── cache/            # Three-level caching system
 │   ├── config/           # Configuration loading
-│   ├── dnssec/           # DNSSEC validation
-│   ├── edns0/            # EDNS0 extension support
+│   ├── control/          # Control plane components
+│   │   ├── registry/     # Worker registry
+│   │   ├── sync/         # Zone/config sync
+│   │   └── stats/        # Stats aggregation
 │   ├── io/               # Per-core I/O with SO_REUSEPORT
-│   ├── plugin/           # Plugin system (optional)
+│   ├── proto/            # gRPC protobuf definitions
 │   ├── resolver/         # Recursive/forward resolver
-│   ├── security/         # Rate limiting, validation
 │   ├── server/           # DNS request handler
+│   ├── worker/           # Worker components
+│   │   ├── client/       # gRPC client
+│   │   └── sync/         # Zone handler
 │   └── zone/             # Zone file management
 └── web/
-    ├── embed.go          # Go embed for frontend
     └── frontend/         # React + TypeScript frontend
-        ├── src/
-        │   ├── components/  # UI components
-        │   ├── hooks/       # React hooks (SSE, auth)
-        │   ├── lib/         # API client, utilities
-        │   └── pages/       # Page components
-        └── ...
 ```
 
 ## Performance Targets
@@ -181,6 +230,81 @@ dns-go/
 2. Inline fast-path detection (no plugin overhead)
 3. Pure Go recursive resolver (no CGO overhead)
 4. Sharded everything (64+ shards per cache)
+
+## Deployment Guide
+
+### Docker Standalone
+
+The simplest deployment - single container with everything built-in:
+
+```bash
+cd deploy/docker
+docker-compose --profile standalone up -d
+
+# Test it
+dig @127.0.0.1 google.com
+
+# Access web GUI at http://localhost:8080
+```
+
+### Docker Distributed
+
+For high availability with automatic worker scaling:
+
+```bash
+cd deploy/docker
+docker-compose --profile distributed up -d
+
+# Scale workers based on load
+docker-compose --profile distributed up -d --scale dns-worker=5
+
+# Control plane GUI at http://localhost:8080
+```
+
+### Kubernetes with Helm
+
+```bash
+# Install with default values
+helm install dns-go deploy/helm/dns-go/ -n dns-go --create-namespace
+
+# Install with custom values
+helm install dns-go deploy/helm/dns-go/ -n dns-go --create-namespace \
+  --set workers.replicas=5 \
+  --set workers.autoscaling.enabled=true \
+  --set workers.autoscaling.maxReplicas=20
+
+# Upgrade
+helm upgrade dns-go deploy/helm/dns-go/ -n dns-go
+```
+
+### Kubernetes with Operator
+
+For GitOps-style declarative management:
+
+```bash
+# Install CRDs and operator
+cd deploy/operator
+make install
+make deploy
+
+# Create a DNS cluster
+kubectl apply -f - <<EOF
+apiVersion: dns.dns-go.io/v1alpha1
+kind: DNSCluster
+metadata:
+  name: production-dns
+spec:
+  controlPlane:
+    replicas: 1
+  workers:
+    replicas: 3
+    minReplicas: 2
+    maxReplicas: 10
+  upstreams:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+EOF
+```
 
 ## Development
 
