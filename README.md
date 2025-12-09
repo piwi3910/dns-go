@@ -32,6 +32,19 @@ A high-performance, RFC-compliant DNS server implementation in Go, designed to a
 - **Request Coalescing**: Deduplicates identical in-flight queries
 - **YAML Configuration**: Full configuration file support
 
+### Hot-Reload & Config Persistence (NEW in v0.7)
+- **Runtime Configuration Updates**: Change settings via GUI/API without restart
+  - Cache TTL settings (min/max/negative TTL)
+  - Prefetch configuration (enabled, thresholds)
+  - Resolver coalescing and parallel settings
+  - Upstream servers
+- **Automatic Config Persistence**: Changes made via GUI are saved to config file
+- **Graceful Restart**: Settings requiring restart (e.g., resolver mode) trigger automatic graceful restart
+- **Multiple Config Stores**:
+  - `FileConfigStore`: YAML file persistence for standalone mode
+  - `CRDConfigStore`: Kubernetes Custom Resource for K8s deployments
+  - `MemoryConfigStore`: In-memory storage for testing
+
 ### Distributed Cache Architecture (NEW in v0.6)
 - **Three Cache Modes**: Standalone, Local-Only, or Hybrid with shared Redis
 - **HA Redis Support**: Redis Sentinel and Redis Cluster for multi-site deployments
@@ -172,6 +185,56 @@ api:
   listen_address: ":8080"
   auth:
     username: "admin"
+```
+
+### Configuration Hot-Reload
+
+When running with a config file (`-config config.yaml`), configuration changes made via the web GUI or API are automatically persisted to the config file and survive restarts.
+
+**Hot-Reloadable Settings** (no restart required):
+- Cache TTL settings (min_ttl, max_ttl, negative_ttl)
+- Prefetch configuration (enabled, threshold_hits, threshold_ttl_percent)
+- Resolver coalescing settings
+- Parallel resolver settings (num_parallel, fallback_to_recursive)
+- Upstream servers
+- Logging settings
+
+**Settings Requiring Restart** (automatic graceful restart):
+- Resolver mode (forwarding, parallel, recursive)
+- Listen address
+- Number of workers
+- Cache size/shards
+
+When a restart-requiring setting is changed via the GUI, the server automatically performs a graceful restart to apply the new configuration.
+
+### Kubernetes Configuration (CRD)
+
+For Kubernetes deployments, use the `DNSConfig` Custom Resource:
+
+```yaml
+apiVersion: dns.piwi3910.io/v1alpha1
+kind: DNSConfig
+metadata:
+  name: dns-server-config
+spec:
+  server:
+    listenAddress: "0.0.0.0:53"
+    numWorkers: 10
+  cache:
+    prefetch:
+      enabled: true
+      thresholdHits: 100
+  resolver:
+    mode: parallel
+    upstreams:
+      - "8.8.8.8:53"
+      - "1.1.1.1:53"
+```
+
+Apply the CRD first:
+```bash
+kubectl apply -f deploy/kubernetes/crd.yaml
+kubectl apply -f deploy/kubernetes/example-dnsconfig.yaml
 ```
 
 ## Project Structure

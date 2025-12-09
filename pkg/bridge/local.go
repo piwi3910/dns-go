@@ -15,11 +15,14 @@ import (
 // LocalService implements DNSService for in-process (standalone) mode.
 // It wraps the existing Handler, ZoneManager, and UpstreamPool directly.
 type LocalService struct {
-	handler     *server.Handler
-	zoneManager *zone.Manager
-	upstream    *resolver.UpstreamPool
-	config      *config.Config
-	startTime   time.Time
+	handler        *server.Handler
+	zoneManager    *zone.Manager
+	upstream       *resolver.UpstreamPool
+	config         *config.Config
+	startTime      time.Time
+	configStore    config.ConfigStore
+	watchCancel    context.CancelFunc
+	restartManager *RestartManager
 }
 
 // LocalServiceConfig contains configuration for the local service.
@@ -34,12 +37,23 @@ type LocalServiceConfig struct {
 // NewLocalService creates a new LocalService wrapping the given components.
 func NewLocalService(cfg LocalServiceConfig) *LocalService {
 	return &LocalService{
-		handler:     cfg.Handler,
-		zoneManager: cfg.ZoneManager,
-		upstream:    cfg.Upstream,
-		config:      cfg.Config,
-		startTime:   cfg.StartTime,
+		handler:        cfg.Handler,
+		zoneManager:    cfg.ZoneManager,
+		upstream:       cfg.Upstream,
+		config:         cfg.Config,
+		startTime:      cfg.StartTime,
+		restartManager: DefaultRestartManager,
 	}
+}
+
+// SetRestartManager sets a custom restart manager.
+func (s *LocalService) SetRestartManager(rm *RestartManager) {
+	s.restartManager = rm
+}
+
+// GetRestartManager returns the restart manager.
+func (s *LocalService) GetRestartManager() *RestartManager {
+	return s.restartManager
 }
 
 // Ensure LocalService implements DNSService
@@ -398,10 +412,38 @@ func (s *LocalService) GetConfig(ctx context.Context) (*ConfigResponse, error) {
 	}, nil
 }
 
-// UpdateConfig updates the configuration.
+// UpdateConfig updates the configuration and propagates changes to components.
 func (s *LocalService) UpdateConfig(ctx context.Context, req UpdateConfigRequest) (bool, error) {
 	requiresRestart := false
 
+	// Handle cache configuration updates
+	if req.Cache != nil {
+		if req.Cache.Prefetch != nil {
+			if req.Cache.Prefetch.Enabled != nil {
+				s.config.Cache.Prefetch.Enabled = *req.Cache.Prefetch.Enabled
+			}
+			if req.Cache.Prefetch.ThresholdHits != nil {
+				s.config.Cache.Prefetch.ThresholdHits = *req.Cache.Prefetch.ThresholdHits
+			}
+			if req.Cache.Prefetch.ThresholdTTLPercent != nil {
+				s.config.Cache.Prefetch.ThresholdTTLPercent = *req.Cache.Prefetch.ThresholdTTLPercent
+			}
+		}
+		if req.Cache.MinTTLSecs != nil {
+			s.config.Cache.MinTTL = time.Duration(*req.Cache.MinTTLSecs) * time.Second
+		}
+		if req.Cache.MaxTTLSecs != nil {
+			s.config.Cache.MaxTTL = time.Duration(*req.Cache.MaxTTLSecs) * time.Second
+		}
+		if req.Cache.NegTTLSecs != nil {
+			s.config.Cache.NegativeTTL = time.Duration(*req.Cache.NegTTLSecs) * time.Second
+		}
+
+		// Propagate TTL changes to the actual caches
+		s.handler.UpdateCacheTTL(s.config.Cache.MinTTL, s.config.Cache.MaxTTL)
+	}
+
+	// Handle resolver configuration updates
 	if req.Resolver != nil {
 		if req.Resolver.Upstreams != nil {
 			s.upstream.SetUpstreams(req.Resolver.Upstreams)
@@ -411,8 +453,31 @@ func (s *LocalService) UpdateConfig(ctx context.Context, req UpdateConfigRequest
 			s.config.Resolver.Mode = *req.Resolver.Mode
 			requiresRestart = true // Mode change requires restart
 		}
+		if req.Resolver.EnableCoalescing != nil {
+			s.config.Resolver.EnableCoalescing = *req.Resolver.EnableCoalescing
+			// Propagate coalescing setting to the resolver
+			if r := s.handler.GetResolver(); r != nil {
+				r.SetCoalescing(*req.Resolver.EnableCoalescing)
+			}
+		}
+		if req.Resolver.Parallel != nil {
+			if req.Resolver.Parallel.NumParallel != nil {
+				s.config.Resolver.ParallelConfig.NumParallel = *req.Resolver.Parallel.NumParallel
+			}
+			if req.Resolver.Parallel.FallbackToRecursive != nil {
+				s.config.Resolver.ParallelConfig.FallbackToRecursive = *req.Resolver.Parallel.FallbackToRecursive
+			}
+			// Propagate parallel config to the resolver
+			if r := s.handler.GetResolver(); r != nil {
+				r.SetParallelConfig(
+					s.config.Resolver.ParallelConfig.NumParallel,
+					s.config.Resolver.ParallelConfig.FallbackToRecursive,
+				)
+			}
+		}
 	}
 
+	// Handle logging configuration updates
 	if req.Logging != nil {
 		if req.Logging.Level != nil {
 			s.config.Logging.Level = *req.Logging.Level
@@ -422,7 +487,135 @@ func (s *LocalService) UpdateConfig(ctx context.Context, req UpdateConfigRequest
 		}
 	}
 
+	// Persist config changes to the config store if available
+	if s.configStore != nil {
+		if err := s.configStore.Save(ctx, s.config); err != nil {
+			// Log error but don't fail - the in-memory config is already updated
+			// The config will be persisted on next successful save
+			fmt.Printf("Warning: failed to persist config: %v\n", err)
+		}
+	}
+
+	// If restart is required, trigger it via the restart manager
+	if requiresRestart && s.restartManager != nil {
+		s.restartManager.RequestRestart("Configuration change requires restart (resolver mode changed)")
+	}
+
 	return requiresRestart, nil
+}
+
+// SetConfigStore sets the config store and starts watching for changes.
+func (s *LocalService) SetConfigStore(store config.ConfigStore) {
+	s.configStore = store
+}
+
+// StartConfigWatch starts watching the config store for changes.
+// When changes are detected, they are automatically applied to the running service.
+func (s *LocalService) StartConfigWatch(ctx context.Context) error {
+	if s.configStore == nil {
+		return fmt.Errorf("no config store set")
+	}
+
+	watchCh, err := s.configStore.Watch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start config watch: %w", err)
+	}
+
+	watchCtx, cancel := context.WithCancel(ctx)
+	s.watchCancel = cancel
+
+	go s.configWatchLoop(watchCtx, watchCh)
+	return nil
+}
+
+// StopConfigWatch stops watching for config changes.
+func (s *LocalService) StopConfigWatch() {
+	if s.watchCancel != nil {
+		s.watchCancel()
+		s.watchCancel = nil
+	}
+}
+
+// configWatchLoop handles config updates from the config store.
+func (s *LocalService) configWatchLoop(ctx context.Context, watchCh <-chan *config.Config) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case newCfg, ok := <-watchCh:
+			if !ok {
+				return
+			}
+			s.applyConfigUpdate(ctx, newCfg)
+		}
+	}
+}
+
+// applyConfigUpdate applies a new configuration to the running service.
+func (s *LocalService) applyConfigUpdate(ctx context.Context, newCfg *config.Config) {
+	if newCfg == nil {
+		return
+	}
+
+	// Build update request from config diff
+	req := s.buildUpdateRequest(newCfg)
+
+	// Apply the update
+	_, _ = s.UpdateConfig(ctx, req)
+
+	// Update internal config reference
+	s.config = newCfg
+}
+
+// buildUpdateRequest builds an UpdateConfigRequest from a new config.
+func (s *LocalService) buildUpdateRequest(newCfg *config.Config) UpdateConfigRequest {
+	req := UpdateConfigRequest{}
+
+	// Cache updates
+	minTTL := int(newCfg.Cache.MinTTL.Seconds())
+	maxTTL := int(newCfg.Cache.MaxTTL.Seconds())
+	negTTL := int(newCfg.Cache.NegativeTTL.Seconds())
+	prefetchEnabled := newCfg.Cache.Prefetch.Enabled
+	prefetchHits := newCfg.Cache.Prefetch.ThresholdHits
+	prefetchTTL := newCfg.Cache.Prefetch.ThresholdTTLPercent
+
+	req.Cache = &CacheConfigUpdate{
+		MinTTLSecs: &minTTL,
+		MaxTTLSecs: &maxTTL,
+		NegTTLSecs: &negTTL,
+		Prefetch: &PrefetchConfigUpdate{
+			Enabled:             &prefetchEnabled,
+			ThresholdHits:       &prefetchHits,
+			ThresholdTTLPercent: &prefetchTTL,
+		},
+	}
+
+	// Resolver updates
+	mode := newCfg.Resolver.Mode
+	coalescing := newCfg.Resolver.EnableCoalescing
+	numParallel := newCfg.Resolver.ParallelConfig.NumParallel
+	fallback := newCfg.Resolver.ParallelConfig.FallbackToRecursive
+
+	req.Resolver = &ResolverConfigUpdate{
+		Upstreams:        newCfg.Resolver.Upstreams,
+		Mode:             &mode,
+		EnableCoalescing: &coalescing,
+		Parallel: &ParallelConfigUpdate{
+			NumParallel:         &numParallel,
+			FallbackToRecursive: &fallback,
+		},
+	}
+
+	// Logging updates
+	level := newCfg.Logging.Level
+	queryLog := newCfg.Logging.EnableQueryLog
+
+	req.Logging = &LoggingConfigUpdate{
+		Level:          &level,
+		EnableQueryLog: &queryLog,
+	}
+
+	return req
 }
 
 // typeToString converts DNS type to string

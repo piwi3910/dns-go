@@ -147,6 +147,32 @@ func (h *Handler) GetZoneManager() *zone.Manager {
 	return h.zoneManager
 }
 
+// GetResolver returns the resolver for external configuration.
+func (h *Handler) GetResolver() *resolver.Resolver {
+	return h.resolver
+}
+
+// GetMessageCache returns the message cache for external configuration.
+func (h *Handler) GetMessageCache() *cache.MessageCache {
+	return h.messageCache
+}
+
+// GetRRsetCache returns the RRset cache for external configuration.
+func (h *Handler) GetRRsetCache() *cache.RRsetCache {
+	return h.rrsetCache
+}
+
+// UpdateCacheTTL updates the cache TTL settings at runtime.
+func (h *Handler) UpdateCacheTTL(minTTL, maxTTL time.Duration) {
+	h.messageCache.UpdateConfig(minTTL, maxTTL)
+	h.rrsetCache.UpdateConfig(minTTL, maxTTL)
+}
+
+// UpdateResolverConfig updates the resolver configuration at runtime.
+func (h *Handler) UpdateResolverConfig(cfg resolver.Config) {
+	h.resolver.UpdateConfig(cfg)
+}
+
 // HandleQuery processes a DNS query and returns a response
 // This is the main entry point for all queries.
 func (h *Handler) HandleQuery(ctx context.Context, query []byte, addr net.Addr) ([]byte, error) {

@@ -1,0 +1,49 @@
+apiVersion: dns.piwi3910.io/v1alpha1
+kind: DNSConfig
+metadata:
+  name: dns-server-config
+  namespace: default
+spec:
+  server:
+    listenAddress: "0.0.0.0:53"
+    numWorkers: 10
+    enableTcp: true
+    gracefulShutdownTimeoutSeconds: 10
+    statsReportIntervalSeconds: 30
+  cache:
+    messageCache:
+      maxSizeMb: 128
+      numShards: 64
+    rrsetCache:
+      maxSizeMb: 256
+      numShards: 128
+    prefetch:
+      enabled: true
+      thresholdHits: 100
+      thresholdTtlPercent: 0.1
+    minTtlSeconds: 60
+    maxTtlSeconds: 86400
+    negativeTtlSeconds: 3600
+  resolver:
+    mode: parallel
+    upstreams:
+      - "8.8.8.8:53"
+      - "8.8.4.4:53"
+      - "1.1.1.1:53"
+      - "1.0.0.1:53"
+    maxRecursionDepth: 30
+    queryTimeoutSeconds: 5
+    enableCoalescing: true
+    parallel:
+      numParallel: 3
+      fallbackToRecursive: true
+      successRcodes: [0, 3]
+  logging:
+    level: info
+    format: text
+    enableQueryLog: false
+  api:
+    enabled: true
+    listenAddress: ":8080"
+    corsOrigins:
+      - "http://localhost:5173"

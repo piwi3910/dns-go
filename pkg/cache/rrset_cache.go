@@ -378,6 +378,30 @@ func (rc *RRsetCache) Clear() {
 	rc.evicts.Store(0)
 }
 
+// --- Runtime Configuration Update Methods ---
+
+// SetMinTTL updates the minimum TTL at runtime.
+func (rc *RRsetCache) SetMinTTL(minTTL time.Duration) {
+	rc.config.MinTTL = minTTL
+}
+
+// SetMaxTTL updates the maximum TTL at runtime.
+func (rc *RRsetCache) SetMaxTTL(maxTTL time.Duration) {
+	rc.config.MaxTTL = maxTTL
+}
+
+// GetConfig returns the current cache configuration.
+func (rc *RRsetCache) GetConfig() RRsetCacheConfig {
+	return rc.config
+}
+
+// UpdateConfig applies configuration updates at runtime.
+// Note: NumShards and MaxSizeBytes cannot be changed at runtime.
+func (rc *RRsetCache) UpdateConfig(minTTL, maxTTL time.Duration) {
+	rc.config.MinTTL = minTTL
+	rc.config.MaxTTL = maxTTL
+}
+
 // hashKey generates a hash for the cache key.
 func (rc *RRsetCache) hashKey(key string) uint64 {
 	h := fnv.New64a()

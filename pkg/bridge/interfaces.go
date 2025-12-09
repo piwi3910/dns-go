@@ -274,14 +274,38 @@ type APIConfig struct {
 
 // UpdateConfigRequest is the request to update configuration.
 type UpdateConfigRequest struct {
+	Cache    *CacheConfigUpdate    `json:"cache,omitempty"`
 	Resolver *ResolverConfigUpdate `json:"resolver,omitempty"`
 	Logging  *LoggingConfigUpdate  `json:"logging,omitempty"`
 }
 
+// CacheConfigUpdate contains cache configuration updates.
+type CacheConfigUpdate struct {
+	Prefetch   *PrefetchConfigUpdate `json:"prefetch,omitempty"`
+	MinTTLSecs *int                  `json:"min_ttl_seconds,omitempty"`
+	MaxTTLSecs *int                  `json:"max_ttl_seconds,omitempty"`
+	NegTTLSecs *int                  `json:"negative_ttl_seconds,omitempty"`
+}
+
+// PrefetchConfigUpdate contains prefetch configuration updates.
+type PrefetchConfigUpdate struct {
+	Enabled             *bool    `json:"enabled,omitempty"`
+	ThresholdHits       *int64   `json:"threshold_hits,omitempty"`
+	ThresholdTTLPercent *float64 `json:"threshold_ttl_percent,omitempty"`
+}
+
 // ResolverConfigUpdate contains resolver configuration updates.
 type ResolverConfigUpdate struct {
-	Mode      *string  `json:"mode,omitempty"`
-	Upstreams []string `json:"upstreams,omitempty"`
+	Mode             *string               `json:"mode,omitempty"`
+	Upstreams        []string              `json:"upstreams,omitempty"`
+	EnableCoalescing *bool                 `json:"enable_coalescing,omitempty"`
+	Parallel         *ParallelConfigUpdate `json:"parallel,omitempty"`
+}
+
+// ParallelConfigUpdate contains parallel forwarding configuration updates.
+type ParallelConfigUpdate struct {
+	NumParallel         *int  `json:"num_parallel,omitempty"`
+	FallbackToRecursive *bool `json:"fallback_to_recursive,omitempty"`
 }
 
 // LoggingConfigUpdate contains logging configuration updates.

@@ -326,3 +326,55 @@ func (pe *PrefetchEngine) prefetch(candidate *prefetchCandidate) {
 	}
 	pe.mu.Unlock()
 }
+
+// --- Runtime Configuration Update Methods ---
+
+// SetEnabled enables or disables the prefetch engine at runtime.
+func (pe *PrefetchEngine) SetEnabled(enabled bool) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	pe.enabled = enabled
+}
+
+// IsEnabled returns whether the prefetch engine is enabled.
+func (pe *PrefetchEngine) IsEnabled() bool {
+	pe.mu.RLock()
+	defer pe.mu.RUnlock()
+	return pe.enabled
+}
+
+// SetThreshold updates the prefetch threshold at runtime.
+func (pe *PrefetchEngine) SetThreshold(threshold float64) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	pe.prefetchThresh = threshold
+}
+
+// SetMinHits updates the minimum hits required for prefetch at runtime.
+func (pe *PrefetchEngine) SetMinHits(minHits int) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	pe.minHits = minHits
+}
+
+// UpdateConfig updates the prefetch configuration at runtime.
+func (pe *PrefetchEngine) UpdateConfig(cfg PrefetchConfig) {
+	pe.mu.Lock()
+	defer pe.mu.Unlock()
+	pe.enabled = cfg.Enabled
+	pe.prefetchThresh = cfg.PrefetchThresh
+	pe.minHits = cfg.MinHits
+	// Note: maxConcurrent cannot be changed at runtime as it affects worker count
+}
+
+// GetConfig returns the current prefetch configuration.
+func (pe *PrefetchEngine) GetConfig() PrefetchConfig {
+	pe.mu.RLock()
+	defer pe.mu.RUnlock()
+	return PrefetchConfig{
+		Enabled:        pe.enabled,
+		PrefetchThresh: pe.prefetchThresh,
+		MinHits:        pe.minHits,
+		MaxConcurrent:  pe.maxConcurrent,
+	}
+}

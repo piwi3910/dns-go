@@ -31,22 +31,22 @@ const navItems = [
 
 export function Sidebar({ connected, onLogout }: SidebarProps) {
   return (
-    <aside className="flex h-screen w-64 flex-col border-r bg-card/50 backdrop-blur-xl">
+    <aside className="sidebar-nav flex h-screen w-64 flex-col border-r">
       {/* Logo Section */}
-      <div className="flex h-16 items-center gap-3 border-b px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
-          <Sparkles className="h-5 w-5 text-primary-foreground" />
+      <div className="sidebar-logo flex h-14 items-center gap-3 border-b px-5">
+        <div className="sidebar-logo-icon flex h-8 w-8 items-center justify-center rounded-md">
+          <Sparkles className="h-4 w-4" />
         </div>
         <div>
-          <span className="text-lg font-bold tracking-tight">DNS Server</span>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Control Panel</p>
+          <span className="sidebar-title text-base font-semibold">DNS Server</span>
+          <p className="sidebar-subtitle text-[10px] uppercase tracking-wide">Control Panel</p>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4">
-        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Menu
+      <nav className="flex-1 space-y-0.5 p-3">
+        <p className="sidebar-section-title mb-3 px-3 text-[11px] font-medium uppercase tracking-wider">
+          Navigation
         </p>
         {navItems.map((item) => (
           <NavLink
@@ -54,38 +54,33 @@ export function Sidebar({ connected, onLogout }: SidebarProps) {
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:translate-x-1'
+                'sidebar-nav-link flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium',
+                isActive && 'sidebar-nav-link-active'
               )
             }
           >
-            <item.icon className="h-4 w-4 transition-transform group-hover:scale-110" />
+            <item.icon className="h-4 w-4" />
             {item.label}
           </NavLink>
         ))}
       </nav>
 
       {/* Footer Section */}
-      <div className="border-t p-4 space-y-3">
+      <div className="sidebar-footer border-t p-3 space-y-2">
         {/* Theme Toggle */}
         <ThemeToggle />
 
         {/* Connection Status */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+        <div className="sidebar-status flex items-center gap-2 rounded-md px-3 py-2 text-sm">
           {connected ? (
             <>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-              </span>
-              <span className="text-emerald-500 font-medium">Connected</span>
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="text-emerald-500 text-xs font-medium">Connected</span>
             </>
           ) : (
             <>
-              <WifiOff className="h-4 w-4 text-red-500" />
-              <span className="text-red-500 font-medium">Disconnected</span>
+              <WifiOff className="h-3.5 w-3.5 text-red-500" />
+              <span className="text-red-500 text-xs font-medium">Disconnected</span>
             </>
           )}
         </div>
@@ -93,7 +88,7 @@ export function Sidebar({ connected, onLogout }: SidebarProps) {
         {/* Logout Button */}
         <button
           onClick={onLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive hover:translate-x-1"
+          className="sidebar-logout flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium"
         >
           <LogOut className="h-4 w-4" />
           Logout

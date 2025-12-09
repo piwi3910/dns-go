@@ -29,16 +29,16 @@ export function StatsCard({
 }: StatsCardProps) {
   return (
     <Card className={cn('relative overflow-hidden', className)}>
-      <CardContent className="p-6">
+      <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
             <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-bold tracking-tight">{value}</h2>
+              <h2 className="text-2xl font-semibold">{value}</h2>
               {trend && (
                 <span
                   className={cn(
-                    'text-sm font-medium',
+                    'text-xs font-medium',
                     trend.isPositive ? 'text-emerald-500' : 'text-red-500'
                   )}
                 >
@@ -51,19 +51,19 @@ export function StatsCard({
             )}
           </div>
           {Icon && (
-            <div className="rounded-lg bg-primary/10 p-2.5">
-              <Icon className="h-5 w-5 text-primary" />
+            <div className="rounded-md bg-primary/10 p-2">
+              <Icon className="h-4 w-4 text-primary" />
             </div>
           )}
         </div>
 
         {sparklineData && sparklineData.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-12 opacity-50">
+          <div className="absolute bottom-0 left-0 right-0 h-10 opacity-40">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={sparklineData}>
                 <defs>
                   <linearGradient id={`sparkline-${title}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={sparklineColor} stopOpacity={0.4} />
+                    <stop offset="0%" stopColor={sparklineColor} stopOpacity={0.3} />
                     <stop offset="100%" stopColor={sparklineColor} stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -71,7 +71,7 @@ export function StatsCard({
                   type="monotone"
                   dataKey="value"
                   stroke={sparklineColor}
-                  strokeWidth={1.5}
+                  strokeWidth={1}
                   fill={`url(#sparkline-${title})`}
                 />
               </AreaChart>

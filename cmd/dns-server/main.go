@@ -106,6 +106,20 @@ func loadConfig(cli *cliFlags) *config.Config {
 
 func main() {
 	cli := parseFlags()
+
+	// Run server in a loop to support restarts
+	for {
+		shouldRestart := runServer(cli)
+		if !shouldRestart {
+			break
+		}
+		log.Println("Restarting server...")
+		time.Sleep(time.Second) // Brief pause before restart
+	}
+}
+
+// runServer runs the DNS server and returns true if it should restart.
+func runServer(cli *cliFlags) bool {
 	cfg := loadConfig(cli)
 
 	log.Printf("Starting DNS Server v%s", version)
@@ -144,16 +158,46 @@ func main() {
 	// Start pprof HTTP server if enabled
 	startPprofServer(cfg.Server.PprofAddress)
 
+	// Create restart channel
+	restartCh := make(chan string, 1)
+
+	// Create config store for persistence (if config file was specified)
+	var configStore config.ConfigStore
+	if cli.configFile != "" {
+		var err error
+		configStore, err = config.NewFileConfigStore(cli.configFile)
+		if err != nil {
+			log.Printf("Warning: could not create config store: %v", err)
+		} else {
+			log.Printf("Config persistence enabled: %s", cli.configFile)
+		}
+	}
+
 	// Start API server if enabled
 	var apiServer *api.Server
+	var dnsService *bridge.LocalService
 	if cfg.API.Enabled {
 		// Create local DNS service bridge for standalone mode
-		dnsService := bridge.NewLocalService(bridge.LocalServiceConfig{
+		dnsService = bridge.NewLocalService(bridge.LocalServiceConfig{
 			Handler:     handler,
 			ZoneManager: zoneManager,
 			Upstream:    upstreamPool,
 			Config:      cfg,
 			StartTime:   time.Now(),
+		})
+
+		// Set config store for persistence
+		if configStore != nil {
+			dnsService.SetConfigStore(configStore)
+		}
+
+		// Set up restart callback
+		dnsService.GetRestartManager().SetCallback(func(reason string) {
+			select {
+			case restartCh <- reason:
+			default:
+				// Channel full, restart already pending
+			}
 		})
 
 		apiServer = api.NewServer(cfg, dnsService)
@@ -166,10 +210,23 @@ func main() {
 	}
 
 	// Start stats reporter
-	go reportStats(handler, cfg.Server.StatsReportInterval)
+	statsCtx, statsCancel := context.WithCancel(context.Background())
+	go reportStatsWithContext(statsCtx, handler, cfg.Server.StatsReportInterval)
 
-	// Wait for shutdown signal and perform graceful shutdown
-	waitAndShutdown(handler, udpListener, tcpListener, apiServer, cfg.Server.GracefulShutdownTimeout)
+	// Wait for shutdown or restart signal
+	shouldRestart := waitForSignalOrRestart(restartCh, handler, udpListener, tcpListener, apiServer, cfg.Server.GracefulShutdownTimeout)
+
+	// Stop stats reporter
+	statsCancel()
+
+	// Close config store
+	if configStore != nil {
+		if err := configStore.Close(); err != nil {
+			log.Printf("Error closing config store: %v", err)
+		}
+	}
+
+	return shouldRestart
 }
 
 // parseResolutionMode converts a mode string to RecursionMode.
@@ -284,17 +341,32 @@ func startPprofServer(addr string) {
 	}()
 }
 
-// waitAndShutdown waits for shutdown signal and performs graceful shutdown.
-func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener, apiServer *api.Server, shutdownTimeout time.Duration) {
-	// Wait for shutdown signal
+// waitForSignalOrRestart waits for shutdown signal or restart request.
+// Returns true if the server should restart, false if it should exit.
+func waitForSignalOrRestart(restartCh <-chan string, handler *server.Handler, udpListener *dnsio.UDPListener, tcpListener *dnsio.TCPListener, apiServer *api.Server, shutdownTimeout time.Duration) bool {
+	// Wait for shutdown signal or restart request
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	sig := <-sigChan
-	log.Printf("Received signal: %v", sig)
+	var shouldRestart bool
+	select {
+	case sig := <-sigChan:
+		log.Printf("Received signal: %v", sig)
+		shouldRestart = false
+	case reason := <-restartCh:
+		log.Printf("Restart requested: %s", reason)
+		shouldRestart = true
+	}
+
+	// Stop signal notifications to allow new server instance to register
+	signal.Stop(sigChan)
 
 	// Graceful shutdown
-	log.Println("Shutting down gracefully...")
+	if shouldRestart {
+		log.Println("Shutting down for restart...")
+	} else {
+		log.Println("Shutting down gracefully...")
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -312,8 +384,8 @@ func waitAndShutdown(handler *server.Handler, udpListener *dnsio.UDPListener, tc
 	// Print final stats
 	printFinalStats(handler)
 
-	<-shutdownCtx.Done()
 	log.Println("Server stopped")
+	return shouldRestart
 }
 
 // stopListeners stops UDP and TCP listeners.
@@ -345,23 +417,28 @@ func printFinalStats(handler *server.Handler) {
 		stats.RRsetCache.Size)
 }
 
-// reportStats periodically reports cache statistics.
-func reportStats(handler *server.Handler, interval time.Duration) {
+// reportStatsWithContext periodically reports cache statistics with context cancellation.
+func reportStatsWithContext(ctx context.Context, handler *server.Handler, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		stats := handler.GetStats()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			stats := handler.GetStats()
 
-		log.Printf("Stats: MsgCache[hits=%d miss=%d rate=%.1f%% size=%s] RRsetCache[hits=%d miss=%d rate=%.1f%% size=%s]",
-			stats.MessageCache.Hits,
-			stats.MessageCache.Misses,
-			stats.MessageCache.HitRate*percentageMultiplier,
-			formatBytes(stats.MessageCache.Size),
-			stats.RRsetCache.Hits,
-			stats.RRsetCache.Misses,
-			stats.RRsetCache.HitRate*percentageMultiplier,
-			formatBytes(stats.RRsetCache.Size))
+			log.Printf("Stats: MsgCache[hits=%d miss=%d rate=%.1f%% size=%s] RRsetCache[hits=%d miss=%d rate=%.1f%% size=%s]",
+				stats.MessageCache.Hits,
+				stats.MessageCache.Misses,
+				stats.MessageCache.HitRate*percentageMultiplier,
+				formatBytes(stats.MessageCache.Size),
+				stats.RRsetCache.Hits,
+				stats.RRsetCache.Misses,
+				stats.RRsetCache.HitRate*percentageMultiplier,
+				formatBytes(stats.RRsetCache.Size))
+		}
 	}
 }
 

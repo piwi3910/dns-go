@@ -385,6 +385,30 @@ func (mc *MessageCache) Clear() {
 	mc.evicts.Store(0)
 }
 
+// --- Runtime Configuration Update Methods ---
+
+// SetMinTTL updates the minimum TTL at runtime.
+func (mc *MessageCache) SetMinTTL(minTTL time.Duration) {
+	mc.config.MinTTL = minTTL
+}
+
+// SetMaxTTL updates the maximum TTL at runtime.
+func (mc *MessageCache) SetMaxTTL(maxTTL time.Duration) {
+	mc.config.MaxTTL = maxTTL
+}
+
+// GetConfig returns the current cache configuration.
+func (mc *MessageCache) GetConfig() MessageCacheConfig {
+	return mc.config
+}
+
+// UpdateConfig applies configuration updates at runtime.
+// Note: NumShards and MaxSizeBytes cannot be changed at runtime.
+func (mc *MessageCache) UpdateConfig(minTTL, maxTTL time.Duration) {
+	mc.config.MinTTL = minTTL
+	mc.config.MaxTTL = maxTTL
+}
+
 // hashKey generates a hash for the cache key
 // Uses FNV-1a hash which is fast and has good distribution.
 func (mc *MessageCache) hashKey(key string) uint64 {

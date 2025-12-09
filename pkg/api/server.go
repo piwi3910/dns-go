@@ -841,13 +841,38 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	updateReq := bridge.UpdateConfigRequest{}
 
-	if req.Resolver != nil {
-		updateReq.Resolver = &bridge.ResolverConfigUpdate{
-			Mode:      req.Resolver.Mode,
-			Upstreams: req.Resolver.Upstreams,
+	// Handle cache configuration updates
+	if req.Cache != nil {
+		updateReq.Cache = &bridge.CacheConfigUpdate{
+			MinTTLSecs: req.Cache.MinTTLSecs,
+			MaxTTLSecs: req.Cache.MaxTTLSecs,
+			NegTTLSecs: req.Cache.NegTTLSecs,
+		}
+		if req.Cache.Prefetch != nil {
+			updateReq.Cache.Prefetch = &bridge.PrefetchConfigUpdate{
+				Enabled:             req.Cache.Prefetch.Enabled,
+				ThresholdHits:       req.Cache.Prefetch.ThresholdHits,
+				ThresholdTTLPercent: req.Cache.Prefetch.ThresholdTTLPercent,
+			}
 		}
 	}
 
+	// Handle resolver configuration updates
+	if req.Resolver != nil {
+		updateReq.Resolver = &bridge.ResolverConfigUpdate{
+			Mode:             req.Resolver.Mode,
+			Upstreams:        req.Resolver.Upstreams,
+			EnableCoalescing: req.Resolver.EnableCoalescing,
+		}
+		if req.Resolver.Parallel != nil {
+			updateReq.Resolver.Parallel = &bridge.ParallelConfigUpdate{
+				NumParallel:         req.Resolver.Parallel.NumParallel,
+				FallbackToRecursive: req.Resolver.Parallel.FallbackToRecursive,
+			}
+		}
+	}
+
+	// Handle logging configuration updates
 	if req.Logging != nil {
 		updateReq.Logging = &bridge.LoggingConfigUpdate{
 			Level:          req.Logging.Level,

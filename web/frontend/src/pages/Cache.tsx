@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Database, Trash2, AlertCircle, RefreshCw, CheckCircle, Server, Layers, Info } from 'lucide-react'
+import { Database, Trash2, AlertCircle, RefreshCw, CheckCircle, Server } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -194,79 +194,59 @@ export function Cache() {
 
       {cacheData && (
         <>
-          {/* Architecture Info */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Layers className="h-5 w-5" />
-                Cache Architecture
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 items-center">
-                <Badge variant="outline" className="text-sm">
-                  Mode: {cacheData.mode}
-                </Badge>
-                <Badge variant="outline" className="text-sm">
-                  L1: {cacheData.architecture.l1Type}
-                </Badge>
-                <Badge variant="outline" className="text-sm">
-                  L2: {cacheData.architecture.l2Type}
-                </Badge>
-                <Badge variant="outline" className="text-sm">
-                  Replication: {cacheData.architecture.replication}
-                </Badge>
-                <Badge variant="outline" className="text-sm">
-                  Invalidation: {cacheData.architecture.invalidation}
-                </Badge>
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground flex items-center gap-2">
-                <Info className="h-4 w-4" />
-                {cacheData.architecture.description}
-              </p>
-              <div className="mt-2 flex gap-2 flex-wrap">
-                {cacheData.architecture.features.map((feature) => (
-                  <Badge key={feature} variant="secondary" className="text-xs">
-                    {feature}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Aggregated Stats */}
           <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total Workers</p>
-                  <p className="text-3xl font-bold">{cacheData.aggregated.workerCount}</p>
+            <Card className="bg-linear-to-br from-card to-card/80">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Server className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Workers</p>
+                    <p className="text-2xl font-semibold">{cacheData.aggregated.workerCount}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Avg Hit Rate</p>
-                  <p className="text-3xl font-bold text-green-600">
-                    {cacheData.aggregated.averageHitRate.toFixed(1)}%
-                  </p>
+            <Card className="bg-linear-to-br from-card to-card/80">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-green-500/10">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Hit Rate</p>
+                    <p className="text-2xl font-semibold text-green-500">
+                      {cacheData.aggregated.averageHitRate.toFixed(1)}%
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total Hits</p>
-                  <p className="text-3xl font-bold">{formatNumber(cacheData.aggregated.totalHits)}</p>
+            <Card className="bg-linear-to-br from-card to-card/80">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10">
+                    <Database className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Hits</p>
+                    <p className="text-2xl font-semibold">{formatNumber(cacheData.aggregated.totalHits)}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total Size</p>
-                  <p className="text-3xl font-bold">{formatBytes(cacheData.aggregated.totalSizeBytes)}</p>
+            <Card className="bg-linear-to-br from-card to-card/80">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-purple-500/10">
+                    <Database className="h-5 w-5 text-purple-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Size</p>
+                    <p className="text-2xl font-semibold">{formatBytes(cacheData.aggregated.totalSizeBytes)}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -62,16 +62,16 @@ export function Dashboard({ stats }: DashboardProps) {
   const qpsSparkline = history.map(h => ({ value: h.cache_hits + h.cache_misses }))
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5">
       {/* Header Section */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Real-time DNS server monitoring</p>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Real-time DNS server monitoring</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-emerald-500 border-emerald-500/50">
-            <span className="mr-1.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/5">
+            <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
             Live
           </Badge>
           <Badge variant="secondary">v{stats.server.version}</Badge>
@@ -113,7 +113,7 @@ export function Dashboard({ stats }: DashboardProps) {
       </div>
 
       {/* Charts Row */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <AreaChartCard
           title="Cache Activity"
           subtitle="Hits and misses over time"
@@ -138,7 +138,7 @@ export function Dashboard({ stats }: DashboardProps) {
       </div>
 
       {/* Cache Stats Row */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card className="overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -237,7 +237,7 @@ export function Dashboard({ stats }: DashboardProps) {
       </div>
 
       {/* HA Status and Cluster Overview Row */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <HAStatus />
         <ClusterOverview />
       </div>

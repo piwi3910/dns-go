@@ -1,0 +1,205 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: dnsconfigs.dns.piwi3910.io
+  annotations:
+    description: "DNSConfig defines the configuration for the DNS server"
+spec:
+  group: dns.piwi3910.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                server:
+                  type: object
+                  properties:
+                    listenAddress:
+                      type: string
+                      description: "Address to listen on (e.g., '0.0.0.0:53')"
+                    numWorkers:
+                      type: integer
+                      minimum: 1
+                      description: "Number of I/O workers"
+                    enableTcp:
+                      type: boolean
+                      description: "Enable TCP listener"
+                    pprofAddress:
+                      type: string
+                      description: "Address for pprof HTTP server"
+                    gracefulShutdownTimeoutSeconds:
+                      type: integer
+                      minimum: 1
+                      description: "Graceful shutdown timeout in seconds"
+                    statsReportIntervalSeconds:
+                      type: integer
+                      minimum: 1
+                      description: "Stats report interval in seconds"
+                cache:
+                  type: object
+                  properties:
+                    messageCache:
+                      type: object
+                      properties:
+                        maxSizeMb:
+                          type: integer
+                          minimum: 1
+                          description: "Maximum size in megabytes"
+                        numShards:
+                          type: integer
+                          minimum: 1
+                          description: "Number of shards (should be power of 2)"
+                    rrsetCache:
+                      type: object
+                      properties:
+                        maxSizeMb:
+                          type: integer
+                          minimum: 1
+                          description: "Maximum size in megabytes"
+                        numShards:
+                          type: integer
+                          minimum: 1
+                          description: "Number of shards (should be power of 2)"
+                    prefetch:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          description: "Enable prefetching"
+                        thresholdHits:
+                          type: integer
+                          minimum: 1
+                          description: "Minimum hits before prefetching"
+                        thresholdTtlPercent:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                          description: "TTL percentage threshold for prefetching"
+                    minTtlSeconds:
+                      type: integer
+                      minimum: 0
+                      description: "Minimum TTL in seconds"
+                    maxTtlSeconds:
+                      type: integer
+                      minimum: 1
+                      description: "Maximum TTL in seconds"
+                    negativeTtlSeconds:
+                      type: integer
+                      minimum: 0
+                      description: "Negative cache TTL in seconds"
+                resolver:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      enum: ["forwarding", "recursive", "parallel"]
+                      description: "Resolution mode"
+                    upstreams:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of upstream DNS servers"
+                    rootHintsFile:
+                      type: string
+                      description: "Path to root hints file"
+                    maxRecursionDepth:
+                      type: integer
+                      minimum: 1
+                      description: "Maximum recursion depth"
+                    queryTimeoutSeconds:
+                      type: integer
+                      minimum: 1
+                      description: "Query timeout in seconds"
+                    enableCoalescing:
+                      type: boolean
+                      description: "Enable request coalescing"
+                    parallel:
+                      type: object
+                      properties:
+                        numParallel:
+                          type: integer
+                          minimum: 1
+                          description: "Number of parallel queries"
+                        fallbackToRecursive:
+                          type: boolean
+                          description: "Fallback to recursive on failure"
+                        successRcodes:
+                          type: array
+                          items:
+                            type: integer
+                          description: "Response codes considered successful"
+                logging:
+                  type: object
+                  properties:
+                    level:
+                      type: string
+                      enum: ["debug", "info", "warn", "error"]
+                      description: "Log level"
+                    format:
+                      type: string
+                      enum: ["text", "json"]
+                      description: "Log format"
+                    enableQueryLog:
+                      type: boolean
+                      description: "Enable query logging"
+                api:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      description: "Enable API server"
+                    listenAddress:
+                      type: string
+                      description: "API server listen address"
+                    corsOrigins:
+                      type: array
+                      items:
+                        type: string
+                      description: "Allowed CORS origins"
+            status:
+              type: object
+              properties:
+                lastApplied:
+                  type: string
+                  format: date-time
+                  description: "When config was last applied"
+                applied:
+                  type: boolean
+                  description: "Whether config has been applied to all workers"
+                message:
+                  type: string
+                  description: "Status message"
+                workersReady:
+                  type: integer
+                  description: "Number of workers that have applied the config"
+                workersTotal:
+                  type: integer
+                  description: "Total number of workers"
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Mode
+          type: string
+          jsonPath: .spec.resolver.mode
+        - name: Upstreams
+          type: string
+          jsonPath: .spec.resolver.upstreams
+        - name: Applied
+          type: boolean
+          jsonPath: .status.applied
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: dnsconfigs
+    singular: dnsconfig
+    kind: DNSConfig
+    shortNames:
+      - dnscfg

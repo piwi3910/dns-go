@@ -411,3 +411,65 @@ type Stats struct {
 func makeQueryKey(name string, qtype uint16, qclass uint16) string {
 	return cache.MakeKey(name, qtype, qclass)
 }
+
+// --- Runtime Configuration Update Methods ---
+
+// SetCoalescing enables or disables request coalescing at runtime.
+func (r *Resolver) SetCoalescing(enabled bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.config.EnableCoalescing = enabled
+}
+
+// GetCoalescing returns the current coalescing setting.
+func (r *Resolver) GetCoalescing() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.config.EnableCoalescing
+}
+
+// SetParallelConfig updates the parallel resolution configuration at runtime.
+func (r *Resolver) SetParallelConfig(numParallel int, fallbackToRecursive bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.config.ParallelConfig.NumParallel = numParallel
+	r.config.ParallelConfig.FallbackToRecursive = fallbackToRecursive
+}
+
+// GetParallelConfig returns the current parallel configuration.
+func (r *Resolver) GetParallelConfig() ParallelConfig {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.config.ParallelConfig
+}
+
+// SetQueryTimeout updates the query timeout at runtime.
+func (r *Resolver) SetQueryTimeout(timeout time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.config.QueryTimeout = timeout
+}
+
+// GetConfig returns a copy of the current resolver configuration.
+func (r *Resolver) GetConfig() Config {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.config
+}
+
+// UpdateConfig applies a configuration update to the resolver.
+// Note: Mode changes require a restart and are not applied here.
+func (r *Resolver) UpdateConfig(cfg Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Update settings that can be changed at runtime
+	r.config.EnableCoalescing = cfg.EnableCoalescing
+	r.config.QueryTimeout = cfg.QueryTimeout
+	r.config.ParallelConfig = cfg.ParallelConfig
+	r.config.MaxRetries = cfg.MaxRetries
+	r.config.WorkerPoolSize = cfg.WorkerPoolSize
+
+	// Note: Mode changes are NOT applied here as they require
+	// rebuilding internal components (iterative resolver, etc.)
+}
